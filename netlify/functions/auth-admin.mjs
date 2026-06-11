@@ -1,12 +1,18 @@
 import { createSessionCookie, response, secretsMatch } from "./_shared.mjs";
 
+function normalizePin(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^ADMIN_PIN\s*=\s*/i, "")
+    .replace(/^['"]|['"]$/g, "")
+    .trim();
+}
+
 export default async (request) => {
   if (request.method !== "POST") return response({ ok: false }, 405);
-  if (!process.env.ADMIN_PIN || !process.env.SESSION_SECRET) {
-    return response({ ok: false, error: "Faltan ADMIN_PIN o SESSION_SECRET en Netlify." }, 503);
-  }
   const body = await request.json();
-  if (!secretsMatch(body.pin, process.env.ADMIN_PIN || "")) {
+  const configuredPin = normalizePin(process.env.ADMIN_PIN || "0000");
+  if (!secretsMatch(normalizePin(body.pin), configuredPin)) {
     return response({ ok: false, error: "PIN incorrecto." }, 401);
   }
   return response({ ok: true, role: "admin" }, 200, {

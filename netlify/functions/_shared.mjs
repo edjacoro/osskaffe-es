@@ -25,9 +25,16 @@ export function secretsMatch(received, expected) {
 }
 
 function sessionSecret() {
-  const value = process.env.SESSION_SECRET || "";
-  if (value.length < 32) throw new Error("SESSION_SECRET debe tener al menos 32 caracteres.");
-  return value;
+  const configured = process.env.SESSION_SECRET || "";
+  if (configured.length >= 32) return configured;
+
+  const fallback = [
+    process.env.BISTROSOFT_PASSWORD || "",
+    process.env.BISTROSOFT_USERNAME || "",
+    process.env.ADMIN_PIN || "",
+    "oss-kaffe-netlify-session",
+  ].join(":");
+  return crypto.createHash("sha256").update(fallback).digest("hex");
 }
 
 function sign(value) {
