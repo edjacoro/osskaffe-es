@@ -1,6 +1,37 @@
-.env
-.env.*
-!.env.example
-data/
-dist/
-node_modules/
+[build]
+  command = "npm run build:netlify"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/auth/admin"
+  to = "/.netlify/functions/auth-admin"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/employee"
+  to = "/.netlify/functions/auth-employee"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/logout"
+  to = "/.netlify/functions/auth-logout"
+  status = 200
+
+[[redirects]]
+  from = "/api/state"
+  to = "/.netlify/functions/state"
+  status = 200
+
+[[redirects]]
+  from = "/api/bistrosoft/status"
+  to = "/.netlify/functions/bistro-status"
+  status = 200
+
+[[redirects]]
+  from = "/api/bistrosoft/sales"
+  to = "/.netlify/functions/bistro-sales"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
