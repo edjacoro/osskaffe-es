@@ -18,7 +18,7 @@ export default async (request) => {
   try {
     const result = await getBistroSales(from, until);
     await mergeBistroSales(result.sales, from, until);
-    return response(result);
+    return response({ ...result, persisted: true });
   } catch (error) {
     await writeBistroError(error);
     return response({ ok: false, error: "No se pudo sincronizar Bistrosoft." }, 502);

@@ -78,6 +78,22 @@ funcion programada `sync-bistro` actualiza los ultimos 14 dias cada 30 minutos a
 nadie tenga la web abierta. Cuando un administrador abre Finanzas, la lectura visible
 continua actualizandose cada 30 segundos.
 
+Al abrir Finanzas como administrador, la aplicacion consulta todos los meses disponibles
+en Bistrosoft e importa automaticamente los meses historicos que todavia falten. El boton
+**Sincronizar historial** vuelve a leer todos los meses disponibles, incluso si ya estaban
+importados. El historial queda guardado en Netlify Blobs; la copia local del navegador
+omite los tickets de Bistrosoft para evitar superar su limite de almacenamiento.
+
+### Accesos y perfiles
+
+- Cada empleado configura sus datos obligatorios y una contrasena propia en el primer acceso.
+- Las contrasenas se guardan protegidas mediante hash de forma separada en Netlify Blobs y no forman parte
+  del estado compartido que recibe el navegador.
+- El administrador puede activar o desactivar el perfil **Visita** desde
+  **Ajustes > Acceso visita**. Visita solamente consulta Grilla y Finanzas.
+- La vista del empleado incluye **Mis horas**, cierre automatico de fichajes olvidados y
+  avisos del navegador cinco minutos antes del turno mientras la aplicacion permanece abierta.
+
 ### Otros hostings
 
 Se puede desplegar con `npm start` o mediante el `Dockerfile`. El hosting debe:

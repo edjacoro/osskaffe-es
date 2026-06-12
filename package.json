@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs",
     "build:netlify": "node scripts/build-netlify.mjs",
-    "check": "node --check app.js && node --check server.mjs && node --check netlify/functions/_shared.mjs"
+    "check": "node --check app.js && node --check netlify/functions/_shared.mjs && node --check netlify/functions/auth-employee.mjs && node --check netlify/functions/auth-visit.mjs && node --check netlify/functions/state.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^10.7.9"

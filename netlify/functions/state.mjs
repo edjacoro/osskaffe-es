@@ -5,6 +5,7 @@ import {
   requireSession,
   response,
   updateState,
+  visitorState,
 } from "./_shared.mjs";
 
 export default async (request) => {
@@ -15,11 +16,18 @@ export default async (request) => {
     const { state } = await readStateEntry();
     return response({
       ok: true,
-      state: session.role === "admin" ? state : employeeState(state, session.employeeId),
+      state: session.role === "admin"
+        ? state
+        : session.role === "visitor"
+          ? visitorState(state)
+          : employeeState(state, session.employeeId),
     });
   }
 
   if (request.method === "PUT") {
+    if (session.role === "visitor") {
+      return response({ ok: false, error: "Acceso de solo lectura." }, 403);
+    }
     const body = await request.json();
     if (!body.state || typeof body.state !== "object") {
       return response({ ok: false, error: "Estado invalido." }, 400);

@@ -4,6 +4,7 @@ import { getStore } from "@netlify/blobs";
 const STORE_NAME = "oss-kaffe";
 const STATE_KEY = "state";
 const STATUS_KEY = "bistro-status";
+const AUTH_PREFIX = "auth";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const BISTRO_BASE_URL = "https://es.bistrosoft.com";
 
@@ -88,6 +89,31 @@ function stateStore() {
   return getStore(STORE_NAME);
 }
 
+function credentialKey(kind, id = "") {
+  return `${AUTH_PREFIX}-${kind}${id ? `-${id}` : ""}`;
+}
+
+export async function readCredential(kind, id = "") {
+  return await stateStore().get(credentialKey(kind, id), { type: "json", consistency: "strong" }) || null;
+}
+
+export async function writeCredential(kind, id, password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(password), salt, 64).toString("hex");
+  await stateStore().setJSON(credentialKey(kind, id), { salt, hash });
+}
+
+export async function clearCredential(kind, id = "") {
+  await stateStore().delete(credentialKey(kind, id));
+}
+
+export function verifyCredential(password, credential) {
+  if (!credential?.salt || !credential?.hash) return false;
+  const received = crypto.scryptSync(String(password || ""), credential.salt, 64);
+  const expected = Buffer.from(credential.hash, "hex");
+  return received.length === expected.length && crypto.timingSafeEqual(received, expected);
+}
+
 export async function readStateEntry() {
   const entry = await stateStore().getWithMetadata(STATE_KEY, { type: "json", consistency: "strong" });
   return entry ? { state: entry.data, etag: entry.etag } : { state: null, etag: null };
@@ -108,17 +134,42 @@ export async function updateState(mutator) {
 
 export function employeeState(fullState, employeeId) {
   if (!fullState) return null;
+  const profile = fullState.profiles?.[employeeId] || null;
+  const { adminNotes: _adminNotes, ...employeeProfile } = profile || {};
+  const contract = fullState.contracts?.[employeeId] || null;
+  const { adminPin: _adminPin, adminEmail: _adminEmail, ...employeeSettings } = fullState.settings || {};
   return {
     ...fullState,
     punches: (fullState.punches || []).filter((item) => item.employeeId === employeeId),
     changes: (fullState.changes || []).filter((item) => item.employeeId === employeeId),
     sales: [],
     expenses: [],
-    contracts: {},
+    contracts: contract ? { [employeeId]: { hoursPerWeek: contract.hoursPerWeek } } : {},
     budgets: {},
-    profiles: fullState.profiles?.[employeeId]
-      ? { [employeeId]: fullState.profiles[employeeId] }
-      : {},
+    profiles: profile ? { [employeeId]: employeeProfile } : {},
+    settings: employeeSettings,
+  };
+}
+
+export function visitorState(fullState) {
+  if (!fullState) return null;
+  const {
+    adminPin: _adminPin,
+    adminEmail: _adminEmail,
+    storeLat: _storeLat,
+    storeLng: _storeLng,
+    geoRadius: _geoRadius,
+    lateTolerance: _lateTolerance,
+    ...visitorSettings
+  } = fullState.settings || {};
+  return {
+    ...fullState,
+    punches: [],
+    changes: fullState.changes || [],
+    trafficData: [],
+    profiles: {},
+    contracts: {},
+    settings: visitorSettings,
   };
 }
 
@@ -133,7 +184,13 @@ export function mergeEmployeeState(current, submitted, employeeId) {
     ...(current || {}),
     punches: [...currentPunches.filter((item) => item.employeeId !== employeeId), ...ownPunches],
     changes: [...currentChanges.filter((item) => item.employeeId !== employeeId), ...ownChanges],
-    profiles: ownProfile ? { ...currentProfiles, [employeeId]: ownProfile } : currentProfiles,
+    profiles: ownProfile ? {
+      ...currentProfiles,
+      [employeeId]: {
+        ...ownProfile,
+        adminNotes: currentProfiles[employeeId]?.adminNotes || "",
+      },
+    } : currentProfiles,
   };
 }
 
@@ -233,6 +290,27 @@ export async function getBistroSales(from, until) {
     lastError: null,
   });
   return { ok: true, source: "bistrosoft", from, until, fetchedAt, totalCount: sales.length, sales };
+}
+
+export async function getBistroMonths() {
+  const cookies = await loginBistrosoft();
+  const until = new Date();
+  until.setUTCDate(until.getUTCDate() + 1);
+  const query = new URLSearchParams({
+    Period: "ConfigurablePeriod",
+    From: "2010-01-01",
+    Until: isoDate(until),
+  });
+  const result = await bistroRequest(`/api/report/salesDataPerMonthV2?${query}`, {}, cookies);
+  if (result.data.responseCode !== 0) {
+    throw new Error("Bistrosoft no pudo informar los meses disponibles.");
+  }
+  const months = [...new Set(
+    (result.data.items || [])
+      .map((item) => String(item.date || ""))
+      .filter((value) => /^\d{4}-\d{2}$/.test(value)),
+  )].sort();
+  return { ok: true, months };
 }
 
 export async function readBistroStatus() {
