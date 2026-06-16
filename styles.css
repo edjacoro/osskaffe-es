@@ -2021,6 +2021,37 @@ textarea {
   align-items: center;
   gap: 6px;
 }
+
+.fin-today-projection {
+  min-width: 210px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.fin-today-projection span,
+.fin-today-projection small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.fin-today-projection strong {
+  display: block;
+  color: var(--blue-dark);
+  font-size: 1.15rem;
+  line-height: 1.1;
+  margin: 2px 0;
+}
+
+.fin-today-projection small {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 #finMonthDisplay {
   font-weight: 700;
   font-size: 1rem;

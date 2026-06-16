@@ -2608,6 +2608,14 @@ function setActiveFinTab(tab) {
 }
 
 function renderFinMonthNav() {
+  const nav = document.querySelector('#finMonthNav');
+  const projection = document.querySelector('#finTodayProjection');
+  const isTodayTab = activeFinTab === 'hoy';
+  if (nav) nav.hidden = isTodayTab;
+  if (projection) {
+    projection.hidden = !isTodayTab;
+    if (isTodayTab) renderFinTodayProjection();
+  }
   const el = document.querySelector('#finMonthDisplay');
   if (el) el.textContent = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
 }
@@ -2627,6 +2635,36 @@ function renderFinanzas() {
 }
 
 // -------- HOY --------
+
+function getMonthSalesProjection(referenceDate = new Date()) {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const from = toDateInput(new Date(year, month, 1));
+  const until = toDateInput(referenceDate);
+  const elapsedDays = referenceDate.getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const soldToDate = state.sales
+    .filter((sale) => sale.date >= from && sale.date <= until)
+    .reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+  const dailyAverage = elapsedDays > 0 ? soldToDate / elapsedDays : 0;
+  return {
+    soldToDate,
+    dailyAverage,
+    daysInMonth,
+    projected: dailyAverage * daysInMonth,
+  };
+}
+
+function renderFinTodayProjection() {
+  const container = document.querySelector('#finTodayProjection');
+  if (!container) return;
+  const projection = getMonthSalesProjection(new Date());
+  container.innerHTML = `
+    <span>Proyección venta mes</span>
+    <strong>${projection.projected > 0 ? formatEur(projection.projected) : '—'}</strong>
+    <small>${formatEur(projection.soldToDate)} acumulado · prom. diario ${formatEur(projection.dailyAverage)} × ${projection.daysInMonth} días</small>
+  `;
+}
 
 function renderFinHoy() {
   const today = toDateInput(new Date());
