@@ -97,6 +97,9 @@ omite los tickets de Bistrosoft para evitar superar su limite de almacenamiento.
   pestaña mensual para consultar esas cantidades.
 - La sincronizacion de Bistrosoft incorpora tambien los movimientos de caja tipo Retiro como
   gastos en categoria **Otros**, conservando la leyenda original como descripcion.
+- En Finanzas > Gastos, el administrador puede reclasificar esos movimientos. La app guarda
+  solamente la categoria local asociada al ID estable de Bistrosoft, por lo que las siguientes
+  sincronizaciones no duplican el gasto ni pierden la clasificacion elegida.
 
 ### Otros hostings
 

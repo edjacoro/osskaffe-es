@@ -77,6 +77,7 @@ const DEFAULT_STATE = {
   profiles: {},
   sales: [],
   expenses: [],
+  expenseCategoryOverrides: {},
   wasteRecords: [],
   contracts: {},
   budgets: {},
@@ -1172,12 +1173,17 @@ function disconnectSharedState() {
 }
 
 function mergeState(base, saved) {
-  return {
+  const expenseCategoryOverrides = {
+    ...(base.expenseCategoryOverrides || {}),
+    ...(saved.expenseCategoryOverrides || {}),
+  };
+  const merged = {
     ...structuredClone(base),
     ...saved,
     employees: Array.isArray(saved.employees) && saved.employees.length
       ? saved.employees
       : structuredClone(base.employees),
+    expenseCategoryOverrides,
     wasteRecords: saved.wasteRecords || base.wasteRecords,
     profiles: { ...base.profiles, ...(saved.profiles || {}) },
     settings: {
@@ -1186,6 +1192,10 @@ function mergeState(base, saved) {
       holidays: saved.settings?.holidays || base.settings.holidays,
     },
   };
+  merged.expenses = (merged.expenses || []).map((expense) =>
+    applyExpenseCategoryOverride(expense, expenseCategoryOverrides)
+  );
+  return merged;
 }
 
 function seedDefaultHolidays(nextState) {
@@ -2117,20 +2127,66 @@ function renderPersonnelPanel() {
   container.innerHTML = employees.map((employee) => {
     const active = employee.active !== false;
     const profile = getProfile(employee.id);
+    const color = /^#[0-9a-f]{6}$/i.test(employee.color || '') ? employee.color : '#416877';
     return `
       <article class="event-item team-member-item${active ? '' : ' is-inactive'}">
         <div class="event-topline">
-          <span><span class="legend-swatch" style="background:${employee.color}"></span>${escapeHtml(employee.label)}</span>
+          <span><span class="legend-swatch" style="background:${color}"></span>${escapeHtml(employee.label)}</span>
           <span class="status-pill ${active ? 'status-approved' : 'status-rejected'}">${active ? 'Activo' : 'Baja'}</span>
         </div>
         <div class="event-meta">${escapeHtml(employee.role)} · ${escapeHtml(profile.area || 'Sin área')}${employee.inactiveFrom ? ` · baja ${formatHumanDate(employee.inactiveFrom)}` : ''}</div>
+        <div class="team-member-edit-grid">
+          <label>
+            Rol
+            <input type="text" value="${escapeHtml(employee.role)}" data-team-role="${employee.id}" maxlength="60" />
+          </label>
+          <label>
+            Color en grilla
+            <span class="team-color-control">
+              <input type="color" value="${color}" data-team-color="${employee.id}" aria-label="Color de ${escapeHtml(employee.label)}" />
+              <span>${color.toUpperCase()}</span>
+            </span>
+          </label>
+        </div>
         <div class="event-actions">
+          <button class="mini-button" type="button" data-save-team="${employee.id}">Guardar rol y color</button>
           <button class="mini-button ${active ? 'danger' : ''}" type="button" data-toggle-team="${employee.id}">
             ${active ? 'Dar de baja' : 'Reactivar'}
           </button>
         </div>
       </article>`;
   }).join('');
+
+  container.querySelectorAll('[data-team-color]').forEach((input) => {
+    input.addEventListener('input', () => {
+      const value = input.closest('.team-color-control')?.querySelector('span');
+      if (value) value.textContent = input.value.toUpperCase();
+    });
+  });
+
+  container.querySelectorAll('[data-save-team]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const id = button.dataset.saveTeam;
+      const employee = state.employees.find((item) => item.id === id);
+      const roleInput = container.querySelector(`[data-team-role="${id}"]`);
+      const colorInput = container.querySelector(`[data-team-color="${id}"]`);
+      if (!employee || !roleInput || !colorInput) return;
+
+      const role = roleInput.value.trim();
+      if (!role) {
+        alert('El rol no puede quedar vacío.');
+        roleInput.focus();
+        return;
+      }
+
+      employee.role = role;
+      employee.color = colorInput.value;
+      saveState();
+      populateSelectors();
+      renderEmployeeChoiceButtons();
+      render();
+    });
+  });
 
   container.querySelectorAll('[data-toggle-team]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -2408,27 +2464,103 @@ function renderAdminFichas() {
       .join("");
 
     return `
-      <div class="ficha-card${emp.active === false ? ' is-inactive' : ''}">
+      <div class="ficha-card${emp.active === false ? ' is-inactive' : ''}" data-ficha-card="${emp.id}">
         <div class="ficha-header" style="background:${emp.color}">
-          <div class="ficha-name">${emp.label}</div>
-          <div class="ficha-role">${emp.role}${emp.active === false ? ' · Baja' : ''}</div>
+          <div class="ficha-name">${escapeHtml(emp.label)}</div>
+          <div class="ficha-role">${escapeHtml(emp.role)}${emp.active === false ? ' · Baja' : ''}</div>
         </div>
-        <div class="ficha-body">${rows}</div>
-        <div class="ficha-admin-notes">
+        <div class="ficha-card-actions">
+          <button class="mini-button" type="button" data-edit-ficha="${emp.id}">Editar ficha</button>
+        </div>
+        <div class="ficha-body" data-ficha-view="${emp.id}">${rows}</div>
+        <form class="ficha-edit-form" data-ficha-form="${emp.id}" hidden>
+          <div class="ficha-edit-grid">
+            <label>Nombre completo
+              <input name="fullName" type="text" value="${escapeHtml(profile.fullName || '')}" />
+            </label>
+            <label>Teléfono
+              <input name="phone" type="tel" value="${escapeHtml(profile.phone || '')}" />
+            </label>
+            <label>Email
+              <input name="email" type="email" value="${escapeHtml(profile.email || '')}" />
+            </label>
+            <label>Dirección
+              <input name="address" type="text" value="${escapeHtml(profile.address || '')}" />
+            </label>
+            <label>DNI / NIE
+              <input name="dni" type="text" value="${escapeHtml(profile.dni || '')}" />
+            </label>
+            <label>N° Seg. Social
+              <input name="ssNumber" type="text" value="${escapeHtml(profile.ssNumber || '')}" />
+            </label>
+            <label>IBAN
+              <input name="iban" type="text" value="${escapeHtml(profile.iban || '')}" />
+            </label>
+            <label>Área
+              <select name="area">
+                <option value="">Sin definir</option>
+                <option value="Barista"${profile.area === 'Barista' ? ' selected' : ''}>Barista</option>
+                <option value="Pastelería"${profile.area === 'Pastelería' ? ' selected' : ''}>Pastelería</option>
+              </select>
+            </label>
+            <label>Contrato
+              <select name="contractType">
+                <option value="">Sin definir</option>
+                <option value="Indefinido"${profile.contractType === 'Indefinido' ? ' selected' : ''}>Indefinido</option>
+                <option value="Temporal"${profile.contractType === 'Temporal' ? ' selected' : ''}>Temporal</option>
+                <option value="Prácticas"${profile.contractType === 'Prácticas' ? ' selected' : ''}>Prácticas</option>
+                <option value="Autónomo"${profile.contractType === 'Autónomo' ? ' selected' : ''}>Autónomo</option>
+              </select>
+            </label>
+            <label>Fecha inicio
+              <input name="startDate" type="date" value="${escapeHtml(profile.startDate || '')}" />
+            </label>
+            <label>Urgencia nombre
+              <input name="emergencyName" type="text" value="${escapeHtml(profile.emergencyName || '')}" />
+            </label>
+            <label>Urgencia teléfono
+              <input name="emergencyPhone" type="tel" value="${escapeHtml(profile.emergencyPhone || '')}" />
+            </label>
+          </div>
+          <label>Nota interna (solo admin)
+            <textarea name="adminNotes" rows="3" placeholder="Observaciones, documentación pendiente...">${escapeHtml(profile.adminNotes || '')}</textarea>
+          </label>
+          <div class="ficha-edit-actions">
+            <button class="primary-button" type="submit">Guardar cambios</button>
+            <button class="ghost-button" type="button" data-cancel-ficha="${emp.id}">Cancelar</button>
+          </div>
+        </form>
+        <div class="ficha-admin-notes" data-ficha-notes="${emp.id}">
           <label style="display:block;font-size:0.8rem;font-weight:800;color:var(--muted)">Nota interna (solo admin)</label>
-          <textarea class="ficha-notes-input" data-emp="${emp.id}" rows="2" placeholder="Observaciones, documentación pendiente...">${escapeHtml(profile.adminNotes || "")}</textarea>
-          <button class="mini-button" style="margin-top:6px" type="button" data-save-notes="${emp.id}">Guardar nota</button>
+          <p>${profile.adminNotes ? escapeHtml(profile.adminNotes) : 'Sin observaciones.'}</p>
         </div>
       </div>`;
   }).join("");
 
-  container.querySelectorAll("[data-save-notes]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.saveNotes;
-      const notes = container.querySelector(`.ficha-notes-input[data-emp="${id}"]`).value;
-      saveProfileData(id, { adminNotes: notes });
-      btn.textContent = "Guardado";
-      setTimeout(() => { btn.textContent = "Guardar nota"; }, 1500);
+  container.querySelectorAll("[data-edit-ficha]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.editFicha;
+      container.querySelector(`[data-ficha-card="${id}"]`).classList.add("is-editing");
+      container.querySelector(`[data-ficha-view="${id}"]`).hidden = true;
+      container.querySelector(`[data-ficha-notes="${id}"]`).hidden = true;
+      container.querySelector(`[data-ficha-form="${id}"]`).hidden = false;
+      button.hidden = true;
+    });
+  });
+
+  container.querySelectorAll("[data-cancel-ficha]").forEach((button) => {
+    button.addEventListener("click", renderAdminFichas);
+  });
+
+  container.querySelectorAll("[data-ficha-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const data = {};
+      new FormData(form).forEach((value, key) => {
+        data[key] = String(value).trim();
+      });
+      saveProfileData(form.dataset.fichaForm, data);
+      renderAdminFichas();
     });
   });
 }
@@ -2471,6 +2603,12 @@ const EXPENSE_CATEGORIES = [
   { id: 'marketing',        label: 'Marketing' },
   { id: 'otros',            label: 'Otros' },
 ];
+
+function applyExpenseCategoryOverride(expense, overrides = state?.expenseCategoryOverrides || {}) {
+  if (expense?._source !== 'bistrosoft') return expense;
+  const category = overrides?.[expense.id];
+  return category ? { ...expense, category } : expense;
+}
 
 let activeFinTab = 'hoy';
 let finActiveMonth = firstDayOfMonth(new Date()); // mes propio de Finanzas (independiente de la grilla)
@@ -2660,9 +2798,11 @@ async function fetchBistrosoftRange(from, until) {
   const imported = payload.sales.filter((sale) =>
     sale && typeof sale.date === 'string' && Number.isFinite(Number(sale.total))
   );
-  const importedExpenses = (payload.expenses || []).filter((expense) =>
-    expense && typeof expense.date === 'string' && Number.isFinite(Number(expense.amount))
-  );
+  const importedExpenses = (payload.expenses || [])
+    .filter((expense) =>
+      expense && typeof expense.date === 'string' && Number.isFinite(Number(expense.amount))
+    )
+    .map((expense) => applyExpenseCategoryOverride(expense));
   state.sales = [
     ...state.sales.filter((sale) => !(sale.date >= from && sale.date < until)),
     ...imported,
@@ -2973,22 +3113,36 @@ function renderFinImport() {
 // -------- EXPENSES --------
 
 function renderFinExpenses() {
-  const expenses = state.expenses.slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-  const monthTotal = state.expenses
-    .filter((e) => e.date.startsWith(monthInputValue(finActiveMonth)))
-    .reduce((s, e) => s + e.amount, 0);
+  const monthKey = monthInputValue(finActiveMonth);
+  const expenses = state.expenses
+    .filter((expense) => expense.date.startsWith(monthKey))
+    .slice()
+    .sort((a, b) =>
+      b.date.localeCompare(a.date)
+      || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+    );
+  const monthTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
 
-  document.querySelector('#finExpSummary').textContent = `${MONTH_NAMES[finActiveMonth.getMonth()]}: ${formatEur(monthTotal)}`;
+  document.querySelector('#finExpListTitle').textContent =
+    `Gastos de ${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  document.querySelector('#finExpSummary').textContent =
+    `${expenses.length} movimientos · ${formatEur(monthTotal)}`;
 
   const list = document.querySelector('#finExpenseList');
-  if (!expenses.length) { renderEmpty(list); return; }
+  if (!expenses.length) {
+    list.innerHTML = '<div class="empty-state">No hay gastos registrados en este mes.</div>';
+    return;
+  }
 
   const isAdmin = typeof appRole !== 'undefined' && appRole === 'admin';
 
-  list.innerHTML = expenses.slice(0, 60).map((exp) => {
+  list.innerHTML = expenses.map((exp) => {
     const catLabel = EXPENSE_CATEGORIES.find((c) => c.id === exp.category)?.label || exp.category;
+    const hasCategoryOverride = exp._source === 'bistrosoft'
+      && !!state.expenseCategoryOverrides?.[exp.id];
     const bistroBadge = exp._source === 'bistrosoft'
-      ? `<span class="fin-tc-badge">Bistrosoft${exp.enteredBy ? ` · ${escapeHtml(exp.enteredBy)}` : ''}</span>`
+      ? `<span class="fin-tc-badge">Bistrosoft${exp.enteredBy ? ` · ${escapeHtml(exp.enteredBy)}` : ''}</span>
+         ${hasCategoryOverride ? '<span class="fin-local-category-badge">Categoría personalizada</span>' : ''}`
       : '';
     const tcBadge = exp.isDiferido ? `<span class="fin-tc-badge">TC · vence ${formatHumanDate(exp.dueDate)}</span>` : '';
     return `
@@ -2999,10 +3153,11 @@ function renderFinExpenses() {
         </div>
         <div class="event-meta">${formatHumanDate(exp.date)}${exp.description ? ' · ' + escapeHtml(exp.description) : ''}</div>
         <div class="event-actions">
-          ${isAdmin && exp._source !== 'bistrosoft' ? `
-            <button class="mini-button" type="button" data-edit-expense="${exp.id}">Editar</button>
-            <button class="mini-button danger" type="button" data-delete-expense="${exp.id}">Borrar</button>
-          ` : ''}
+          ${isAdmin ? exp._source === 'bistrosoft'
+            ? `<button class="mini-button" type="button" data-edit-expense="${exp.id}">Editar categoría</button>`
+            : `<button class="mini-button" type="button" data-edit-expense="${exp.id}">Editar</button>
+               <button class="mini-button danger" type="button" data-delete-expense="${exp.id}">Borrar</button>`
+          : ''}
         </div>
       </article>
     `;
@@ -3089,6 +3244,7 @@ function startEditExpense(id) {
   const exp = state.expenses.find((e) => e.id === id);
   if (!exp) return;
   finEditingExpenseId = id;
+  const isBistrosoft = exp._source === 'bistrosoft';
 
   document.querySelector('#finExpEditId').value = id;
   document.querySelector('#finExpDate').value = exp.date;
@@ -3102,8 +3258,16 @@ function startEditExpense(id) {
   document.querySelector('#finExpDueDateRow').style.display = isDif ? 'block' : 'none';
   document.querySelector('#finExpDueDate').value = exp.dueDate || '';
 
-  document.querySelector('#finExpFormTitle').textContent = 'Editar gasto';
-  document.querySelector('#finExpSubmitBtn').textContent = 'Guardar cambios';
+  ['finExpDate', 'finExpAmount', 'finExpSupplier', 'finExpDesc', 'finExpDiferido', 'finExpDueDate']
+    .forEach((fieldId) => {
+      document.querySelector(`#${fieldId}`).disabled = isBistrosoft;
+    });
+  document.querySelector('#finExpenseForm').classList.toggle('is-bistro-category-edit', isBistrosoft);
+  document.querySelector('#finExpEditNote').hidden = !isBistrosoft;
+  document.querySelector('#finExpFormTitle').textContent =
+    isBistrosoft ? 'Clasificar gasto Bistrosoft' : 'Editar gasto';
+  document.querySelector('#finExpSubmitBtn').textContent =
+    isBistrosoft ? 'Guardar categoría' : 'Guardar cambios';
   document.querySelector('#finExpCancelEdit').style.display = '';
 
   // Scroll al formulario
@@ -3112,6 +3276,12 @@ function startEditExpense(id) {
 
 function resetExpenseForm() {
   finEditingExpenseId = null;
+  ['finExpDate', 'finExpAmount', 'finExpSupplier', 'finExpDesc', 'finExpDiferido', 'finExpDueDate']
+    .forEach((fieldId) => {
+      document.querySelector(`#${fieldId}`).disabled = false;
+    });
+  document.querySelector('#finExpenseForm').classList.remove('is-bistro-category-edit');
+  document.querySelector('#finExpEditNote').hidden = true;
   document.querySelector('#finExpEditId').value = '';
   document.querySelector('#finExpenseForm').reset();
   document.querySelector('#finExpDueDateRow').style.display = 'none';
@@ -3637,6 +3807,24 @@ function parseBistrosoftRowsXlsx(rows) {
 
 function handleExpenseForm(event) {
   event.preventDefault();
+  const existingExpense = finEditingExpenseId
+    ? state.expenses.find((expense) => expense.id === finEditingExpenseId)
+    : null;
+  if (existingExpense?._source === 'bistrosoft') {
+    const category = document.querySelector('#finExpCategory').value;
+    state.expenseCategoryOverrides = {
+      ...(state.expenseCategoryOverrides || {}),
+      [existingExpense.id]: category,
+    };
+    state.expenses = state.expenses.map((expense) =>
+      expense.id === existingExpense.id ? { ...expense, category } : expense
+    );
+    resetExpenseForm();
+    saveState();
+    render();
+    return;
+  }
+
   const isDif = document.querySelector('#finExpDiferido').checked;
   const expData = {
     date:        document.querySelector('#finExpDate').value,

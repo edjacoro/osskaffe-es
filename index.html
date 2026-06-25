@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=7" />
+    <link rel="stylesheet" href="styles.css?v=9" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -605,6 +605,9 @@
             <div class="two-column" style="padding:20px">
               <form class="form-surface" id="finExpenseForm">
                 <h3 id="finExpFormTitle">Registrar gasto</h3>
+                <p class="form-note fin-bistro-edit-note" id="finExpEditNote" hidden>
+                  Este movimiento sigue vinculado a Bistrosoft. Solo se guarda la categoría elegida en esta app; no se duplica ni se modifica el original.
+                </p>
                 <input type="hidden" id="finExpEditId" value="" />
                 <div class="form-grid">
                   <label>Fecha<input id="finExpDate" type="date" required /></label>
@@ -643,7 +646,7 @@
                 </div>
               </form>
               <div class="list-surface">
-                <div class="list-heading"><h3>Gastos recientes</h3><span id="finExpSummary"></span></div>
+                <div class="list-heading"><h3 id="finExpListTitle">Gastos del mes</h3><span id="finExpSummary"></span></div>
                 <div id="finExpenseList" class="event-list"></div>
               </div>
             </div>
@@ -778,6 +781,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=15"></script>
   </body>
 </html>

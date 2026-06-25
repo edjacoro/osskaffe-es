@@ -466,17 +466,25 @@ export async function mergeBistroSales(sales, from, until) {
 }
 
 export async function mergeBistroExpenses(expenses, from, until) {
-  return updateState((current) => ({
-    ...(current || {}),
-    expenses: [
-      ...(current?.expenses || []).filter((expense) =>
-        !(expense._source === "bistrosoft" && expense.date >= from && expense.date < until)
-      ),
-      ...expenses,
-    ],
-    bistroExpenseSyncedMonths: [...new Set([
-      ...(current?.bistroExpenseSyncedMonths || []),
-      ...monthsInRange(from, until),
-    ])].sort(),
-  }));
+  return updateState((current) => {
+    const categoryOverrides = current?.expenseCategoryOverrides || {};
+    const categorizedExpenses = expenses.map((expense) => ({
+      ...expense,
+      category: categoryOverrides[expense.id] || expense.category,
+    }));
+    return {
+      ...(current || {}),
+      expenses: [
+        ...(current?.expenses || []).filter((expense) =>
+          !(expense._source === "bistrosoft" && expense.date >= from && expense.date < until)
+        ),
+        ...categorizedExpenses,
+      ],
+      expenseCategoryOverrides: categoryOverrides,
+      bistroExpenseSyncedMonths: [...new Set([
+        ...(current?.bistroExpenseSyncedMonths || []),
+        ...monthsInRange(from, until),
+      ])].sort(),
+    };
+  });
 }
