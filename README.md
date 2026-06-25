@@ -89,10 +89,14 @@ omite los tickets de Bistrosoft para evitar superar su limite de almacenamiento.
 - Cada empleado configura sus datos obligatorios y una contrasena propia en el primer acceso.
 - Las contrasenas se guardan protegidas mediante hash de forma separada en Netlify Blobs y no forman parte
   del estado compartido que recibe el navegador.
-- El administrador puede activar o desactivar el perfil **Visita** desde
-  **Ajustes > Acceso visita**. Visita solamente consulta Grilla y Finanzas.
+- El perfil **Visita** usa la clave `ossbcn` y solamente consulta Grilla y Finanzas.
 - La vista del empleado incluye **Mis horas**, cierre automatico de fichajes olvidados y
   avisos del navegador cinco minutos antes del turno mientras la aplicacion permanece abierta.
+- El administrador puede agregar, dar de baja y reactivar personal desde **Fichas > Personal**.
+- Al fichar una salida, el empleado debe confirmar las mermas del dia. Finanzas incluye una
+  pestaña mensual para consultar esas cantidades.
+- La sincronizacion de Bistrosoft incorpora tambien los movimientos de caja tipo Retiro como
+  gastos en categoria **Otros**, conservando la leyenda original como descripcion.
 
 ### Otros hostings
 

@@ -132,6 +132,17 @@ export async function updateState(mutator) {
   throw new Error("No se pudo guardar el estado por escrituras simultaneas.");
 }
 
+export function isActiveEmployee(fullState, employeeId) {
+  const employees = Array.isArray(fullState?.employees) ? fullState.employees : [
+    { id: "chelo", active: true, canLogin: true },
+    { id: "sebastian", active: true, canLogin: true },
+    { id: "third", active: true, canLogin: true },
+  ];
+  return employees.some((employee) =>
+    employee.id === employeeId && employee.active !== false && employee.canLogin !== false
+  );
+}
+
 export function employeeState(fullState, employeeId) {
   if (!fullState) return null;
   const profile = fullState.profiles?.[employeeId] || null;
@@ -142,6 +153,7 @@ export function employeeState(fullState, employeeId) {
     ...fullState,
     punches: (fullState.punches || []).filter((item) => item.employeeId === employeeId),
     changes: (fullState.changes || []).filter((item) => item.employeeId === employeeId),
+    wasteRecords: (fullState.wasteRecords || []).filter((item) => item.employeeId === employeeId),
     sales: [],
     expenses: [],
     contracts: contract ? { [employeeId]: { hoursPerWeek: contract.hoursPerWeek } } : {},
@@ -178,12 +190,18 @@ export function mergeEmployeeState(current, submitted, employeeId) {
   const ownProfile = submitted?.profiles?.[employeeId];
   const currentPunches = current?.punches || [];
   const currentChanges = current?.changes || [];
+  const currentWasteRecords = current?.wasteRecords || [];
   const ownPunches = (submitted?.punches || []).filter((item) => item.employeeId === employeeId);
   const ownChanges = (submitted?.changes || []).filter((item) => item.employeeId === employeeId);
+  const ownWasteRecords = (submitted?.wasteRecords || []).filter((item) => item.employeeId === employeeId);
   return {
     ...(current || {}),
     punches: [...currentPunches.filter((item) => item.employeeId !== employeeId), ...ownPunches],
     changes: [...currentChanges.filter((item) => item.employeeId !== employeeId), ...ownChanges],
+    wasteRecords: [
+      ...currentWasteRecords.filter((item) => item.employeeId !== employeeId),
+      ...ownWasteRecords,
+    ],
     profiles: ownProfile ? {
       ...currentProfiles,
       [employeeId]: {
@@ -243,8 +261,8 @@ function paymentMethod(sale) {
   return "";
 }
 
-export async function getBistroSales(from, until) {
-  let cookies = await loginBistrosoft();
+export async function getBistroSales(from, until, authenticatedCookies = "") {
+  let cookies = authenticatedCookies || await loginBistrosoft();
   const sales = [];
   const countPerPage = 5000;
   let page = 1;
@@ -292,6 +310,84 @@ export async function getBistroSales(from, until) {
   return { ok: true, source: "bistrosoft", from, until, fetchedAt, totalCount: sales.length, sales };
 }
 
+export async function getBistroExpenses(from, until, authenticatedCookies = "") {
+  let cookies = authenticatedCookies || await loginBistrosoft();
+  const expenses = [];
+  const countPerPage = 5000;
+  let page = 1;
+  let totalCount = 0;
+  let fetchedCount = 0;
+
+  do {
+    const query = new URLSearchParams({
+      Period: "ConfigurablePeriod",
+      From: from,
+      Until: until,
+      CurrentPage: String(page),
+      CountPerPage: String(countPerPage),
+      HasToFilterByDeposits: "NO",
+      HasToFilterByCollects: "NO",
+      HasToFilterByAudits: "NO",
+      HasToFilterByWithdrawals: "SI",
+      HasToFilterByOrders: "NO",
+      HasToFilterBySales: "NO",
+      HasToFilterByOpenCashbox: "NO",
+      HasToFilterByCloseCashbox: "NO",
+      HasToFilterByOpenTurn: "NO",
+      HasToFilterByCloseTurn: "NO",
+      HasToFilterByVoidMovement: "NO",
+      HasToFilterByBilled: "NO",
+      HasToFilterByCreditNote: "NO",
+      HasToFilterByTip: "NO",
+    });
+    const result = await bistroRequest(`/api/boxV2/?${query}`, {}, cookies);
+    cookies = result.cookies;
+    if (result.data.responseCode !== 0) {
+      throw new Error("Bistrosoft no pudo entregar los gastos.");
+    }
+    totalCount = Number(result.data.totalCount || 0);
+    const items = result.data.cashBoxItems || [];
+    fetchedCount += items.length;
+    for (const item of items) {
+      if (String(item.mt || "").toUpperCase() !== "RETIRO" && Number(item.cashBoxItemType) !== 1) continue;
+      const stableValue = [
+        item.timestamp,
+        item.amount,
+        item.comments,
+        item.userName,
+      ].join("|");
+      const stableId = crypto.createHash("sha256").update(stableValue).digest("hex").slice(0, 24);
+      expenses.push({
+        id: `bistro-expense-${stableId}`,
+        date: bistroDateToIso(item.date),
+        amount: Math.abs(Number(item.amount || 0)),
+        category: "otros",
+        supplier: "",
+        description: String(item.comments || item.paymentInfo || "Gasto Bistrosoft").trim(),
+        isDiferido: false,
+        dueDate: null,
+        paymentMethod: "efectivo",
+        createdAt: item.timestamp || new Date().toISOString(),
+        enteredBy: String(item.userName || ""),
+        _source: "bistrosoft",
+        _isBistrosoftExpense: true,
+      });
+    }
+    page += 1;
+  } while (fetchedCount < totalCount);
+
+  return { ok: true, from, until, totalCount: expenses.length, expenses };
+}
+
+export async function getBistroData(from, until) {
+  const cookies = await loginBistrosoft();
+  const [sales, expenses] = await Promise.all([
+    getBistroSales(from, until, cookies),
+    getBistroExpenses(from, until, cookies),
+  ]);
+  return { sales, expenses };
+}
+
 export async function getBistroMonths() {
   const cookies = await loginBistrosoft();
   const until = new Date();
@@ -301,15 +397,22 @@ export async function getBistroMonths() {
     From: "2010-01-01",
     Until: isoDate(until),
   });
-  const result = await bistroRequest(`/api/report/salesDataPerMonthV2?${query}`, {}, cookies);
+  const [result, expenseHistory] = await Promise.all([
+    bistroRequest(`/api/report/salesDataPerMonthV2?${query}`, {}, cookies),
+    getBistroExpenses("2010-01-01", isoDate(until), cookies),
+  ]);
   if (result.data.responseCode !== 0) {
     throw new Error("Bistrosoft no pudo informar los meses disponibles.");
   }
-  const months = [...new Set(
+  const salesMonths = [...new Set(
     (result.data.items || [])
       .map((item) => String(item.date || ""))
       .filter((value) => /^\d{4}-\d{2}$/.test(value)),
-  )].sort();
+  )];
+  const months = [...new Set([
+    ...salesMonths,
+    ...expenseHistory.expenses.map((item) => item.date.slice(0, 7)),
+  ])].sort();
   return { ok: true, months };
 }
 
@@ -337,6 +440,17 @@ export function recentRange(days = 14) {
   return { from: isoDate(from), until: isoDate(until) };
 }
 
+function monthsInRange(from, until) {
+  const months = [];
+  const cursor = new Date(`${from.slice(0, 7)}-01T00:00:00Z`);
+  const end = new Date(`${until}T00:00:00Z`);
+  while (cursor < end) {
+    months.push(cursor.toISOString().slice(0, 7));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
+}
+
 export async function mergeBistroSales(sales, from, until) {
   return updateState((current) => ({
     ...(current || {}),
@@ -344,5 +458,25 @@ export async function mergeBistroSales(sales, from, until) {
       ...(current?.sales || []).filter((sale) => !(sale.date >= from && sale.date < until)),
       ...sales,
     ],
+    bistroSalesSyncedMonths: [...new Set([
+      ...(current?.bistroSalesSyncedMonths || []),
+      ...monthsInRange(from, until),
+    ])].sort(),
+  }));
+}
+
+export async function mergeBistroExpenses(expenses, from, until) {
+  return updateState((current) => ({
+    ...(current || {}),
+    expenses: [
+      ...(current?.expenses || []).filter((expense) =>
+        !(expense._source === "bistrosoft" && expense.date >= from && expense.date < until)
+      ),
+      ...expenses,
+    ],
+    bistroExpenseSyncedMonths: [...new Set([
+      ...(current?.bistroExpenseSyncedMonths || []),
+      ...monthsInRange(from, until),
+    ])].sort(),
   }));
 }

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=6" />
+    <link rel="stylesheet" href="styles.css?v=7" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -213,6 +213,33 @@
       </main>
     </div>
 
+    <div class="waste-modal" id="wasteModal" hidden>
+      <div class="waste-dialog" role="dialog" aria-modal="true" aria-labelledby="wasteModalTitle">
+        <div class="waste-dialog-header">
+          <div>
+            <p class="eyebrow">Cierre de tienda</p>
+            <h3 id="wasteModalTitle">Registrar mermas</h3>
+          </div>
+          <button class="role-link" id="cancelWaste" type="button">Cancelar</button>
+        </div>
+        <p class="form-note">Indicá la cantidad desechada. Si no hubo merma, dejá las cantidades en cero.</p>
+        <div class="waste-entry-table">
+          <div class="waste-entry-head"><span>Producto</span><span>Cantidad</span></div>
+          <label><span>Medialunas</span><input class="waste-quantity" data-waste-product="Medialunas" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Pan de Queso</span><input class="waste-quantity" data-waste-product="Pan de Queso" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Budín Limón</span><input class="waste-quantity" data-waste-product="Budín Limón" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Budín Banana</span><input class="waste-quantity" data-waste-product="Budín Banana" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Budín Carrot</span><input class="waste-quantity" data-waste-product="Budín Carrot" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Cookies</span><input class="waste-quantity" data-waste-product="Cookies" type="number" min="0" step="1" value="0" /></label>
+          <label class="waste-custom-row">
+            <input id="wasteCustomProduct" type="text" placeholder="Otro producto" />
+            <input id="wasteCustomQuantity" type="number" min="0" step="1" value="0" />
+          </label>
+        </div>
+        <button class="primary-button waste-confirm-button" id="confirmWaste" type="button">OK y fichar salida</button>
+      </div>
+    </div>
+
     <!-- ===== APP ADMIN ===== -->
     <div class="app-shell" hidden>
       <aside class="sidebar">
@@ -412,12 +439,37 @@
           <nav class="fin-subnav" aria-label="Secciones de fichas">
             <button class="fichas-tab is-active" data-fichas-tab="fichas" type="button">Fichas</button>
             <button class="fichas-tab" data-fichas-tab="contratos" type="button">Horas &amp; Contratos</button>
+            <button class="fichas-tab" data-fichas-tab="personal" type="button">Personal</button>
           </nav>
           <div class="fichas-sub-panel is-visible" data-fichas-panel="fichas">
             <div class="fichas-grid" id="fichasGrid"></div>
           </div>
           <div class="fichas-sub-panel" data-fichas-panel="contratos">
             <div style="padding:20px" id="contratosPanel"></div>
+          </div>
+          <div class="fichas-sub-panel" data-fichas-panel="personal">
+            <div class="team-admin-layout">
+              <form class="form-surface" id="teamMemberForm">
+                <h3>Agregar personal</h3>
+                <p class="form-note">El empleado completará su ficha y contraseña en el primer acceso.</p>
+                <label>Nombre visible<input id="teamMemberName" type="text" placeholder="Nombre" required /></label>
+                <div class="form-grid">
+                  <label>Rol<input id="teamMemberRole" type="text" placeholder="Barista" required /></label>
+                  <label>Área
+                    <select id="teamMemberArea">
+                      <option value="Barista">Barista</option>
+                      <option value="Pasteleria">Pastelería</option>
+                    </select>
+                  </label>
+                  <label>Color<input id="teamMemberColor" type="color" value="#416877" /></label>
+                </div>
+                <button class="primary-button" type="submit">Agregar al Team</button>
+              </form>
+              <div class="list-surface">
+                <div class="list-heading"><h3>Personal del Team</h3></div>
+                <div id="teamMemberList" class="event-list"></div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -466,7 +518,8 @@
               <p class="eyebrow">Ventas · Gastos · P&amp;L</p>
               <h2>Finanzas</h2>
             </div>
-            <div class="fin-month-nav">
+            <div class="fin-today-projection" id="finTodayProjection" hidden></div>
+            <div class="fin-month-nav" id="finMonthNav">
               <button id="finPrevMonth" class="icon-button" type="button" title="Mes anterior">&#8249;</button>
               <span id="finMonthDisplay"></span>
               <button id="finNextMonth" class="icon-button" type="button" title="Mes siguiente">&#8250;</button>
@@ -476,6 +529,7 @@
               <button class="fin-tab" data-fin-tab="resumen" type="button">Resumen</button>
               <button class="fin-tab" data-fin-tab="import" type="button">Importar ventas</button>
               <button class="fin-tab" data-fin-tab="expenses" type="button">Gastos</button>
+              <button class="fin-tab" data-fin-tab="waste" type="button">Mermas</button>
               <button class="fin-tab" data-fin-tab="diferidos" type="button">TC / Diferidos</button>
               <button class="fin-tab" data-fin-tab="monthly" type="button">Mensual</button>
               <button class="fin-tab" data-fin-tab="pnl" type="button">P&amp;L anual</button>
@@ -595,6 +649,17 @@
             </div>
           </div>
 
+          <!-- MERMAS -->
+          <div class="fin-panel" data-fin-panel="waste">
+            <div style="padding:20px">
+              <div class="fin-table-header">
+                <strong id="finWasteMonthLabel">Mermas</strong>
+                <span class="form-note">Registro enviado al fichar la salida</span>
+              </div>
+              <div id="finWasteTable" style="overflow-x:auto"></div>
+            </div>
+          </div>
+
           <!-- DIFERIDOS TC -->
           <div class="fin-panel" data-fin-panel="diferidos">
             <div style="padding:20px">
@@ -701,13 +766,8 @@
 
             <div class="form-surface">
               <h3>Acceso visita</h3>
-              <p class="form-note">Permite consultar Grilla y Finanzas en modo lectura. Una contraseña vacía desactiva el acceso.</p>
-              <label>
-                Nueva contraseña de visita
-                <input id="visitAccessPassword" type="password" minlength="4" placeholder="Vacío para desactivar" autocomplete="new-password" />
-              </label>
-              <button class="ghost-button" id="saveVisitAccess" type="button">Actualizar acceso</button>
-              <p class="form-note" id="visitAccessStatus">Consultando estado...</p>
+              <p class="form-note">Acceso de supervisión activo para Grilla y Finanzas, siempre en modo lectura.</p>
+              <p class="visit-access-fixed">Clave activa: <strong>ossbcn</strong></p>
             </div>
           </div>
         </section>
@@ -718,6 +778,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=13"></script>
   </body>
 </html>

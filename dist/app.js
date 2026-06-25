@@ -15,30 +15,39 @@ const MONTH_NAMES = [
   "Diciembre",
 ];
 
-const EMPLOYEES = [
+const DEFAULT_EMPLOYEES = [
   {
     id: "chelo",
     label: "Chelo",
     role: "Encargado",
     color: "#416877",
+    active: true,
+    canLogin: true,
   },
   {
     id: "sebastian",
     label: "Sebastian",
     role: "Barista",
     color: "#2d4f5c",
+    active: true,
+    canLogin: true,
   },
   {
     id: "third",
     label: "Paloma",
     role: "Barista",
     color: "#c46d47",
+    active: true,
+    canLogin: true,
   },
   {
     id: "pablo",
     label: "Pablo",
     role: "Cobertura dueno",
     color: "#8a4a2f",
+    active: true,
+    canLogin: false,
+    system: true,
   },
 ];
 
@@ -64,9 +73,11 @@ const DEFAULT_STATE = {
   punches: [],
   changes: [],
   trafficData: [],
+  employees: DEFAULT_EMPLOYEES,
   profiles: {},
   sales: [],
   expenses: [],
+  wasteRecords: [],
   contracts: {},
   budgets: {},
   settings: {
@@ -156,12 +167,28 @@ startApp();
 
 function startApp() {
   initRoleScreen();
+  refreshTeamDirectory();
+}
+
+async function refreshTeamDirectory() {
+  try {
+    const response = await fetch('/api/team', { cache: 'no-store' });
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (!payload.ok || !Array.isArray(payload.employees)) return;
+    state.employees = payload.employees;
+    renderEmployeeChoiceButtons();
+  } catch (_) {
+    // En uso local sin backend se conserva el Team guardado en el navegador.
+  }
 }
 
 function init() {
   // Migrate state: ensure new keys exist for older stored data
   if (!state.contracts) state.contracts = {};
   if (!state.budgets)   state.budgets   = {};
+  if (!Array.isArray(state.employees)) state.employees = structuredClone(DEFAULT_EMPLOYEES);
+  if (!Array.isArray(state.wasteRecords)) state.wasteRecords = [];
   populateSelectors();
   bindEvents();
   initFichasContratos();
@@ -224,11 +251,11 @@ function bindEvents() {
   els.loadTrafficSample.addEventListener("click", loadTrafficSample);
   els.saveSettings.addEventListener("click", saveSettings);
   els.addHoliday.addEventListener("click", addHoliday);
-  document.querySelector("#saveVisitAccess").addEventListener("click", saveVisitAccess);
 }
 
 function populateSelectors() {
-  const employeeOptions = EMPLOYEES.map((employee) => {
+  const employees = getEmployees();
+  const employeeOptions = employees.map((employee) => {
     return `<option value="${employee.id}">${employee.label} - ${employee.role}</option>`;
   }).join("");
 
@@ -236,7 +263,7 @@ function populateSelectors() {
   els.changeEmployee.innerHTML = employeeOptions;
   els.replacementEmployee.innerHTML = [
     `<option value="">Sin reemplazo</option>`,
-    ...EMPLOYEES.map((employee) => `<option value="${employee.id}">${employee.label}</option>`),
+    ...employees.map((employee) => `<option value="${employee.id}">${employee.label}</option>`),
   ].join("");
 }
 
@@ -279,12 +306,13 @@ function render() {
   renderHolidays();
   renderAdminFichas();
   renderContratosPanel();
+  renderPersonnelPanel();
   renderFinanzas();
   saveState();
 }
 
 function renderLegend() {
-  els.employeeLegend.innerHTML = EMPLOYEES.map((employee) => {
+  els.employeeLegend.innerHTML = getEmployees().map((employee) => {
     return `
       <span class="legend-item">
         <span class="legend-swatch" style="background:${employee.color}"></span>
@@ -640,37 +668,6 @@ function hydrateSettingsForm() {
   els.storeLng.value = state.settings.storeLng || "";
   els.geoRadius.value = state.settings.geoRadius || 120;
   els.lateTolerance.value = state.settings.lateTolerance || 5;
-  refreshVisitAccessStatus();
-}
-
-async function refreshVisitAccessStatus() {
-  const status = document.querySelector("#visitAccessStatus");
-  if (!status || appRole !== 'admin') return;
-  try {
-    const response = await fetch('/api/visit-access', { cache: 'no-store' });
-    const payload = await response.json();
-    status.textContent = payload.configured ? 'Acceso de visita activo.' : 'Acceso de visita desactivado.';
-  } catch (_) {
-    status.textContent = 'No se pudo consultar el acceso de visita.';
-  }
-}
-
-async function saveVisitAccess() {
-  const input = document.querySelector("#visitAccessPassword");
-  const status = document.querySelector("#visitAccessStatus");
-  try {
-    const response = await fetch('/api/visit-access', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: input.value }),
-    });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) throw new Error(payload.error || 'No se pudo actualizar.');
-    input.value = '';
-    status.textContent = payload.configured ? 'Acceso de visita activo.' : 'Acceso de visita desactivado.';
-  } catch (error) {
-    status.textContent = error.message || 'No se pudo actualizar el acceso.';
-  }
 }
 
 function addHoliday() {
@@ -810,7 +807,9 @@ function getShiftsForDate(dateKey) {
     }
   });
 
-  return shifts.sort((a, b) => a.start - b.start || a.end - b.end);
+  return shifts
+    .filter((shift) => isEmployeeActiveOnDate(getEmployee(shift.employeeId, dateKey), dateKey))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
 }
 
 function getOpenLabel(day) {
@@ -856,8 +855,28 @@ function layoutShifts(shifts) {
   return lanes.flatMap((lane) => lane);
 }
 
-function getEmployee(id, dateKey) {
-  const employee = EMPLOYEES.find((item) => item.id === id) || EMPLOYEES[0];
+function getEmployees(includeInactive = false) {
+  const employees = Array.isArray(state?.employees) && state.employees.length
+    ? state.employees
+    : DEFAULT_EMPLOYEES;
+  return includeInactive ? employees : employees.filter((employee) => employee.active !== false);
+}
+
+function isEmployeeActiveOnDate(employee, dateKey = toDateInput(new Date())) {
+  if (!employee) return false;
+  if (employee.activeFrom && dateKey < employee.activeFrom) return false;
+  if (employee.active === false && employee.inactiveFrom) return dateKey < employee.inactiveFrom;
+  return employee.active !== false;
+}
+
+function getEmployee(id, dateKey = toDateInput(new Date())) {
+  const employee = getEmployees(true).find((item) => item.id === id) || {
+    id,
+    label: "Empleado",
+    role: "Team",
+    color: "#667481",
+    active: false,
+  };
   if (employee.id !== "third") return employee;
   const label = dateKey >= state.settings.palomaLeaveDate ? "Reemplazo Paloma" : "Paloma";
   return { ...employee, label };
@@ -1015,7 +1034,11 @@ function loadState() {
 function saveLocalStateSnapshot() {
   if (appRole === 'visitor') return;
   const localState = sharedStateEnabled
-    ? { ...state, sales: state.sales.filter((sale) => sale._source !== 'bistrosoft') }
+    ? {
+        ...state,
+        sales: state.sales.filter((sale) => sale._source !== 'bistrosoft'),
+        expenses: state.expenses.filter((expense) => expense._source !== 'bistrosoft'),
+      }
     : state;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(localState));
@@ -1047,6 +1070,12 @@ async function flushSharedState() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ state }),
     });
+    if (response.status === 403 && appRole === 'employee') {
+      sharedStatePending = false;
+      alert('Tu acceso fue dado de baja por el administrador.');
+      exitToRoleScreen();
+      return;
+    }
     if (!response.ok) throw new Error('No se pudo guardar el estado compartido.');
   } catch (error) {
     console.warn(error.message);
@@ -1111,6 +1140,11 @@ async function refreshSharedState() {
   if (!sharedStateEnabled || sharedStateSaving || sharedStatePending) return;
   try {
     const response = await fetch('/api/state', { credentials: 'same-origin', cache: 'no-store' });
+    if (response.status === 403 && appRole === 'employee') {
+      alert('Tu acceso fue dado de baja por el administrador.');
+      exitToRoleScreen();
+      return;
+    }
     if (!response.ok) return;
     const payload = await response.json();
     if (!payload.state) return;
@@ -1141,6 +1175,10 @@ function mergeState(base, saved) {
   return {
     ...structuredClone(base),
     ...saved,
+    employees: Array.isArray(saved.employees) && saved.employees.length
+      ? saved.employees
+      : structuredClone(base.employees),
+    wasteRecords: saved.wasteRecords || base.wasteRecords,
     profiles: { ...base.profiles, ...(saved.profiles || {}) },
     settings: {
       ...base.settings,
@@ -1284,14 +1322,15 @@ function escapeHtml(value) {
 
 function initRoleScreen() {
   const empButtons = document.querySelector("#empChoiceButtons");
-  empButtons.innerHTML = EMPLOYEES.filter((e) => e.id !== "pablo")
-    .map(
-      (e) =>
-        `<button class="role-btn" data-emp-id="${e.id}" style="background:${e.color}" type="button">${e.label}</button>`,
-    )
-    .join("");
+  renderEmployeeChoiceButtons();
+
+  empButtons.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-emp-id]");
+    if (button) beginEmployeeAccess(button.dataset.empId);
+  });
 
   document.querySelector("#chooseEmployee").addEventListener("click", () => {
+    renderEmployeeChoiceButtons();
     showRoleStep("roleStepEmployee");
   });
 
@@ -1303,10 +1342,6 @@ function initRoleScreen() {
   document.querySelector("#chooseVisit").addEventListener("click", () => {
     showRoleStep("roleStepVisit");
     document.querySelector("#visitPasswordInput").focus();
-  });
-
-  empButtons.querySelectorAll("[data-emp-id]").forEach((btn) => {
-    btn.addEventListener("click", () => beginEmployeeAccess(btn.dataset.empId));
   });
 
   document.querySelector("#submitPin").addEventListener("click", tryAdminPin);
@@ -1334,6 +1369,18 @@ function initRoleScreen() {
   });
 
   document.querySelector("#adminExit").addEventListener("click", exitToRoleScreen);
+}
+
+function renderEmployeeChoiceButtons() {
+  const empButtons = document.querySelector("#empChoiceButtons");
+  if (!empButtons) return;
+  empButtons.innerHTML = getEmployees()
+    .filter((employee) => employee.canLogin !== false)
+    .map(
+      (employee) =>
+        `<button class="role-btn" data-emp-id="${employee.id}" style="background:${employee.color}" type="button">${escapeHtml(employee.label)}</button>`,
+    )
+    .join("");
 }
 
 function showRoleStep(id) {
@@ -1452,7 +1499,6 @@ function setAdminMode() {
   } else {
     render();
     initBistrosoftSync();
-    refreshVisitAccessStatus();
   }
 }
 
@@ -1464,7 +1510,7 @@ async function enterEmployeeMode(employeeId) {
   document.querySelector(".app-shell").hidden = true;
   document.querySelector("#employee-app").hidden = false;
 
-  const employee = EMPLOYEES.find((e) => e.id === employeeId);
+  const employee = getEmployee(employeeId);
   document.querySelector("#empGreeting").textContent = `Hola, ${employee.label}`;
   document.querySelector("#empPunchWho").textContent = `Fichando como ${employee.label}`;
 
@@ -1529,6 +1575,8 @@ function bindEmployeeEvents() {
   document.querySelector("#empExit").addEventListener("click", exitToRoleScreen);
   document.querySelector("#empPunchIn").addEventListener("click", () => handleEmpPunch("in"));
   document.querySelector("#empPunchOut").addEventListener("click", () => handleEmpPunch("out"));
+  document.querySelector("#cancelWaste").addEventListener("click", closeWasteModal);
+  document.querySelector("#confirmWaste").addEventListener("click", confirmWasteAndPunch);
   document.querySelector("#empChangeForm").addEventListener("submit", handleEmpChangeForm);
 
   document.querySelector("#empPrevMonth").addEventListener("click", () => {
@@ -1775,6 +1823,55 @@ function renderEmpChanges() {
 }
 
 async function handleEmpPunch(type) {
+  if (type === "out") {
+    openWasteModal();
+    return;
+  }
+  await performEmpPunch(type);
+}
+
+function openWasteModal() {
+  document.querySelectorAll(".waste-quantity").forEach((input) => { input.value = "0"; });
+  document.querySelector("#wasteCustomProduct").value = "";
+  document.querySelector("#wasteCustomQuantity").value = "0";
+  document.querySelector("#wasteModal").hidden = false;
+}
+
+function closeWasteModal() {
+  document.querySelector("#wasteModal").hidden = true;
+}
+
+async function confirmWasteAndPunch() {
+  const button = document.querySelector("#confirmWaste");
+  button.disabled = true;
+  const items = [...document.querySelectorAll(".waste-quantity")]
+    .map((input) => ({
+      product: input.dataset.wasteProduct,
+      quantity: Math.max(0, Number(input.value || 0)),
+    }))
+    .filter((item) => item.quantity > 0);
+  const customProduct = document.querySelector("#wasteCustomProduct").value.trim();
+  const customQuantity = Math.max(0, Number(document.querySelector("#wasteCustomQuantity").value || 0));
+  if (customProduct && customQuantity > 0) {
+    items.push({ product: customProduct, quantity: customQuantity, custom: true });
+  }
+
+  state.wasteRecords.push({
+    id: createId(),
+    date: toDateInput(new Date()),
+    employeeId: activeEmployeeId,
+    items,
+    submittedAt: new Date().toISOString(),
+  });
+  closeWasteModal();
+  try {
+    await performEmpPunch("out");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function performEmpPunch(type) {
   const employeeId = activeEmployeeId;
   const now = new Date();
   const dateKey = toDateInput(now);
@@ -1961,7 +2058,97 @@ function initFichasContratos() {
       document.querySelectorAll('.fichas-sub-panel').forEach((p) =>
         p.classList.toggle('is-visible', p.dataset.fichasPanel === activeFichasTab)
       );
-      renderContratosPanel();
+      if (activeFichasTab === 'contratos') renderContratosPanel();
+      if (activeFichasTab === 'personal') renderPersonnelPanel();
+    });
+  });
+  document.querySelector('#teamMemberForm').addEventListener('submit', handleTeamMemberForm);
+}
+
+function teamMemberId(name) {
+  const base = String(name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 24) || "empleado";
+  let id = base;
+  let suffix = 2;
+  const existing = new Set(getEmployees(true).map((employee) => employee.id));
+  while (existing.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
+
+function handleTeamMemberForm(event) {
+  event.preventDefault();
+  const label = document.querySelector('#teamMemberName').value.trim();
+  const role = document.querySelector('#teamMemberRole').value.trim();
+  const area = document.querySelector('#teamMemberArea').value;
+  const color = document.querySelector('#teamMemberColor').value || '#416877';
+  if (!label || !role) return;
+
+  const id = teamMemberId(label);
+  state.employees.push({
+    id,
+    label,
+    role,
+    color,
+    active: true,
+    canLogin: true,
+    activeFrom: toDateInput(new Date()),
+  });
+  state.profiles[id] = { ...(state.profiles[id] || {}), area };
+  document.querySelector('#teamMemberForm').reset();
+  document.querySelector('#teamMemberColor').value = '#416877';
+  saveState();
+  populateSelectors();
+  renderEmployeeChoiceButtons();
+  render();
+}
+
+function renderPersonnelPanel() {
+  const container = document.querySelector('#teamMemberList');
+  if (!container) return;
+  const employees = getEmployees(true).filter((employee) => !employee.system);
+  container.innerHTML = employees.map((employee) => {
+    const active = employee.active !== false;
+    const profile = getProfile(employee.id);
+    return `
+      <article class="event-item team-member-item${active ? '' : ' is-inactive'}">
+        <div class="event-topline">
+          <span><span class="legend-swatch" style="background:${employee.color}"></span>${escapeHtml(employee.label)}</span>
+          <span class="status-pill ${active ? 'status-approved' : 'status-rejected'}">${active ? 'Activo' : 'Baja'}</span>
+        </div>
+        <div class="event-meta">${escapeHtml(employee.role)} · ${escapeHtml(profile.area || 'Sin área')}${employee.inactiveFrom ? ` · baja ${formatHumanDate(employee.inactiveFrom)}` : ''}</div>
+        <div class="event-actions">
+          <button class="mini-button ${active ? 'danger' : ''}" type="button" data-toggle-team="${employee.id}">
+            ${active ? 'Dar de baja' : 'Reactivar'}
+          </button>
+        </div>
+      </article>`;
+  }).join('');
+
+  container.querySelectorAll('[data-toggle-team]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const employee = state.employees.find((item) => item.id === button.dataset.toggleTeam);
+      if (!employee) return;
+      if (employee.active !== false) {
+        if (!confirm(`¿Dar de baja a ${employee.label}? Sus datos históricos se conservarán.`)) return;
+        employee.active = false;
+        employee.inactiveFrom = toDateInput(new Date());
+      } else {
+        employee.active = true;
+        employee.activeFrom = toDateInput(new Date());
+        employee.inactiveFrom = null;
+      }
+      saveState();
+      populateSelectors();
+      renderEmployeeChoiceButtons();
+      render();
     });
   });
 }
@@ -2023,7 +2210,7 @@ function renderContratosPanelLegacy() {
       .map((h) => h.date)
   );
 
-  const rows = EMPLOYEES.map((emp) => {
+  const rows = getEmployees().map((emp) => {
     const c = state.contracts[emp.id] || {};
     const hpw  = c.hoursPerWeek       ?? 40;
     const rate = c.hourlyRate         ?? 0;
@@ -2122,7 +2309,7 @@ function renderContratosPanel() {
     (state.settings.holidays || []).filter((holiday) => holiday.date.startsWith(monthKey)).map((holiday) => holiday.date)
   );
 
-  const rows = EMPLOYEES.map((employee) => {
+  const rows = getEmployees().map((employee) => {
     const contract = state.contracts[employee.id] || {};
     const hoursPerWeek = contract.hoursPerWeek ?? 40;
     const regularRate = contract.hourlyRate ?? 0;
@@ -2208,7 +2395,7 @@ function renderAdminFichas() {
     { key: "emergencyPhone", label: "Urgencia tel" },
   ];
 
-  container.innerHTML = EMPLOYEES.map((emp) => {
+  container.innerHTML = getEmployees(true).map((emp) => {
     const profile = getProfile(emp.id);
     const rows = fields
       .map((f) => {
@@ -2221,10 +2408,10 @@ function renderAdminFichas() {
       .join("");
 
     return `
-      <div class="ficha-card">
+      <div class="ficha-card${emp.active === false ? ' is-inactive' : ''}">
         <div class="ficha-header" style="background:${emp.color}">
           <div class="ficha-name">${emp.label}</div>
-          <div class="ficha-role">${emp.role}</div>
+          <div class="ficha-role">${emp.role}${emp.active === false ? ' · Baja' : ''}</div>
         </div>
         <div class="ficha-body">${rows}</div>
         <div class="ficha-admin-notes">
@@ -2473,9 +2660,18 @@ async function fetchBistrosoftRange(from, until) {
   const imported = payload.sales.filter((sale) =>
     sale && typeof sale.date === 'string' && Number.isFinite(Number(sale.total))
   );
+  const importedExpenses = (payload.expenses || []).filter((expense) =>
+    expense && typeof expense.date === 'string' && Number.isFinite(Number(expense.amount))
+  );
   state.sales = [
     ...state.sales.filter((sale) => !(sale.date >= from && sale.date < until)),
     ...imported,
+  ];
+  state.expenses = [
+    ...state.expenses.filter((expense) =>
+      !(expense._source === 'bistrosoft' && expense.date >= from && expense.date < until)
+    ),
+    ...importedExpenses,
   ];
   finBistroSync.available = true;
   finBistroSync.connected = true;
@@ -2483,7 +2679,11 @@ async function fetchBistrosoftRange(from, until) {
   finBistroSync.lastRange = { from, until };
   finBistroSync.lastCount = imported.length;
   finBistroSync.error = null;
-  return { count: imported.length, persisted: !!payload.persisted };
+  return {
+    count: imported.length,
+    expenseCount: importedExpenses.length,
+    persisted: !!payload.persisted,
+  };
 }
 
 async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
@@ -2500,14 +2700,13 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
       throw new Error(payload.error || 'No se pudo consultar el historial de Bistrosoft.');
     }
 
-    const existingBistroMonths = new Set(
-      state.sales
-        .filter((sale) => sale._source === 'bistrosoft')
-        .map((sale) => sale.date.slice(0, 7))
-    );
+    const syncedSalesMonths = new Set(state.bistroSalesSyncedMonths || []);
+    const syncedExpenseMonths = new Set(state.bistroExpenseSyncedMonths || []);
     const allMonths = payload.months.slice().sort();
     const months = onlyMissing
-      ? allMonths.filter((month) => !existingBistroMonths.has(month))
+      ? allMonths.filter((month) =>
+          !syncedSalesMonths.has(month) || !syncedExpenseMonths.has(month)
+        )
       : allMonths;
     if (!months.length) {
       finBistroSync.historyProgress = null;
@@ -2515,6 +2714,7 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
     }
 
     let totalImported = 0;
+    let totalExpensesImported = 0;
     let allPersisted = true;
     for (let index = 0; index < months.length; index++) {
       const [year, month] = months[index].split('-').map(Number);
@@ -2524,6 +2724,7 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
       renderFinSyncStatus();
       const result = await fetchBistrosoftRange(from, until);
       totalImported += result.count;
+      totalExpensesImported += result.expenseCount || 0;
       allPersisted = allPersisted && result.persisted;
     }
 
@@ -2533,7 +2734,7 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
     if (!silent) {
       const first = allMonths[0] || '';
       const last = allMonths[allMonths.length - 1] || '';
-      alert(`Historial sincronizado: ${totalImported} ventas · ${first} a ${last}.`);
+      alert(`Historial sincronizado: ${totalImported} ventas y ${totalExpensesImported} gastos · ${first} a ${last}.`);
     }
   } catch (error) {
     finBistroSync.connected = false;
@@ -2608,6 +2809,14 @@ function setActiveFinTab(tab) {
 }
 
 function renderFinMonthNav() {
+  const nav = document.querySelector('#finMonthNav');
+  const projection = document.querySelector('#finTodayProjection');
+  const isTodayTab = activeFinTab === 'hoy';
+  if (nav) nav.hidden = isTodayTab;
+  if (projection) {
+    projection.hidden = !isTodayTab;
+    if (isTodayTab) renderFinTodayProjection();
+  }
   const el = document.querySelector('#finMonthDisplay');
   if (el) el.textContent = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
 }
@@ -2620,6 +2829,7 @@ function renderFinanzas() {
   else if (activeFinTab === 'resumen') renderFinResumen();
   else if (activeFinTab === 'import') renderFinImport();
   else if (activeFinTab === 'expenses') renderFinExpenses();
+  else if (activeFinTab === 'waste') renderFinWaste();
   else if (activeFinTab === 'diferidos') renderFinDiferidos();
   else if (activeFinTab === 'monthly') renderFinMonthly();
   else if (activeFinTab === 'pnl') renderFinPnl();
@@ -2627,6 +2837,36 @@ function renderFinanzas() {
 }
 
 // -------- HOY --------
+
+function getMonthSalesProjection(referenceDate = new Date()) {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const from = toDateInput(new Date(year, month, 1));
+  const until = toDateInput(referenceDate);
+  const elapsedDays = referenceDate.getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const soldToDate = state.sales
+    .filter((sale) => sale.date >= from && sale.date <= until)
+    .reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+  const dailyAverage = elapsedDays > 0 ? soldToDate / elapsedDays : 0;
+  return {
+    soldToDate,
+    dailyAverage,
+    daysInMonth,
+    projected: dailyAverage * daysInMonth,
+  };
+}
+
+function renderFinTodayProjection() {
+  const container = document.querySelector('#finTodayProjection');
+  if (!container) return;
+  const projection = getMonthSalesProjection(new Date());
+  container.innerHTML = `
+    <span>Proyección venta mes</span>
+    <strong>${projection.projected > 0 ? formatEur(projection.projected) : '—'}</strong>
+    <small>${formatEur(projection.soldToDate)} acumulado · prom. diario ${formatEur(projection.dailyAverage)} × ${projection.daysInMonth} días</small>
+  `;
+}
 
 function renderFinHoy() {
   const today = toDateInput(new Date());
@@ -2747,17 +2987,22 @@ function renderFinExpenses() {
 
   list.innerHTML = expenses.slice(0, 60).map((exp) => {
     const catLabel = EXPENSE_CATEGORIES.find((c) => c.id === exp.category)?.label || exp.category;
+    const bistroBadge = exp._source === 'bistrosoft'
+      ? `<span class="fin-tc-badge">Bistrosoft${exp.enteredBy ? ` · ${escapeHtml(exp.enteredBy)}` : ''}</span>`
+      : '';
     const tcBadge = exp.isDiferido ? `<span class="fin-tc-badge">TC · vence ${formatHumanDate(exp.dueDate)}</span>` : '';
     return `
       <article class="event-item${exp.isDiferido ? ' fin-item-tc' : ''}">
         <div class="event-topline">
-          <span>${catLabel}${exp.supplier ? ' · ' + escapeHtml(exp.supplier) : ''}${tcBadge}</span>
+          <span>${catLabel}${exp.supplier ? ' · ' + escapeHtml(exp.supplier) : ''}${tcBadge}${bistroBadge}</span>
           <span class="status-pill status-rejected">${formatEur(exp.amount)}</span>
         </div>
         <div class="event-meta">${formatHumanDate(exp.date)}${exp.description ? ' · ' + escapeHtml(exp.description) : ''}</div>
         <div class="event-actions">
-          ${isAdmin ? `<button class="mini-button" type="button" data-edit-expense="${exp.id}">Editar</button>` : ''}
-          <button class="mini-button danger" type="button" data-delete-expense="${exp.id}">Borrar</button>
+          ${isAdmin && exp._source !== 'bistrosoft' ? `
+            <button class="mini-button" type="button" data-edit-expense="${exp.id}">Editar</button>
+            <button class="mini-button danger" type="button" data-delete-expense="${exp.id}">Borrar</button>
+          ` : ''}
         </div>
       </article>
     `;
@@ -2774,6 +3019,70 @@ function renderFinExpenses() {
   list.querySelectorAll('[data-edit-expense]').forEach((btn) => {
     btn.addEventListener('click', () => startEditExpense(btn.dataset.editExpense));
   });
+}
+
+function renderFinWaste() {
+  const container = document.querySelector('#finWasteTable');
+  if (!container) return;
+  const monthKey = monthInputValue(finActiveMonth);
+  const records = (state.wasteRecords || [])
+    .filter((record) => record.date.startsWith(monthKey))
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date) || a.submittedAt.localeCompare(b.submittedAt));
+  const fixedProducts = [
+    "Medialunas",
+    "Pan de Queso",
+    "Budín Limón",
+    "Budín Banana",
+    "Budín Carrot",
+    "Cookies",
+  ];
+  document.querySelector('#finWasteMonthLabel').textContent =
+    `Mermas · ${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+
+  if (!records.length) {
+    container.innerHTML = '<div class="empty-state">Sin mermas registradas en este mes.</div>';
+    return;
+  }
+
+  const totals = Object.fromEntries(fixedProducts.map((product) => [product, 0]));
+  let customTotal = 0;
+  const rows = records.map((record) => {
+    const quantities = Object.fromEntries(fixedProducts.map((product) => [product, 0]));
+    const customItems = [];
+    (record.items || []).forEach((item) => {
+      if (fixedProducts.includes(item.product)) quantities[item.product] += Number(item.quantity || 0);
+      else if (Number(item.quantity || 0) > 0) customItems.push(`${escapeHtml(item.product)}: ${Number(item.quantity)}`);
+    });
+    fixedProducts.forEach((product) => { totals[product] += quantities[product]; });
+    customTotal += (record.items || [])
+      .filter((item) => !fixedProducts.includes(item.product))
+      .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const rowTotal = (record.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    return `<tr>
+      <td>${formatHumanDate(record.date)}</td>
+      <td>${escapeHtml(getEmployee(record.employeeId, record.date).label)}</td>
+      ${fixedProducts.map((product) => `<td class="fin-cell-num">${quantities[product] || '—'}</td>`).join('')}
+      <td>${customItems.join('<br>') || '—'}</td>
+      <td class="fin-cell-num"><strong>${rowTotal}</strong></td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="fin-table waste-report-table">
+      <thead><tr>
+        <th>Fecha</th><th>Empleado</th>
+        ${fixedProducts.map((product) => `<th class="fin-cell-num">${product}</th>`).join('')}
+        <th>Otro</th><th class="fin-cell-num">Total</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr class="fin-total-row">
+        <td colspan="2">Total mes</td>
+        ${fixedProducts.map((product) => `<td class="fin-cell-num">${totals[product] || '—'}</td>`).join('')}
+        <td class="fin-cell-num">${customTotal || '—'}</td>
+        <td class="fin-cell-num">${Object.values(totals).reduce((sum, value) => sum + value, 0) + customTotal}</td>
+      </tr></tfoot>
+    </table>`;
 }
 
 function startEditExpense(id) {

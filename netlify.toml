@@ -29,6 +29,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/team"
+  to = "/.netlify/functions/team-list"
+  status = 200
+
+[[redirects]]
   from = "/api/bistrosoft/status"
   to = "/.netlify/functions/bistro-status"
   status = 200
@@ -41,11 +46,6 @@
 [[redirects]]
   from = "/api/bistrosoft/months"
   to = "/.netlify/functions/bistro-months"
-  status = 200
-
-[[redirects]]
-  from = "/api/visit-access"
-  to = "/.netlify/functions/visit-access"
   status = 200
 
 [functions]

@@ -1,5 +1,6 @@
 import {
   createSessionCookie,
+  isActiveEmployee,
   readCredential,
   readStateEntry,
   response,
@@ -39,6 +40,9 @@ export default async (request) => {
   const action = String(body.action || "status");
   const credential = await readCredential("employee", employeeId);
   const { state } = await readStateEntry();
+  if (!isActiveEmployee(state, employeeId)) {
+    return response({ ok: false, error: "Este empleado no tiene acceso activo." }, 403);
+  }
   const complete = profileComplete(state?.profiles?.[employeeId]);
 
   if (action === "status") {

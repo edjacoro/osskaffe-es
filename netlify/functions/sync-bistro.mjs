@@ -1,5 +1,6 @@
 import {
-  getBistroSales,
+  getBistroData,
+  mergeBistroExpenses,
   mergeBistroSales,
   recentRange,
   writeBistroError,
@@ -8,8 +9,9 @@ import {
 export default async () => {
   try {
     const { from, until } = recentRange(14);
-    const result = await getBistroSales(from, until);
+    const { sales: result, expenses: expenseResult } = await getBistroData(from, until);
     await mergeBistroSales(result.sales, from, until);
+    await mergeBistroExpenses(expenseResult.expenses, from, until);
   } catch (error) {
     await writeBistroError(error);
     throw error;

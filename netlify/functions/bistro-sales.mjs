@@ -1,5 +1,6 @@
 import {
-  getBistroSales,
+  getBistroData,
+  mergeBistroExpenses,
   mergeBistroSales,
   requireSession,
   response,
@@ -16,9 +17,15 @@ export default async (request) => {
     return response({ ok: false, error: "Rango invalido." }, 400);
   }
   try {
-    const result = await getBistroSales(from, until);
+    const { sales: result, expenses: expenseResult } = await getBistroData(from, until);
     await mergeBistroSales(result.sales, from, until);
-    return response({ ...result, persisted: true });
+    await mergeBistroExpenses(expenseResult.expenses, from, until);
+    return response({
+      ...result,
+      expenses: expenseResult.expenses,
+      expenseCount: expenseResult.totalCount,
+      persisted: true,
+    });
   } catch (error) {
     await writeBistroError(error);
     return response({ ok: false, error: "No se pudo sincronizar Bistrosoft." }, 502);
