@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=12" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -268,7 +268,7 @@
           <button class="nav-item" data-tab="punch" type="button">Fichaje</button>
           <button class="nav-item" data-tab="changes" type="button">Cambios</button>
           <button class="nav-item" data-tab="fichas" type="button">Fichas</button>
-          <button class="nav-item" data-tab="traffic" type="button">Afluencia</button>
+          <button class="nav-item" data-tab="traffic" type="button">Carga por hora</button>
           <button class="nav-item" data-tab="finanzas" type="button">Finanzas</button>
           <button class="nav-item" data-tab="settings" type="button">Ajustes</button>
         </nav>
@@ -313,7 +313,7 @@
             <strong id="pendingCount">0</strong>
           </article>
           <article class="metric-card">
-            <span>Refuerzos sugeridos</span>
+            <span>Horas criticas</span>
             <strong id="suggestionCount">0</strong>
           </article>
         </section>
@@ -491,35 +491,32 @@
         <section class="panel tab-panel" id="trafficPanel" data-panel="traffic">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Google Business Profile / Maps</p>
-              <h2>Afluencia y refuerzos</h2>
+              <p class="eyebrow">Bistrosoft + grilla</p>
+              <h2>Carga por hora y refuerzos</h2>
             </div>
-            <button class="ghost-button" id="loadTrafficSample" type="button">Cargar ejemplo</button>
+            <button class="ghost-button" id="loadTrafficSample" type="button">Sincronizar ventas</button>
           </div>
 
           <div class="two-column">
             <form class="form-surface" id="trafficForm">
-              <label>
-                CSV de afluencia
-                <textarea id="trafficCsv" rows="9" placeholder="date,hour,visitors&#10;2026-06-06,12,48&#10;2026-06-06,13,56"></textarea>
-              </label>
+              <h3>Parametros de sobrecarga</h3>
+              <p class="form-note">Usa las ventas tomadas automaticamente desde Bistrosoft. Las ventas manuales sin hora se suman a Finanzas, pero no entran en este analisis horario.</p>
               <div class="form-grid">
                 <label>
-                  Visitantes por barista
-                  <input id="visitorThreshold" type="number" min="5" max="80" step="1" value="24" />
+                  Tickets por persona / hora
+                  <input id="visitorThreshold" type="number" min="4" max="80" step="1" value="18" />
                 </label>
                 <label>
-                  Minimo para sugerir
-                  <input id="minimumVisitors" type="number" min="1" max="120" step="1" value="32" />
+                  Minimo de tickets para alertar
+                  <input id="minimumVisitors" type="number" min="1" max="120" step="1" value="10" />
                 </label>
               </div>
               <button class="primary-button" type="submit">Actualizar analisis</button>
-              <p class="form-note">La sincronizacion automatica con Google requiere OAuth/API de Business Profile.</p>
             </form>
 
             <div class="list-surface">
               <div class="list-heading">
-                <h3>Refuerzos sugeridos</h3>
+                <h3>Horas criticas</h3>
                 <span id="trafficSummary">Sin datos</span>
               </div>
               <div id="suggestionList" class="event-list"></div>
@@ -834,6 +831,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=19"></script>
+    <script src="app.js?v=20"></script>
   </body>
 </html>

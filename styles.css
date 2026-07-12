@@ -1835,6 +1835,11 @@ textarea {
   font-weight: 800;
 }
 
+.fin-cell-warning {
+  color: #c47f18;
+  font-weight: 800;
+}
+
 .fin-cell-negative {
   color: var(--danger);
   font-weight: 800;

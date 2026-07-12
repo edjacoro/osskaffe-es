@@ -105,6 +105,11 @@ La pestana **Finanzas > Auditoria** compara ventas diarias de Barcelona y Madrid
 mes a mes. Sirve como control rapido para ver cada dia, tickets, totales y
 diferencia entre locales.
 
+La seccion **Carga por hora** usa directamente las ventas sincronizadas desde
+Bistrosoft para cruzar tickets/ventas por hora contra las personas planificadas
+en la grilla. Permite detectar horas criticas y sugerir refuerzos por sucursal
+sin bajar ni subir reportes manuales.
+
 La grilla base de Madrid se cargo con la direccion `Calle de Manuel Cortina, 1,
 Chamberi, 28010 Madrid` y coordenadas `40.43073, -3.69918`. Los festivos 2026
 incluyen nacionales, Comunidad de Madrid y municipio de Madrid, todos con
