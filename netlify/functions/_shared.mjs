@@ -121,7 +121,7 @@ export function requireSession(request, requiredRole = null) {
   return session || response({ ok: false, error: "Sesion no autorizada." }, 401);
 }
 
-function stateStore() {
+export function stateStore() {
   return getStore(STORE_NAME);
 }
 
@@ -173,6 +173,15 @@ export async function replaceState(nextState) {
     throw new Error("Estado invalido.");
   }
   await stateStore().setJSON(STATE_KEY, nextState);
+  return nextState;
+}
+
+export async function replaceStateFromJsonText(stateJson) {
+  const nextState = JSON.parse(stateJson);
+  if (!nextState || typeof nextState !== "object") {
+    throw new Error("Estado invalido.");
+  }
+  await stateStore().set(STATE_KEY, stateJson);
   return nextState;
 }
 

@@ -961,28 +961,75 @@ async function parseApiError(response, fallback) {
   }
 }
 
-async function saveImportedStateToServer(nextState) {
-  const body = JSON.stringify({ state: nextState });
-  let response = await fetch("/api/state/import", {
-    method: "PUT",
+async function sendStateImportRequest(payload) {
+  const response = await fetch("/api/state/import", {
+    method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body,
+    body: JSON.stringify(payload),
   });
 
   if (response.status === 404) {
-    response = await fetch("/api/state", {
-      method: "PUT",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
+    return { unsupported: true };
   }
 
   if (!response.ok) {
     const detail = await parseApiError(response, "No se pudo guardar el respaldo en Netlify.");
     throw new Error(`${detail} (HTTP ${response.status})`);
   }
+
+  return { unsupported: false };
+}
+
+async function saveImportedStateToLegacyEndpoint(nextState) {
+  const response = await fetch("/api/state", {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state: nextState }),
+  });
+
+  if (!response.ok) {
+    const detail = await parseApiError(response, "No se pudo guardar el respaldo en Netlify.");
+    throw new Error(`${detail} (HTTP ${response.status})`);
+  }
+}
+
+async function saveImportedStateToServer(nextState) {
+  const stateJson = JSON.stringify(nextState);
+  const importId = createId();
+  const chunkSize = 500_000;
+  const totalChunks = Math.max(1, Math.ceil(stateJson.length / chunkSize));
+
+  setBackupStatus("Preparando respaldo para guardar en Netlify...");
+
+  const start = await sendStateImportRequest({
+    action: "start",
+    importId,
+    totalChunks,
+    byteLength: stateJson.length,
+  });
+
+  if (start.unsupported) {
+    setBackupStatus("Guardando respaldo en Netlify...");
+    await saveImportedStateToLegacyEndpoint(nextState);
+    return;
+  }
+
+  for (let index = 0; index < totalChunks; index += 1) {
+    const chunk = stateJson.slice(index * chunkSize, (index + 1) * chunkSize);
+    setBackupStatus(`Subiendo respaldo ${index + 1}/${totalChunks}...`);
+    await sendStateImportRequest({
+      action: "chunk",
+      importId,
+      totalChunks,
+      index,
+      chunk,
+    });
+  }
+
+  setBackupStatus("Reconstruyendo respaldo y guardando en Netlify...");
+  await sendStateImportRequest({ action: "finish", importId, totalChunks });
 }
 
 function looksLikeStateBackup(candidate) {
