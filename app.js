@@ -385,6 +385,8 @@ function setTodayDefaults() {
   els.changeDate.value = today;
   els.holidayDate.value = today;
   document.querySelector('#finExpDate').value = today;
+  const manualSaleDate = document.querySelector('#finManualSaleDate');
+  if (manualSaleDate) manualSaleDate.value = today;
 }
 
 function setActiveTab(tab) {
@@ -1466,7 +1468,7 @@ function disconnectSharedState() {
 }
 
 function mergeState(base, saved) {
-  const expenseCategoryOverrides = {
+  let expenseCategoryOverrides = {
     ...(base.expenseCategoryOverrides || {}),
     ...(saved.expenseCategoryOverrides || {}),
   };
@@ -1506,6 +1508,8 @@ function mergeState(base, saved) {
   };
   addDefaultProfilesForNewEmployees(merged);
   tagLegacyRecordsWithLocation(merged);
+  expenseCategoryOverrides = collectExpenseCategoryOverrides(merged.expenses, expenseCategoryOverrides);
+  merged.expenseCategoryOverrides = expenseCategoryOverrides;
   merged.expenses = (merged.expenses || []).map((expense) =>
     applyExpenseCategoryOverride(expense, expenseCategoryOverrides)
   );
@@ -3138,9 +3142,55 @@ const EXPENSE_CATEGORIES = [
   { id: 'otros',            label: 'Otros' },
 ];
 
+function expenseOverrideKeys(expense) {
+  const keys = new Set();
+  if (expense?.id) keys.add(String(expense.id));
+  if (expense?.bistroId) keys.add(String(expense.bistroId));
+
+  const locationId = normalizeLocationId(expense?.locationId || activeLocationId);
+  const legacyId = String(expense?.bistroId || expense?.id || "");
+  const legacyWithoutLocation = legacyId.replace(/^bistro-expense-(barcelona|madrid)-/, "bistro-expense-");
+  if (legacyWithoutLocation) keys.add(legacyWithoutLocation);
+  if (legacyWithoutLocation.startsWith("bistro-expense-")) {
+    keys.add(`bistro-expense-${locationId}-${legacyWithoutLocation.slice("bistro-expense-".length)}`);
+  }
+
+  return [...keys].filter(Boolean);
+}
+
+function getExpenseCategoryOverride(expense, overrides = state?.expenseCategoryOverrides || {}) {
+  if (!overrides) return null;
+  for (const key of expenseOverrideKeys(expense)) {
+    if (overrides[key]) return overrides[key];
+  }
+  return null;
+}
+
+function collectExpenseCategoryOverrides(expenses = [], overrides = {}) {
+  const next = { ...(overrides || {}) };
+  expenses.forEach((expense) => {
+    if (expense?._source !== 'bistrosoft') return;
+    const category = getExpenseCategoryOverride(expense, next) || expense.category;
+    if (!category || category === 'otros') return;
+    expenseOverrideKeys(expense).forEach((key) => {
+      next[key] = category;
+    });
+  });
+  return next;
+}
+
+function setExpenseCategoryOverride(expense, category) {
+  state.expenseCategoryOverrides = {
+    ...(state.expenseCategoryOverrides || {}),
+  };
+  expenseOverrideKeys(expense).forEach((key) => {
+    state.expenseCategoryOverrides[key] = category;
+  });
+}
+
 function applyExpenseCategoryOverride(expense, overrides = state?.expenseCategoryOverrides || {}) {
   if (expense?._source !== 'bistrosoft') return expense;
-  const category = overrides?.[expense.id];
+  const category = getExpenseCategoryOverride(expense, overrides);
   return category ? { ...expense, category } : expense;
 }
 
@@ -3183,6 +3233,7 @@ function initFinanzas() {
   });
 
   document.querySelector('#finImportForm').addEventListener('submit', handleSalesCsvImport);
+  document.querySelector('#finManualSaleForm').addEventListener('submit', handleManualSaleForm);
   document.querySelector('#finSyncNow').addEventListener('click', handleBistrosoftSyncClick);
   document.querySelector('#finSyncHistory').addEventListener('click', () => syncBistrosoftHistory(false));
 
@@ -3349,7 +3400,7 @@ async function fetchBistrosoftRange(from, until) {
     .map((expense) => applyExpenseCategoryOverride({ ...expense, locationId: activeLocationId }));
   state.sales = [
     ...state.sales.filter((sale) =>
-      !(belongsToActiveLocation(sale) && sale.date >= from && sale.date < until)
+      !(belongsToActiveLocation(sale) && sale._source === 'bistrosoft' && sale.date >= from && sale.date < until)
     ),
     ...imported,
   ];
@@ -3637,7 +3688,12 @@ function renderFinImport() {
     const dayCount  = daySales.reduce((s, t) => s + (t.count || 1), 0);
     const isSummary = daySales.some((t) => t._isSummary);
     const isBistrosoft = daySales.some((t) => t._source === 'bistrosoft');
-    const sourceLabel = isBistrosoft ? 'Bistrosoft' : isSummary ? 'resumen diario' : '';
+    const hasManual = daySales.some((t) => t._source === 'manual');
+    const sourceLabel = [
+      isBistrosoft ? 'Bistrosoft' : '',
+      hasManual ? 'manual' : '',
+      !isBistrosoft && !hasManual && isSummary ? 'resumen diario' : '',
+    ].filter(Boolean).join(' + ');
     return `
       <article class="event-item">
         <div class="event-topline">
@@ -3689,7 +3745,7 @@ function renderFinExpenses() {
   list.innerHTML = expenses.map((exp) => {
     const catLabel = EXPENSE_CATEGORIES.find((c) => c.id === exp.category)?.label || exp.category;
     const hasCategoryOverride = exp._source === 'bistrosoft'
-      && !!state.expenseCategoryOverrides?.[exp.id];
+      && !!getExpenseCategoryOverride(exp);
     const bistroBadge = exp._source === 'bistrosoft'
       ? `<span class="fin-tc-badge">Bistrosoft${exp.enteredBy ? ` · ${escapeHtml(exp.enteredBy)}` : ''}</span>
          ${hasCategoryOverride ? '<span class="fin-local-category-badge">Categoría personalizada</span>' : ''}`
@@ -4188,6 +4244,46 @@ function renderFinPnl() {
 
 // -------- HANDLERS --------
 
+function handleManualSaleForm(event) {
+  event.preventDefault();
+  const date = document.querySelector('#finManualSaleDate').value;
+  const count = Math.max(1, Math.round(Number(document.querySelector('#finManualSaleCount').value || 0)));
+  const total = Number(document.querySelector('#finManualSaleTotal').value || 0);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    alert('Elegí una fecha válida.');
+    return;
+  }
+  if (!Number.isFinite(count) || count < 1) {
+    alert('La cantidad de tickets debe ser al menos 1.');
+    return;
+  }
+  if (!Number.isFinite(total) || total <= 0) {
+    alert('El total vendido debe ser mayor a 0.');
+    return;
+  }
+
+  state.sales.push({
+    id: `manual-sale-${activeLocationId}-${date}-${Date.now()}`,
+    locationId: activeLocationId,
+    date,
+    time: '',
+    ticketNumber: `manual-${date}`,
+    total,
+    count,
+    items: [],
+    paymentMethod: 'Manual',
+    _source: 'manual',
+    _isSummary: true,
+    createdAt: new Date().toISOString(),
+  });
+
+  document.querySelector('#finManualSaleCount').value = '';
+  document.querySelector('#finManualSaleTotal').value = '';
+  render();
+  alert(`Venta manual agregada: ${count} ticket${count !== 1 ? 's' : ''} · ${formatEur(total)}.`);
+}
+
 async function handleSalesCsvImport(event) {
   event.preventDefault();
   if (!finPendingFile) {
@@ -4368,12 +4464,11 @@ function handleExpenseForm(event) {
     : null;
   if (existingExpense?._source === 'bistrosoft') {
     const category = document.querySelector('#finExpCategory').value;
-    state.expenseCategoryOverrides = {
-      ...(state.expenseCategoryOverrides || {}),
-      [existingExpense.id]: category,
-    };
+    setExpenseCategoryOverride(existingExpense, category);
     state.expenses = state.expenses.map((expense) =>
-      expense.id === existingExpense.id ? { ...expense, category } : expense
+      expenseOverrideKeys(existingExpense).includes(expense.id) || expense.id === existingExpense.id
+        ? { ...expense, category }
+        : expense
     );
     resetExpenseForm();
     saveState();

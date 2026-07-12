@@ -508,6 +508,42 @@ function monthsInRange(from, until) {
   return months;
 }
 
+function expenseOverrideKeys(expense, locationId = DEFAULT_LOCATION_ID) {
+  const keys = new Set();
+  if (expense?.id) keys.add(String(expense.id));
+  if (expense?.bistroId) keys.add(String(expense.bistroId));
+
+  const id = normalizeLocationId(expense?.locationId || locationId);
+  const legacyId = String(expense?.bistroId || expense?.id || "");
+  const legacyWithoutLocation = legacyId.replace(/^bistro-expense-(barcelona|madrid)-/, "bistro-expense-");
+  if (legacyWithoutLocation) keys.add(legacyWithoutLocation);
+  if (legacyWithoutLocation.startsWith("bistro-expense-")) {
+    keys.add(`bistro-expense-${id}-${legacyWithoutLocation.slice("bistro-expense-".length)}`);
+  }
+
+  return [...keys].filter(Boolean);
+}
+
+function getExpenseCategoryOverride(expense, overrides = {}, locationId = DEFAULT_LOCATION_ID) {
+  for (const key of expenseOverrideKeys(expense, locationId)) {
+    if (overrides[key]) return overrides[key];
+  }
+  return null;
+}
+
+function collectExpenseCategoryOverrides(expenses = [], overrides = {}, locationId = DEFAULT_LOCATION_ID) {
+  const next = { ...(overrides || {}) };
+  expenses.forEach((expense) => {
+    if (expense?._source !== "bistrosoft") return;
+    const category = getExpenseCategoryOverride(expense, next, locationId) || expense.category;
+    if (!category || category === "otros") return;
+    expenseOverrideKeys(expense, locationId).forEach((key) => {
+      next[key] = category;
+    });
+  });
+  return next;
+}
+
 export async function mergeBistroSales(sales, from, until, locationId = DEFAULT_LOCATION_ID) {
   const id = normalizeLocationId(locationId);
   const months = monthsInRange(from, until);
@@ -523,7 +559,10 @@ export async function mergeBistroSales(sales, from, until, locationId = DEFAULT_
       ...(current || {}),
       sales: [
         ...(current?.sales || []).filter((sale) =>
-          !(normalizeLocationId(sale.locationId) === id && sale.date >= from && sale.date < until)
+          !(normalizeLocationId(sale.locationId) === id
+            && sale._source === "bistrosoft"
+            && sale.date >= from
+            && sale.date < until)
         ),
         ...sales.map((sale) => ({ ...sale, locationId: id })),
       ],
@@ -543,11 +582,15 @@ export async function mergeBistroExpenses(expenses, from, until, locationId = DE
   const id = normalizeLocationId(locationId);
   const months = monthsInRange(from, until);
   return updateState((current) => {
-    const categoryOverrides = current?.expenseCategoryOverrides || {};
+    const categoryOverrides = collectExpenseCategoryOverrides(
+      current?.expenses || [],
+      current?.expenseCategoryOverrides || {},
+      id,
+    );
     const categorizedExpenses = expenses.map((expense) => ({
       ...expense,
       locationId: id,
-      category: categoryOverrides[expense.id] || categoryOverrides[expense.bistroId] || expense.category,
+      category: getExpenseCategoryOverride(expense, categoryOverrides, id) || expense.category,
     }));
     const allLocationSync = current?.bistroSyncedMonthsByLocation || {};
     const currentLocationSync = allLocationSync[id] || {};

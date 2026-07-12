@@ -130,8 +130,11 @@ empezar a registrar desde ahora con datos importados y mantener historial.
 - La sincronizacion de Bistrosoft incorpora tambien los movimientos de caja tipo Retiro como
   gastos en categoria **Otros**, conservando la leyenda original como descripcion.
 - En Finanzas > Gastos, el administrador puede reclasificar esos movimientos. La app guarda
-  solamente la categoria local asociada al ID estable de Bistrosoft, por lo que las siguientes
-  sincronizaciones no duplican el gasto ni pierden la clasificacion elegida.
+  la categoria local asociada a las claves equivalentes del movimiento de Bistrosoft, por lo
+  que las siguientes sincronizaciones no duplican el gasto ni pierden la clasificacion elegida.
+- En Finanzas > Importar ventas, el administrador puede cargar ventas sueltas que no llegaron
+  desde Bistrosoft indicando fecha, cantidad de tickets y total. Esas ventas se suman al P&L
+  de la sucursal activa y no se eliminan con la sincronizacion automatica.
 - En Ajustes > Respaldos entre Netlify, el administrador puede exportar el estado completo de
   un sitio e importarlo en otro. Esto sirve para copiar datos entre una web firme y una web de
   pruebas. El respaldo incluye grilla, finanzas, reclasificaciones de Bistrosoft, personal,

@@ -609,6 +609,24 @@
                   <button class="ghost-button" id="finClearSales" type="button">Borrar todo</button>
                 </div>
               </form>
+              <form class="form-surface" id="finManualSaleForm">
+                <h3>Cargar venta suelta</h3>
+                <p class="form-note">Para tickets que no entraron por Bistrosoft. Se suman al P&amp;L de la sucursal activa y no se borran con la sincronizacion.</p>
+                <div class="form-grid">
+                  <label>Fecha
+                    <input id="finManualSaleDate" type="date" required />
+                  </label>
+                  <label>Cantidad de tickets
+                    <input id="finManualSaleCount" type="number" min="1" step="1" required />
+                  </label>
+                  <label>Total vendido
+                    <input id="finManualSaleTotal" type="number" min="0" step="0.01" required />
+                  </label>
+                </div>
+                <div class="button-row" style="margin-top:14px">
+                  <button class="primary-button" type="submit">Agregar venta</button>
+                </div>
+              </form>
               <div class="list-surface">
                 <div class="list-heading"><h3>Días importados</h3><span id="finSalesSummary">0 tickets</span></div>
                 <div id="finSalesList" class="event-list"></div>
@@ -816,6 +834,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=18"></script>
+    <script src="app.js?v=19"></script>
   </body>
 </html>
