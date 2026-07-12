@@ -301,6 +301,44 @@ function paymentMethod(sale) {
   return "";
 }
 
+function extractBistroSaleItems(sale = {}) {
+  const candidates = [
+    sale.items,
+    sale.saleItems,
+    sale.products,
+    sale.productItems,
+    sale.details,
+    sale.detail,
+    sale.lines,
+    sale.ticketItems,
+    sale.articles,
+  ].filter(Array.isArray);
+  const lines = candidates.flat();
+  return lines
+    .map((item) => {
+      const name = String(
+        item.name
+        || item.productName
+        || item.articleName
+        || item.description
+        || item.itemName
+        || item.product
+        || "",
+      ).trim();
+      const qty = Number(item.qty ?? item.quantity ?? item.units ?? item.count ?? item.cant ?? 1);
+      const price = Number(item.price ?? item.unitPrice ?? item.pvp ?? item.amount ?? 0);
+      const total = Number(item.total ?? item.lineTotal ?? item.subtotal ?? 0);
+      if (!name) return null;
+      return {
+        name,
+        qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+        price: Number.isFinite(price) && price > 0 ? price : 0,
+        total: Number.isFinite(total) && total > 0 ? total : 0,
+      };
+    })
+    .filter(Boolean);
+}
+
 export async function getBistroSales(from, until, authenticatedCookies = "", locationId = DEFAULT_LOCATION_ID) {
   const id = normalizeLocationId(locationId);
   let cookies = authenticatedCookies || await loginBistrosoft(id);
@@ -332,7 +370,7 @@ export async function getBistroSales(from, until, authenticatedCookies = "", loc
         ticketNumber: String(sale.id || ""),
         total: Number(sale.amount || 0),
         count: 1,
-        items: [],
+        items: extractBistroSaleItems(sale),
         paymentMethod: paymentMethod(sale),
         movementType: sale.movementType,
         status: sale.status,

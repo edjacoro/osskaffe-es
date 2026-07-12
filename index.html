@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=12" />
+    <link rel="stylesheet" href="styles.css?v=13" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -494,7 +494,12 @@
               <p class="eyebrow">Bistrosoft + grilla</p>
               <h2>Carga por hora y refuerzos</h2>
             </div>
-            <button class="ghost-button" id="loadTrafficSample" type="button">Sincronizar ventas</button>
+            <div class="fin-month-nav">
+              <button class="icon-button" id="trafficPrevMonth" type="button">&#8249;</button>
+              <strong id="trafficMonthDisplay">Mes</strong>
+              <button class="icon-button" id="trafficNextMonth" type="button">&#8250;</button>
+              <button class="ghost-button" id="loadTrafficSample" type="button">Sincronizar ventas</button>
+            </div>
           </div>
 
           <div class="two-column">
@@ -831,6 +836,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=20"></script>
+    <script src="app.js?v=22"></script>
   </body>
 </html>

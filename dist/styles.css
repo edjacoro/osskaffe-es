@@ -1845,6 +1845,29 @@ textarea {
   font-weight: 800;
 }
 
+.heatmap-table th,
+.heatmap-table td {
+  text-align: center;
+  min-width: 82px;
+}
+
+.heatmap-cell {
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.heatmap-cell strong,
+.heatmap-cell small {
+  display: block;
+}
+
+.heatmap-cell small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
 .fin-row-empty {
   opacity: 0.3;
 }

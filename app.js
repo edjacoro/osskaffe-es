@@ -186,6 +186,7 @@ const DEFAULT_STATE = {
 
 let state = loadState();
 let activeMonth = firstDayOfMonth(new Date());
+let trafficActiveMonth = firstDayOfMonth(new Date());
 let appRole = null;
 let activeEmployeeId = null;
 let activeLocationId = DEFAULT_LOCATION_ID;
@@ -244,6 +245,9 @@ const els = {
   loadTrafficSample: document.querySelector("#loadTrafficSample"),
   trafficSummary: document.querySelector("#trafficSummary"),
   suggestionList: document.querySelector("#suggestionList"),
+  trafficPrevMonth: document.querySelector("#trafficPrevMonth"),
+  trafficNextMonth: document.querySelector("#trafficNextMonth"),
+  trafficMonthDisplay: document.querySelector("#trafficMonthDisplay"),
   saveSettings: document.querySelector("#saveSettings"),
   adminEmail: document.querySelector("#adminEmail"),
   storeLat: document.querySelector("#storeLat"),
@@ -359,6 +363,16 @@ function bindEvents() {
   els.changeForm.addEventListener("submit", handleChangeRequest);
   els.trafficForm.addEventListener("submit", handleTrafficImport);
   els.loadTrafficSample.addEventListener("click", loadTrafficSample);
+  els.trafficPrevMonth?.addEventListener("click", () => {
+    trafficActiveMonth = addMonths(trafficActiveMonth, -1);
+    renderTraffic();
+    if (appRole === 'admin') syncBistrosoftTrafficMonth(true);
+  });
+  els.trafficNextMonth?.addEventListener("click", () => {
+    trafficActiveMonth = addMonths(trafficActiveMonth, 1);
+    renderTraffic();
+    if (appRole === 'admin') syncBistrosoftTrafficMonth(true);
+  });
   els.saveSettings.addEventListener("click", saveSettings);
   els.addHoliday.addEventListener("click", addHoliday);
   els.backupExport.addEventListener("click", exportStateBackup);
@@ -597,6 +611,9 @@ function renderChanges() {
 function renderTraffic() {
   const analysis = getHourlySalesAnalysis();
   const suggestions = analysis.criticalRows;
+  if (els.trafficMonthDisplay) {
+    els.trafficMonthDisplay.textContent = `${MONTH_NAMES[trafficActiveMonth.getMonth()]} ${trafficActiveMonth.getFullYear()}`;
+  }
   els.trafficSummary.textContent = analysis.hourlyRows.length
     ? `${analysis.hourlyRows.length} franjas con ventas · ${suggestions.length} criticas`
     : "Sin ventas horarias";
@@ -604,7 +621,7 @@ function renderTraffic() {
   if (!analysis.hourlyRows.length) {
     els.suggestionList.innerHTML = `
       <div class="empty-state">
-        Sin ventas con hora para ${MONTH_NAMES[activeMonth.getMonth()]} ${activeMonth.getFullYear()}.
+        Sin ventas con hora para ${MONTH_NAMES[trafficActiveMonth.getMonth()]} ${trafficActiveMonth.getFullYear()}.
         Sincroniza Bistrosoft para esta sucursal o revisa que las ventas importadas incluyan hora.
       </div>`;
     return;
@@ -612,16 +629,22 @@ function renderTraffic() {
 
   const topRows = suggestions.slice(0, 10);
   const peak = analysis.hourlyRows[0];
+  const busiestDay = analysis.busiestDay;
+  const bestHour = analysis.bestHour;
   const unassignedNote = analysis.unassignedTickets
     ? `<p class="form-note" style="margin:10px 0 0">${analysis.unassignedTickets} tickets (${formatEur(analysis.unassignedSales)}) no tienen hora y no entran en la carga horaria.</p>`
     : '';
 
   const cards = `
     <div class="fin-kpi-grid fin-resumen-kpi-grid" style="margin-bottom:16px">
-      <div class="fin-kpi-card"><span>Ventas con hora</span><strong>${formatEur(analysis.totalSales)}</strong></div>
-      <div class="fin-kpi-card"><span>Tickets con hora</span><strong>${analysis.totalTickets}</strong></div>
+      <div class="fin-kpi-card"><span>Venta promedio / hora activa</span><strong>${formatEur(analysis.avgSalesPerActiveHour)}</strong><small>${formatEur(analysis.totalSales)} total con hora</small></div>
+      <div class="fin-kpi-card"><span>Tickets promedio / hora activa</span><strong>${analysis.avgTicketsPerActiveHour.toFixed(1)}</strong><small>${analysis.totalTickets} tickets con hora</small></div>
       <div class="fin-kpi-card"><span>Hora pico</span><strong>${formatHumanDate(peak.date)} · ${formatHour(peak.hour)}</strong><small>${peak.tickets} tickets · ${formatEur(peak.sales)}</small></div>
       <div class="fin-kpi-card"><span>Horas criticas</span><strong>${suggestions.length}</strong></div>
+      <div class="fin-kpi-card"><span>Tickets por persona</span><strong>${analysis.avgTicketsPerStaffHour.toFixed(1)}</strong><small>promedio por hora cubierta</small></div>
+      <div class="fin-kpi-card"><span>Venta por persona</span><strong>${formatEur(analysis.avgSalesPerStaffHour)}</strong><small>promedio por hora cubierta</small></div>
+      <div class="fin-kpi-card"><span>Día más cargado</span><strong>${busiestDay ? formatHumanDate(busiestDay.date) : '—'}</strong><small>${busiestDay ? `${busiestDay.tickets} tickets · ${formatEur(busiestDay.sales)}` : ''}</small></div>
+      <div class="fin-kpi-card"><span>Mejor franja promedio</span><strong>${bestHour ? `${formatHour(bestHour.hour)}-${formatHour(bestHour.hour + 1)}` : '—'}</strong><small>${bestHour ? `${bestHour.tickets} tickets · ${formatEur(bestHour.sales)}` : ''}</small></div>
     </div>`;
 
   const suggestionHtml = topRows.length ? topRows.map((item) => `
@@ -653,8 +676,11 @@ function renderTraffic() {
   els.suggestionList.innerHTML = `
     ${cards}
     ${unassignedNote}
+    ${renderHourlyHeatmap(analysis)}
     <h3 style="margin:16px 0 10px">Refuerzos sugeridos</h3>
     ${suggestionHtml}
+    ${renderPeakProductInsights(analysis)}
+    ${renderArticleSalesInsights()}
     <h3 style="margin:18px 0 10px">Detalle por hora</h3>
     <div style="overflow-x:auto">
       <table class="fin-table">
@@ -824,7 +850,8 @@ function handleTrafficImport(event) {
 
 async function loadTrafficSample() {
   if (appRole === 'admin') {
-    await syncBistrosoftMonth(false);
+    if (finBistroSync.available !== true) await initBistrosoftSync();
+    await syncBistrosoftTrafficMonth(false);
   }
   render();
 }
@@ -1273,10 +1300,10 @@ function parseSaleHour(value) {
   return hour;
 }
 
-function getHourlySalesAnalysis() {
+function getHourlySalesAnalysis(monthDate = trafficActiveMonth) {
   const threshold = Math.max(1, Number(els.visitorThreshold?.value || 18));
   const minimumTickets = Math.max(1, Number(els.minimumVisitors?.value || 10));
-  const monthKey = monthInputValue(activeMonth);
+  const monthKey = monthInputValue(monthDate);
   const groups = new Map();
   let unassignedTickets = 0;
   let unassignedSales = 0;
@@ -1322,18 +1349,160 @@ function getHourlySalesAnalysis() {
     .filter((item) => item.tickets >= minimumTickets && item.missing > 0)
     .sort((a, b) => b.missing - a.missing || b.loadPct - a.loadPct || b.tickets - a.tickets);
 
+  const activeHours = hourlyRows.length;
+  const totalTickets = hourlyRows.reduce((sum, item) => sum + item.tickets, 0);
+  const totalSales = hourlyRows.reduce((sum, item) => sum + item.sales, 0);
+  const coveredStaffHours = hourlyRows.reduce((sum, item) => sum + Math.max(0, item.staffCount), 0);
+  const dayMap = new Map();
+  const hourMap = new Map();
+  hourlyRows.forEach((item) => {
+    const day = dayMap.get(item.date) || { date: item.date, tickets: 0, sales: 0 };
+    day.tickets += item.tickets;
+    day.sales += item.sales;
+    dayMap.set(item.date, day);
+
+    const hour = hourMap.get(item.hour) || { hour: item.hour, tickets: 0, sales: 0, count: 0 };
+    hour.tickets += item.tickets;
+    hour.sales += item.sales;
+    hour.count += 1;
+    hourMap.set(item.hour, hour);
+  });
+  const busiestDay = [...dayMap.values()].sort((a, b) => b.tickets - a.tickets || b.sales - a.sales)[0] || null;
+  const bestHour = [...hourMap.values()]
+    .map((item) => ({
+      ...item,
+      avgTickets: item.count ? item.tickets / item.count : 0,
+      avgSales: item.count ? item.sales / item.count : 0,
+    }))
+    .sort((a, b) => b.avgTickets - a.avgTickets || b.avgSales - a.avgSales)[0] || null;
+
   return {
     hourlyRows,
     criticalRows,
-    totalTickets: hourlyRows.reduce((sum, item) => sum + item.tickets, 0),
-    totalSales: hourlyRows.reduce((sum, item) => sum + item.sales, 0),
+    totalTickets,
+    totalSales,
+    avgTicketsPerActiveHour: activeHours ? totalTickets / activeHours : 0,
+    avgSalesPerActiveHour: activeHours ? totalSales / activeHours : 0,
+    avgTicketsPerStaffHour: coveredStaffHours ? totalTickets / coveredStaffHours : 0,
+    avgSalesPerStaffHour: coveredStaffHours ? totalSales / coveredStaffHours : 0,
+    busiestDay,
+    bestHour,
     unassignedTickets,
     unassignedSales,
   };
 }
 
 function getSuggestions() {
-  return getHourlySalesAnalysis().criticalRows.slice(0, 20);
+  return getHourlySalesAnalysis(activeMonth).criticalRows.slice(0, 20);
+}
+
+function renderHourlyHeatmap(analysis) {
+  if (!analysis.hourlyRows.length) return '';
+  const hours = [...new Set(analysis.hourlyRows.map((item) => item.hour))]
+    .sort((a, b) => a - b);
+  const maxTickets = Math.max(1, ...analysis.hourlyRows.map((item) => item.tickets));
+  const byDayHour = new Map(analysis.hourlyRows.map((item) => [`${new Date(`${item.date}T00:00:00`).getDay()}-${item.hour}`, item]));
+  const dayOrder = [1, 2, 3, 4, 5, 6, 0];
+  const rows = dayOrder.map((day) => {
+    const cells = hours.map((hour) => {
+      const item = byDayHour.get(`${day}-${hour}`);
+      const pct = item ? item.tickets / maxTickets : 0;
+      const alpha = item ? Math.max(0.12, pct).toFixed(2) : 0;
+      const title = item ? `${item.tickets} tickets · ${formatEur(item.sales)} · carga ${item.loadPct.toFixed(0)}%` : 'Sin ventas';
+      return `<td class="heatmap-cell" title="${escapeHtml(title)}" style="background:rgba(196,109,71,${alpha})">
+        ${item ? `<strong>${item.tickets}</strong><small>${formatEur(item.sales)}</small>` : ''}
+      </td>`;
+    }).join('');
+    return `<tr><th>${DAY_NAMES[day]}</th>${cells}</tr>`;
+  }).join('');
+  return `
+    <h3 style="margin:18px 0 10px">Mapa de calor por día y hora</h3>
+    <div style="overflow-x:auto">
+      <table class="fin-table heatmap-table">
+        <thead><tr><th>Día</th>${hours.map((hour) => `<th>${formatHour(hour)}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function itemName(item) {
+  return String(item?.name || item?.product || item?.description || item?.label || '').trim();
+}
+
+function itemQuantity(item) {
+  const qty = Number(item?.qty ?? item?.quantity ?? item?.units ?? item?.count ?? 1);
+  return Number.isFinite(qty) && qty > 0 ? qty : 1;
+}
+
+function itemAmount(item) {
+  const total = Number(item?.total ?? item?.amount ?? item?.lineTotal ?? 0);
+  if (Number.isFinite(total) && total > 0) return total;
+  const price = Number(item?.price ?? item?.unitPrice ?? item?.pvp ?? 0);
+  return Number.isFinite(price) && price > 0 ? price * itemQuantity(item) : 0;
+}
+
+function aggregateArticleSales(sales) {
+  const map = new Map();
+  sales.forEach((sale) => {
+    (sale.items || []).forEach((item) => {
+      const name = itemName(item);
+      if (!name) return;
+      const current = map.get(name) || { name, qty: 0, amount: 0 };
+      current.qty += itemQuantity(item);
+      current.amount += itemAmount(item);
+      map.set(name, current);
+    });
+  });
+  return [...map.values()].sort((a, b) => b.qty - a.qty || b.amount - a.amount);
+}
+
+function renderArticleRows(rows, limit = 10) {
+  if (!rows.length) {
+    return '<div class="empty-state">Sin detalle de artículos. Si Bistrosoft no entrega artículos en la sincronización directa, importá el reporte de Artículos para completar este análisis.</div>';
+  }
+  const maxQty = Math.max(1, rows[0].qty);
+  return rows.slice(0, limit).map((item, index) => `
+    <div class="fin-bar-item">
+      <div class="fin-bar-label">${index + 1}. ${escapeHtml(item.name)}</div>
+      <div class="fin-bar-track"><div class="fin-bar-fill" style="width:${Math.max(4, Math.round(item.qty / maxQty * 100))}%"></div></div>
+      <div class="fin-bar-value">${item.qty.toLocaleString('es-ES')} · ${item.amount > 0 ? formatEur(item.amount) : 's/importe'}</div>
+    </div>`).join('');
+}
+
+function renderPeakProductInsights(analysis) {
+  const peakSource = analysis.criticalRows.length ? analysis.criticalRows : analysis.hourlyRows.slice(0, 10);
+  const peakKeys = new Set(peakSource.slice(0, 10).map((item) => `${item.date}-${item.hour}`));
+  const peakSales = getLocationSales().filter((sale) => {
+    const hour = parseSaleHour(sale.time);
+    return hour !== null
+      && sale.date.startsWith(monthInputValue(trafficActiveMonth))
+      && peakKeys.has(`${sale.date}-${hour}`);
+  });
+  const rows = aggregateArticleSales(peakSales);
+  return `
+    <h3 style="margin:18px 0 10px">Productos más vendidos en horas pico</h3>
+    <div class="list-surface" style="margin-bottom:14px">
+      ${renderArticleRows(rows, 8)}
+    </div>`;
+}
+
+function renderArticleSalesInsights() {
+  const monthKey = monthInputValue(trafficActiveMonth);
+  const yearKey = String(trafficActiveMonth.getFullYear());
+  const monthRows = aggregateArticleSales(getLocationSales().filter((sale) => sale.date.startsWith(monthKey)));
+  const annualRows = aggregateArticleSales(getLocationSales().filter((sale) => sale.date.startsWith(yearKey)));
+  return `
+    <h3 style="margin:18px 0 10px">Venta por artículos</h3>
+    <div class="two-column" style="gap:14px">
+      <div class="list-surface">
+        <div class="list-heading"><h3>Mensual por cantidad</h3><span>${MONTH_NAMES[trafficActiveMonth.getMonth()]} ${trafficActiveMonth.getFullYear()}</span></div>
+        ${renderArticleRows(monthRows, 15)}
+      </div>
+      <div class="list-surface">
+        <div class="list-heading"><h3>Top 5 anualizado</h3><span>${trafficActiveMonth.getFullYear()}</span></div>
+        ${renderArticleRows(annualRows, 5)}
+      </div>
+    </div>`;
 }
 
 function parseTrafficCsv(csv) {
@@ -3448,6 +3617,13 @@ function syncBistrosoftMonth(silent = true) {
   return syncBistrosoftRange(from, until, silent);
 }
 
+function syncBistrosoftTrafficMonth(silent = true) {
+  if (!finBistroSync.available) return Promise.resolve();
+  const from = toDateInput(new Date(trafficActiveMonth.getFullYear(), trafficActiveMonth.getMonth(), 1));
+  const until = toDateInput(new Date(trafficActiveMonth.getFullYear(), trafficActiveMonth.getMonth() + 1, 1));
+  return syncBistrosoftRange(from, until, silent);
+}
+
 function syncBistrosoftRecent() {
   if (!finBistroSync.available) return Promise.resolve();
   const today = new Date();
@@ -4790,8 +4966,9 @@ function parseBistrosoftArticulos(lines, headers, sep) {
     const price = parseEuroNum(idx.precio >= 0 ? (cols[idx.precio] || '0') : '0');
     const lineTotal = parseEuroNum(idx.total >= 0 ? (cols[idx.total] || '0') : '0');
     if (name) {
-      t.items.push({ name, qty, price });
-      t.total += lineTotal || price * qty;
+      const itemTotal = lineTotal || price * qty;
+      t.items.push({ name, qty, price, total: itemTotal });
+      t.total += itemTotal;
     }
   }
   return Array.from(ticketMap.values()).filter((t) => t.total > 0);

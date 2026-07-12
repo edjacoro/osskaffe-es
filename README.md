@@ -109,6 +109,10 @@ La seccion **Carga por hora** usa directamente las ventas sincronizadas desde
 Bistrosoft para cruzar tickets/ventas por hora contra las personas planificadas
 en la grilla. Permite detectar horas criticas y sugerir refuerzos por sucursal
 sin bajar ni subir reportes manuales.
+Tambien muestra un mapa de calor por dia/hora y rankings de articulos: productos
+vendidos en horas pico, venta mensual por cantidad y top 5 anualizado. Estos
+rankings aparecen cuando la venta sincronizada/importada incluye detalle de
+articulos.
 
 La grilla base de Madrid se cargo con la direccion `Calle de Manuel Cortina, 1,
 Chamberi, 28010 Madrid` y coordenadas `40.43073, -3.69918`. Los festivos 2026
