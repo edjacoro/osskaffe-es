@@ -7,6 +7,38 @@ const STATUS_KEY = "bistro-status";
 const AUTH_PREFIX = "auth";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const BISTRO_BASE_URL = "https://es.bistrosoft.com";
+export const DEFAULT_LOCATION_ID = "barcelona";
+export const LOCATION_IDS = ["barcelona", "madrid"];
+
+export function normalizeLocationId(value) {
+  return LOCATION_IDS.includes(value) ? value : DEFAULT_LOCATION_ID;
+}
+
+function locationEnvSuffix(locationId) {
+  return normalizeLocationId(locationId).toUpperCase();
+}
+
+function bistroCredentials(locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  const suffix = locationEnvSuffix(id);
+  return {
+    username: process.env[`BISTROSOFT_USERNAME_${suffix}`]
+      || (id === DEFAULT_LOCATION_ID ? process.env.BISTROSOFT_USERNAME : "")
+      || "",
+    password: process.env[`BISTROSOFT_PASSWORD_${suffix}`]
+      || (id === DEFAULT_LOCATION_ID ? process.env.BISTROSOFT_PASSWORD : "")
+      || "",
+  };
+}
+
+export function hasBistroCredentials(locationId = DEFAULT_LOCATION_ID) {
+  const { username, password } = bistroCredentials(locationId);
+  return !!username && !!password;
+}
+
+function bistroStatusKey(locationId = DEFAULT_LOCATION_ID) {
+  return `${STATUS_KEY}-${normalizeLocationId(locationId)}`;
+}
 
 export function response(data, status = 200, headers = {}) {
   return Response.json(data, {
@@ -32,6 +64,10 @@ function sessionSecret() {
   const fallback = [
     process.env.BISTROSOFT_PASSWORD || "",
     process.env.BISTROSOFT_USERNAME || "",
+    process.env.BISTROSOFT_PASSWORD_BARCELONA || "",
+    process.env.BISTROSOFT_USERNAME_BARCELONA || "",
+    process.env.BISTROSOFT_PASSWORD_MADRID || "",
+    process.env.BISTROSOFT_USERNAME_MADRID || "",
     process.env.ADMIN_PIN || "",
     "oss-kaffe-netlify-session",
   ].join(":");
@@ -134,9 +170,13 @@ export async function updateState(mutator) {
 
 export function isActiveEmployee(fullState, employeeId) {
   const employees = Array.isArray(fullState?.employees) ? fullState.employees : [
-    { id: "chelo", active: true, canLogin: true },
-    { id: "sebastian", active: true, canLogin: true },
-    { id: "third", active: true, canLogin: true },
+    { id: "chelo", active: true, canLogin: true, locationId: "barcelona" },
+    { id: "sebastian", active: true, canLogin: true, locationId: "barcelona" },
+    { id: "third", active: true, canLogin: true, locationId: "barcelona" },
+    { id: "bonnie", active: true, canLogin: true, locationId: "madrid" },
+    { id: "micaela", active: true, canLogin: true, locationId: "madrid" },
+    { id: "perla", active: true, canLogin: true, locationId: "madrid" },
+    { id: "guillermo", active: true, canLogin: true, locationId: "madrid" },
   ];
   return employees.some((employee) =>
     employee.id === employeeId && employee.active !== false && employee.canLogin !== false
@@ -233,9 +273,9 @@ async function bistroRequest(relativeUrl, options = {}, cookies = "") {
   return { data, cookies: extractCookies(result.headers) || cookies };
 }
 
-async function loginBistrosoft() {
-  const username = process.env.BISTROSOFT_USERNAME || "";
-  const password = process.env.BISTROSOFT_PASSWORD || "";
+async function loginBistrosoft(locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  const { username, password } = bistroCredentials(id);
   if (!username || !password) throw new Error("Faltan las credenciales de Bistrosoft en Netlify.");
   const body = JSON.stringify({ username, password });
   const login = await bistroRequest("/api/auth", { method: "POST", body });
@@ -261,8 +301,9 @@ function paymentMethod(sale) {
   return "";
 }
 
-export async function getBistroSales(from, until, authenticatedCookies = "") {
-  let cookies = authenticatedCookies || await loginBistrosoft();
+export async function getBistroSales(from, until, authenticatedCookies = "", locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  let cookies = authenticatedCookies || await loginBistrosoft(id);
   const sales = [];
   const countPerPage = 5000;
   let page = 1;
@@ -283,7 +324,9 @@ export async function getBistroSales(from, until, authenticatedCookies = "") {
     for (const sale of result.data.sales || []) {
       const stableId = sale.uuid || `${sale.shopCode}-${sale.id}`;
       sales.push({
-        id: `bistro-${stableId}`,
+        id: `bistro-${id}-${stableId}`,
+        bistroId: `bistro-${stableId}`,
+        locationId: id,
         date: bistroDateToIso(sale.date),
         time: String(sale.hour || ""),
         ticketNumber: String(sale.id || ""),
@@ -302,16 +345,18 @@ export async function getBistroSales(from, until, authenticatedCookies = "") {
   } while (sales.length < totalCount);
 
   const fetchedAt = new Date().toISOString();
-  await stateStore().setJSON(STATUS_KEY, {
+  await stateStore().setJSON(bistroStatusKey(id), {
     connected: true,
     lastSyncAt: fetchedAt,
     lastError: null,
+    locationId: id,
   });
-  return { ok: true, source: "bistrosoft", from, until, fetchedAt, totalCount: sales.length, sales };
+  return { ok: true, source: "bistrosoft", from, until, fetchedAt, totalCount: sales.length, locationId: id, sales };
 }
 
-export async function getBistroExpenses(from, until, authenticatedCookies = "") {
-  let cookies = authenticatedCookies || await loginBistrosoft();
+export async function getBistroExpenses(from, until, authenticatedCookies = "", locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  let cookies = authenticatedCookies || await loginBistrosoft(id);
   const expenses = [];
   const countPerPage = 5000;
   let page = 1;
@@ -358,7 +403,9 @@ export async function getBistroExpenses(from, until, authenticatedCookies = "") 
       ].join("|");
       const stableId = crypto.createHash("sha256").update(stableValue).digest("hex").slice(0, 24);
       expenses.push({
-        id: `bistro-expense-${stableId}`,
+        id: `bistro-expense-${id}-${stableId}`,
+        bistroId: `bistro-expense-${stableId}`,
+        locationId: id,
         date: bistroDateToIso(item.date),
         amount: Math.abs(Number(item.amount || 0)),
         category: "otros",
@@ -376,20 +423,22 @@ export async function getBistroExpenses(from, until, authenticatedCookies = "") 
     page += 1;
   } while (fetchedCount < totalCount);
 
-  return { ok: true, from, until, totalCount: expenses.length, expenses };
+  return { ok: true, from, until, totalCount: expenses.length, locationId: id, expenses };
 }
 
-export async function getBistroData(from, until) {
-  const cookies = await loginBistrosoft();
+export async function getBistroData(from, until, locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  const cookies = await loginBistrosoft(id);
   const [sales, expenses] = await Promise.all([
-    getBistroSales(from, until, cookies),
-    getBistroExpenses(from, until, cookies),
+    getBistroSales(from, until, cookies, id),
+    getBistroExpenses(from, until, cookies, id),
   ]);
   return { sales, expenses };
 }
 
-export async function getBistroMonths() {
-  const cookies = await loginBistrosoft();
+export async function getBistroMonths(locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  const cookies = await loginBistrosoft(id);
   const until = new Date();
   until.setUTCDate(until.getUTCDate() + 1);
   const query = new URLSearchParams({
@@ -399,7 +448,7 @@ export async function getBistroMonths() {
   });
   const [result, expenseHistory] = await Promise.all([
     bistroRequest(`/api/report/salesDataPerMonthV2?${query}`, {}, cookies),
-    getBistroExpenses("2010-01-01", isoDate(until), cookies),
+    getBistroExpenses("2010-01-01", isoDate(until), cookies, id),
   ]);
   if (result.data.responseCode !== 0) {
     throw new Error("Bistrosoft no pudo informar los meses disponibles.");
@@ -413,18 +462,26 @@ export async function getBistroMonths() {
     ...salesMonths,
     ...expenseHistory.expenses.map((item) => item.date.slice(0, 7)),
   ])].sort();
-  return { ok: true, months };
+  return { ok: true, locationId: id, months };
 }
 
-export async function readBistroStatus() {
-  return await stateStore().get(STATUS_KEY, { type: "json", consistency: "strong" }) || {};
+export async function readBistroStatus(locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  const status = await stateStore().get(bistroStatusKey(id), { type: "json", consistency: "strong" });
+  if (status) return status;
+  if (id === DEFAULT_LOCATION_ID) {
+    return await stateStore().get(STATUS_KEY, { type: "json", consistency: "strong" }) || {};
+  }
+  return {};
 }
 
-export async function writeBistroError(error) {
-  await stateStore().setJSON(STATUS_KEY, {
+export async function writeBistroError(error, locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  await stateStore().setJSON(bistroStatusKey(id), {
     connected: false,
     lastSyncAt: null,
     lastError: error.message,
+    locationId: id,
   });
 }
 
@@ -451,40 +508,74 @@ function monthsInRange(from, until) {
   return months;
 }
 
-export async function mergeBistroSales(sales, from, until) {
-  return updateState((current) => ({
-    ...(current || {}),
-    sales: [
-      ...(current?.sales || []).filter((sale) => !(sale.date >= from && sale.date < until)),
-      ...sales,
-    ],
-    bistroSalesSyncedMonths: [...new Set([
-      ...(current?.bistroSalesSyncedMonths || []),
-      ...monthsInRange(from, until),
-    ])].sort(),
-  }));
+export async function mergeBistroSales(sales, from, until, locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  const months = monthsInRange(from, until);
+  return updateState((current) => {
+    const allLocationSync = current?.bistroSyncedMonthsByLocation || {};
+    const currentLocationSync = allLocationSync[id] || {};
+    const nextSalesMonths = [...new Set([
+      ...(currentLocationSync.sales || []),
+      ...(id === DEFAULT_LOCATION_ID ? current?.bistroSalesSyncedMonths || [] : []),
+      ...months,
+    ])].sort();
+    return {
+      ...(current || {}),
+      sales: [
+        ...(current?.sales || []).filter((sale) =>
+          !(normalizeLocationId(sale.locationId) === id && sale.date >= from && sale.date < until)
+        ),
+        ...sales.map((sale) => ({ ...sale, locationId: id })),
+      ],
+      bistroSyncedMonthsByLocation: {
+        ...allLocationSync,
+        [id]: {
+          ...currentLocationSync,
+          sales: nextSalesMonths,
+        },
+      },
+      ...(id === DEFAULT_LOCATION_ID ? { bistroSalesSyncedMonths: nextSalesMonths } : {}),
+    };
+  });
 }
 
-export async function mergeBistroExpenses(expenses, from, until) {
+export async function mergeBistroExpenses(expenses, from, until, locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  const months = monthsInRange(from, until);
   return updateState((current) => {
     const categoryOverrides = current?.expenseCategoryOverrides || {};
     const categorizedExpenses = expenses.map((expense) => ({
       ...expense,
-      category: categoryOverrides[expense.id] || expense.category,
+      locationId: id,
+      category: categoryOverrides[expense.id] || categoryOverrides[expense.bistroId] || expense.category,
     }));
+    const allLocationSync = current?.bistroSyncedMonthsByLocation || {};
+    const currentLocationSync = allLocationSync[id] || {};
+    const nextExpenseMonths = [...new Set([
+      ...(currentLocationSync.expenses || []),
+      ...(id === DEFAULT_LOCATION_ID ? current?.bistroExpenseSyncedMonths || [] : []),
+      ...months,
+    ])].sort();
     return {
       ...(current || {}),
       expenses: [
         ...(current?.expenses || []).filter((expense) =>
-          !(expense._source === "bistrosoft" && expense.date >= from && expense.date < until)
+          !(expense._source === "bistrosoft"
+            && normalizeLocationId(expense.locationId) === id
+            && expense.date >= from
+            && expense.date < until)
         ),
         ...categorizedExpenses,
       ],
       expenseCategoryOverrides: categoryOverrides,
-      bistroExpenseSyncedMonths: [...new Set([
-        ...(current?.bistroExpenseSyncedMonths || []),
-        ...monthsInRange(from, until),
-      ])].sort(),
+      bistroSyncedMonthsByLocation: {
+        ...allLocationSync,
+        [id]: {
+          ...currentLocationSync,
+          expenses: nextExpenseMonths,
+        },
+      },
+      ...(id === DEFAULT_LOCATION_ID ? { bistroExpenseSyncedMonths: nextExpenseMonths } : {}),
     };
   });
 }

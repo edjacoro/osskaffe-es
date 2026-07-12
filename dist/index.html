@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=9" />
+    <link rel="stylesheet" href="styles.css?v=11" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -76,6 +76,15 @@
           <p id="visitLoginError" class="pin-error" hidden></p>
           <button class="role-btn role-btn-muted" id="submitVisitLogin" type="button">Entrar como visita</button>
           <button class="role-link" id="backFromVisit" type="button">Volver</button>
+        </div>
+
+        <div id="roleStepLocation" hidden>
+          <p class="role-subtitle">Elegí sucursal</p>
+          <div class="role-btn-group">
+            <button class="role-btn" data-location-choice="barcelona" type="button">Barcelona</button>
+            <button class="role-btn role-btn-muted" data-location-choice="madrid" type="button">Madrid</button>
+          </div>
+          <button class="role-link" id="backFromLocation" type="button">Volver</button>
         </div>
       </div>
     </div>
@@ -461,6 +470,12 @@
                       <option value="Pasteleria">Pastelería</option>
                     </select>
                   </label>
+                  <label>Sucursal
+                    <select id="teamMemberLocation">
+                      <option value="barcelona">Barcelona</option>
+                      <option value="madrid">Madrid</option>
+                    </select>
+                  </label>
                   <label>Color<input id="teamMemberColor" type="color" value="#416877" /></label>
                 </div>
                 <button class="primary-button" type="submit">Agregar al Team</button>
@@ -534,6 +549,7 @@
               <button class="fin-tab" data-fin-tab="monthly" type="button">Mensual</button>
               <button class="fin-tab" data-fin-tab="pnl" type="button">P&amp;L anual</button>
               <button class="fin-tab" data-fin-tab="presupuesto" type="button">Presupuesto</button>
+              <button class="fin-tab" data-fin-tab="audit" type="button">Auditoría</button>
             </nav>
             <div class="fin-sync-bar" id="finBistroSync" aria-live="polite">
               <span class="fin-sync-dot" id="finSyncDot" aria-hidden="true"></span>
@@ -691,6 +707,11 @@
             <div id="finPresupuestoContent" style="padding:20px"></div>
           </div>
 
+          <!-- AUDITORÍA -->
+          <div class="fin-panel" data-fin-panel="audit">
+            <div id="finAuditContent" style="padding:20px"></div>
+          </div>
+
           <!-- P&L -->
           <div class="fin-panel" data-fin-panel="pnl">
             <div style="padding:20px">
@@ -772,6 +793,20 @@
               <p class="form-note">Acceso de supervisión activo para Grilla y Finanzas, siempre en modo lectura.</p>
               <p class="visit-access-fixed">Clave activa: <strong>ossbcn</strong></p>
             </div>
+
+            <div class="form-surface">
+              <h3>Respaldos entre Netlify</h3>
+              <p class="form-note" style="margin-top:0">
+                Usalo para copiar los datos del sitio que esta correcto hacia otro sitio Netlify.
+                La importacion reemplaza el estado del sitio donde la ejecutes.
+              </p>
+              <div class="backup-actions">
+                <button class="ghost-button" id="backupExport" type="button">Exportar respaldo</button>
+                <button class="primary-button" id="backupImportButton" type="button">Importar respaldo</button>
+                <input id="backupImportFile" type="file" accept="application/json" hidden />
+              </div>
+              <p class="form-note" id="backupStatus">Incluye finanzas, grilla, fichas, personal, mermas y ajustes. No incluye contrasenas de empleados.</p>
+            </div>
           </div>
         </section>
       </main>
@@ -781,6 +816,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=15"></script>
+    <script src="app.js?v=18"></script>
   </body>
 </html>

@@ -29,6 +29,8 @@ NODE_ENV=production
 ADMIN_PIN=un PIN administrativo de 4 digitos
 BISTROSOFT_USERNAME=usuario de Bistrosoft
 BISTROSOFT_PASSWORD=contrasena de Bistrosoft
+BISTROSOFT_USERNAME_MADRID=usuario de Bistrosoft Madrid
+BISTROSOFT_PASSWORD_MADRID=contrasena de Bistrosoft Madrid
 DATA_FILE=/ruta/persistente/state.json
 ```
 
@@ -58,6 +60,8 @@ ADMIN_PIN=un PIN administrativo de 4 digitos
 SESSION_SECRET=una cadena aleatoria de al menos 32 caracteres
 BISTROSOFT_USERNAME=usuario de Bistrosoft
 BISTROSOFT_PASSWORD=contrasena de Bistrosoft
+BISTROSOFT_USERNAME_MADRID=usuario de Bistrosoft Madrid
+BISTROSOFT_PASSWORD_MADRID=contrasena de Bistrosoft Madrid
 ```
 
 4. Hacer un nuevo deploy de produccion despues de guardar las variables.
@@ -69,6 +73,12 @@ de los otros secretos configurados.
 En el formulario de Netlify, el campo **Key** debe ser `ADMIN_PIN` y el campo
 **Value** debe ser solamente `0000`, sin comillas. El backend tambien tolera comillas
 o el formato `ADMIN_PIN=0000`, pero se recomienda guardar solo el valor.
+
+Para Barcelona se pueden seguir usando `BISTROSOFT_USERNAME` y
+`BISTROSOFT_PASSWORD`. Si se prefiere dejar todo nombrado por sucursal, tambien
+se aceptan `BISTROSOFT_USERNAME_BARCELONA` y `BISTROSOFT_PASSWORD_BARCELONA`.
+Madrid queda inactivo hasta cargar `BISTROSOFT_USERNAME_MADRID` y
+`BISTROSOFT_PASSWORD_MADRID`.
 
 No usar el despliegue manual por arrastrar una carpeta o solamente `index.html`: ese
 metodo publica el frontend pero no construye ni activa las Functions.
@@ -83,6 +93,28 @@ en Bistrosoft e importa automaticamente los meses historicos que todavia falten.
 **Sincronizar historial** vuelve a leer todos los meses disponibles, incluso si ya estaban
 importados. El historial queda guardado en Netlify Blobs; la copia local del navegador
 omite los tickets de Bistrosoft para evitar superar su limite de almacenamiento.
+
+### Sucursales
+
+La app trabaja con dos sucursales: Barcelona y Madrid. Administrador y Visita
+eligen sucursal despues de iniciar sesion; cada empleado entra directo a la
+sucursal definida en su ficha. Finanzas, gastos, mermas, presupuestos, afluencia
+y fichajes se guardan separados por `locationId`.
+
+La pestana **Finanzas > Auditoria** compara ventas diarias de Barcelona y Madrid
+mes a mes. Sirve como control rapido para ver cada dia, tickets, totales y
+diferencia entre locales.
+
+La grilla base de Madrid se cargo con la direccion `Calle de Manuel Cortina, 1,
+Chamberi, 28010 Madrid` y coordenadas `40.43073, -3.69918`. Los festivos 2026
+incluyen nacionales, Comunidad de Madrid y municipio de Madrid, todos con
+apertura normal.
+
+Para integrar datos reales de "Horas punta" de Google no alcanza una API key
+simple de Maps. Hace falta acceso al perfil del negocio en Google Business
+Profile y OAuth para consultar metricas propias cuando Google lo permita. La
+app conserva la importacion CSV de afluencia por sucursal, por lo que se puede
+empezar a registrar desde ahora con datos importados y mantener historial.
 
 ### Accesos y perfiles
 
@@ -100,6 +132,11 @@ omite los tickets de Bistrosoft para evitar superar su limite de almacenamiento.
 - En Finanzas > Gastos, el administrador puede reclasificar esos movimientos. La app guarda
   solamente la categoria local asociada al ID estable de Bistrosoft, por lo que las siguientes
   sincronizaciones no duplican el gasto ni pierden la clasificacion elegida.
+- En Ajustes > Respaldos entre Netlify, el administrador puede exportar el estado completo de
+  un sitio e importarlo en otro. Esto sirve para copiar datos entre una web firme y una web de
+  pruebas. El respaldo incluye grilla, finanzas, reclasificaciones de Bistrosoft, personal,
+  fichas, mermas, presupuestos y ajustes. No incluye las contrasenas de empleados, que quedan
+  guardadas como hashes separados en cada sitio Netlify.
 
 ### Otros hostings
 

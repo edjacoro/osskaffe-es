@@ -15,6 +15,23 @@ const MONTH_NAMES = [
   "Diciembre",
 ];
 
+const DEFAULT_LOCATION_ID = "barcelona";
+const LOCATIONS = {
+  barcelona: {
+    id: "barcelona",
+    label: "Barcelona",
+    shortLabel: "BCN",
+    address: "",
+  },
+  madrid: {
+    id: "madrid",
+    label: "Madrid",
+    shortLabel: "MAD",
+    address: "Calle de Manuel Cortina, 1, Chamberí, 28010 Madrid, España",
+  },
+};
+const LOCATION_IDS = Object.keys(LOCATIONS);
+
 const DEFAULT_EMPLOYEES = [
   {
     id: "chelo",
@@ -23,6 +40,7 @@ const DEFAULT_EMPLOYEES = [
     color: "#416877",
     active: true,
     canLogin: true,
+    locationId: "barcelona",
   },
   {
     id: "sebastian",
@@ -31,6 +49,7 @@ const DEFAULT_EMPLOYEES = [
     color: "#2d4f5c",
     active: true,
     canLogin: true,
+    locationId: "barcelona",
   },
   {
     id: "third",
@@ -39,6 +58,7 @@ const DEFAULT_EMPLOYEES = [
     color: "#c46d47",
     active: true,
     canLogin: true,
+    locationId: "barcelona",
   },
   {
     id: "pablo",
@@ -48,6 +68,43 @@ const DEFAULT_EMPLOYEES = [
     active: true,
     canLogin: false,
     system: true,
+    locationId: "barcelona",
+  },
+  {
+    id: "bonnie",
+    label: "Bonnie",
+    role: "Barista",
+    color: "#6f7f46",
+    active: true,
+    canLogin: true,
+    locationId: "madrid",
+  },
+  {
+    id: "micaela",
+    label: "Micaela",
+    role: "Encargada",
+    color: "#8d5a73",
+    active: true,
+    canLogin: true,
+    locationId: "madrid",
+  },
+  {
+    id: "perla",
+    label: "Perla",
+    role: "Barista",
+    color: "#547f87",
+    active: true,
+    canLogin: true,
+    locationId: "madrid",
+  },
+  {
+    id: "guillermo",
+    label: "Guillermo",
+    role: "Barista",
+    color: "#9a7041",
+    active: true,
+    canLogin: true,
+    locationId: "madrid",
   },
 ];
 
@@ -69,6 +126,47 @@ const DEFAULT_HOLIDAYS_2026 = [
   { date: "2026-12-26", name: "Sant Esteve", open: "10:00", close: "19:00" },
 ];
 
+const MADRID_HOLIDAYS_2026 = [
+  { date: "2026-01-01", name: "Año Nuevo", open: "10:00", close: "19:00" },
+  { date: "2026-01-06", name: "Epifanía del Señor", open: "10:00", close: "19:00" },
+  { date: "2026-04-02", name: "Jueves Santo", open: "10:00", close: "19:00" },
+  { date: "2026-04-03", name: "Viernes Santo", open: "10:00", close: "19:00" },
+  { date: "2026-05-01", name: "Fiesta del Trabajo", open: "10:00", close: "19:00" },
+  { date: "2026-05-02", name: "Fiesta de la Comunidad de Madrid", open: "10:00", close: "19:00" },
+  { date: "2026-05-15", name: "San Isidro Labrador", open: "10:00", close: "19:00" },
+  { date: "2026-08-15", name: "Asunción de la Virgen", open: "10:00", close: "19:00" },
+  { date: "2026-10-12", name: "Fiesta Nacional de España", open: "10:00", close: "19:00" },
+  { date: "2026-11-02", name: "Traslado de Todos los Santos", open: "10:00", close: "19:00" },
+  { date: "2026-11-09", name: "Nuestra Señora de La Almudena", open: "10:00", close: "19:00" },
+  { date: "2026-12-07", name: "Traslado del Día de la Constitución", open: "10:00", close: "19:00" },
+  { date: "2026-12-08", name: "Inmaculada Concepción", open: "10:00", close: "19:00" },
+  { date: "2026-12-25", name: "Navidad", open: "10:00", close: "19:00" },
+];
+
+const DEFAULT_SETTINGS = {
+  adminEmail: "",
+  storeAddress: "",
+  storeLat: "",
+  storeLng: "",
+  geoRadius: 120,
+  lateTolerance: 5,
+  adminPin: "0000",
+  palomaLeaveDate: "2026-07-01",
+  holidaySeedVersion: HOLIDAY_SEED_VERSION,
+  holidays: DEFAULT_HOLIDAYS_2026,
+};
+
+const DEFAULT_LOCATION_SETTINGS = {
+  barcelona: { ...DEFAULT_SETTINGS, holidays: DEFAULT_HOLIDAYS_2026 },
+  madrid: {
+    ...DEFAULT_SETTINGS,
+    storeAddress: LOCATIONS.madrid.address,
+    storeLat: "40.43073",
+    storeLng: "-3.69918",
+    holidays: MADRID_HOLIDAYS_2026,
+  },
+};
+
 const DEFAULT_STATE = {
   punches: [],
   changes: [],
@@ -81,26 +179,22 @@ const DEFAULT_STATE = {
   wasteRecords: [],
   contracts: {},
   budgets: {},
-  settings: {
-    adminEmail: "",
-    storeLat: "",
-    storeLng: "",
-    geoRadius: 120,
-    lateTolerance: 5,
-    adminPin: "0000",
-    palomaLeaveDate: "2026-07-01",
-    holidaySeedVersion: HOLIDAY_SEED_VERSION,
-    holidays: DEFAULT_HOLIDAYS_2026,
-  },
+  locations: LOCATIONS,
+  locationSettings: DEFAULT_LOCATION_SETTINGS,
+  settings: DEFAULT_SETTINGS,
 };
 
 let state = loadState();
 let activeMonth = firstDayOfMonth(new Date());
 let appRole = null;
 let activeEmployeeId = null;
+let activeLocationId = DEFAULT_LOCATION_ID;
+let pendingLocationRole = null;
 let adminInited = false;
 let empEventsInited = false;
 let activeFichasTab = 'fichas';
+let activeAdminFichaEditId = null;
+let adminFichaEditDraft = null;
 let sharedStateEnabled = false;
 let sharedStateSaveTimer = null;
 let sharedStatePollTimer = null;
@@ -162,6 +256,10 @@ const els = {
   holidayClose: document.querySelector("#holidayClose"),
   addHoliday: document.querySelector("#addHoliday"),
   holidayList: document.querySelector("#holidayList"),
+  backupExport: document.querySelector("#backupExport"),
+  backupImportButton: document.querySelector("#backupImportButton"),
+  backupImportFile: document.querySelector("#backupImportFile"),
+  backupStatus: document.querySelector("#backupStatus"),
 };
 
 startApp();
@@ -187,9 +285,14 @@ async function refreshTeamDirectory() {
 function init() {
   // Migrate state: ensure new keys exist for older stored data
   if (!state.contracts) state.contracts = {};
-  if (!state.budgets)   state.budgets   = {};
+  if (!state.budgets) state.budgets = {};
+  if (!state.locationBudgets) state.locationBudgets = { [DEFAULT_LOCATION_ID]: state.budgets };
+  if (!state.locationSettings) state.locationSettings = structuredClone(DEFAULT_LOCATION_SETTINGS);
   if (!Array.isArray(state.employees)) state.employees = structuredClone(DEFAULT_EMPLOYEES);
   if (!Array.isArray(state.wasteRecords)) state.wasteRecords = [];
+  state.employees = mergeDefaultEmployees(state.employees);
+  addDefaultProfilesForNewEmployees(state);
+  tagLegacyRecordsWithLocation(state);
   populateSelectors();
   bindEvents();
   initFichasContratos();
@@ -210,8 +313,14 @@ async function loadHistoricalData(version) {
     if (!resp.ok) return;
     const hist = await resp.json();
     // Reemplazar todos los registros históricos con los del JSON actualizado
-    state.sales    = [...state.sales.filter(s    => !s.id?.startsWith('hist-')), ...hist.sales];
-    state.expenses = [...state.expenses.filter(e => !e.id?.startsWith('hist-')), ...hist.expenses];
+    state.sales    = [
+      ...state.sales.filter(s => !s.id?.startsWith('hist-')),
+      ...hist.sales.map((sale) => ({ ...sale, locationId: DEFAULT_LOCATION_ID })),
+    ];
+    state.expenses = [
+      ...state.expenses.filter(e => !e.id?.startsWith('hist-')),
+      ...hist.expenses.map((expense) => ({ ...expense, locationId: DEFAULT_LOCATION_ID })),
+    ];
     state.historicalLoaded = version;
     saveState();
     render();
@@ -252,6 +361,9 @@ function bindEvents() {
   els.loadTrafficSample.addEventListener("click", loadTrafficSample);
   els.saveSettings.addEventListener("click", saveSettings);
   els.addHoliday.addEventListener("click", addHoliday);
+  els.backupExport.addEventListener("click", exportStateBackup);
+  els.backupImportButton.addEventListener("click", chooseStateBackupFile);
+  els.backupImportFile.addEventListener("change", importStateBackupFile);
 }
 
 function populateSelectors() {
@@ -295,7 +407,7 @@ function setActiveTab(tab) {
 function render() {
   const year = activeMonth.getFullYear();
   const month = activeMonth.getMonth();
-  els.monthTitle.textContent = `Grilla de ${MONTH_NAMES[month]} ${year}`;
+  els.monthTitle.textContent = `Grilla ${getLocation().label} · ${MONTH_NAMES[month]} ${year}`;
   els.monthPicker.value = `${year}-${String(month + 1).padStart(2, "0")}`;
 
   renderLegend();
@@ -389,7 +501,7 @@ function renderMetrics() {
     return sum + getShiftsForDate(dateKey).reduce((daySum, shift) => daySum + shift.end - shift.start, 0);
   }, 0);
   const real = getRealHoursForMonth(activeMonth);
-  const pending = state.changes.filter((change) => change.status === "pending").length;
+  const pending = getLocationChanges().filter((change) => change.status === "pending").length;
   const suggestions = getSuggestions();
 
   els.plannedHours.textContent = formatHours(planned);
@@ -399,7 +511,7 @@ function renderMetrics() {
 }
 
 function renderPunches() {
-  const punches = state.punches
+  const punches = getLocationPunches()
     .slice()
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .slice(0, 12);
@@ -428,15 +540,16 @@ function renderPunches() {
 }
 
 function renderChanges() {
-  const pending = state.changes.filter((change) => change.status === "pending").length;
+  const pending = getLocationChanges().filter((change) => change.status === "pending").length;
   els.approvalSummary.textContent = `${pending} pendientes`;
 
-  if (!state.changes.length) {
+  const changes = getLocationChanges();
+  if (!changes.length) {
     renderEmpty(els.changeList);
     return;
   }
 
-  els.changeList.innerHTML = state.changes
+  els.changeList.innerHTML = changes
     .slice()
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map((change) => {
@@ -481,7 +594,8 @@ function renderChanges() {
 
 function renderTraffic() {
   const suggestions = getSuggestions();
-  els.trafficSummary.textContent = state.trafficData.length ? `${state.trafficData.length} franjas cargadas` : "Sin datos";
+  const trafficData = getLocationTrafficData();
+  els.trafficSummary.textContent = trafficData.length ? `${trafficData.length} franjas cargadas` : "Sin datos";
 
   if (!suggestions.length) {
     renderEmpty(els.suggestionList);
@@ -506,7 +620,7 @@ function renderTraffic() {
 }
 
 function renderHolidays() {
-  const holidays = state.settings.holidays || [];
+  const holidays = getLocationSettings().holidays || [];
   if (!holidays.length) {
     renderEmpty(els.holidayList);
     return;
@@ -530,7 +644,9 @@ function renderHolidays() {
 
   els.holidayList.querySelectorAll("[data-remove-holiday]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.settings.holidays = state.settings.holidays.filter((holiday) => holiday.date !== button.dataset.removeHoliday);
+      updateLocationSettings({
+        holidays: (getLocationSettings().holidays || []).filter((holiday) => holiday.date !== button.dataset.removeHoliday),
+      });
       render();
     });
   });
@@ -551,6 +667,7 @@ async function handlePunch(event) {
   state.punches.push({
     id: createId(),
     employeeId,
+    locationId: activeLocationId,
     type,
     timestamp: now.toISOString(),
     date: dateKey,
@@ -578,6 +695,7 @@ function createMockPunches() {
   state.punches.push({
     id: createId(),
     employeeId,
+    locationId: activeLocationId,
     type: "in",
     timestamp: start.toISOString(),
     date: today,
@@ -588,6 +706,7 @@ function createMockPunches() {
   state.punches.push({
     id: createId(),
     employeeId,
+    locationId: activeLocationId,
     type: "out",
     timestamp: end.toISOString(),
     date: today,
@@ -603,6 +722,7 @@ function handleChangeRequest(event) {
   event.preventDefault();
   state.changes.push({
     id: createId(),
+    locationId: activeLocationId,
     date: els.changeDate.value,
     employeeId: els.changeAction.value === "owner" ? "pablo" : els.changeEmployee.value,
     replacementEmployeeId: els.replacementEmployee.value,
@@ -628,8 +748,11 @@ function updateChangeStatus(id, status) {
 
 function handleTrafficImport(event) {
   event.preventDefault();
-  const rows = parseTrafficCsv(els.trafficCsv.value);
-  state.trafficData = rows;
+  const rows = parseTrafficCsv(els.trafficCsv.value).map(tagWithActiveLocation);
+  state.trafficData = [
+    ...(state.trafficData || []).filter((item) => !belongsToActiveLocation(item)),
+    ...rows,
+  ];
   render();
 }
 
@@ -649,26 +772,132 @@ function loadTrafficSample() {
       rows.push({ date: dateKey, hour: 18, visitors: 36 });
     }
   });
-  state.trafficData = rows;
+  const taggedRows = rows.map(tagWithActiveLocation);
+  state.trafficData = [
+    ...(state.trafficData || []).filter((item) => !belongsToActiveLocation(item)),
+    ...taggedRows,
+  ];
   els.trafficCsv.value = stringifyTraffic(rows);
   render();
 }
 
 function saveSettings() {
-  state.settings.adminEmail = els.adminEmail.value.trim();
-  state.settings.storeLat = els.storeLat.value.trim();
-  state.settings.storeLng = els.storeLng.value.trim();
-  state.settings.geoRadius = Number(els.geoRadius.value || 120);
-  state.settings.lateTolerance = Number(els.lateTolerance.value || 5);
+  updateLocationSettings({
+    adminEmail: els.adminEmail.value.trim(),
+    storeLat: els.storeLat.value.trim(),
+    storeLng: els.storeLng.value.trim(),
+    geoRadius: Number(els.geoRadius.value || 120),
+    lateTolerance: Number(els.lateTolerance.value || 5),
+  });
   render();
 }
 
 function hydrateSettingsForm() {
-  els.adminEmail.value = state.settings.adminEmail || "";
-  els.storeLat.value = state.settings.storeLat || "";
-  els.storeLng.value = state.settings.storeLng || "";
-  els.geoRadius.value = state.settings.geoRadius || 120;
-  els.lateTolerance.value = state.settings.lateTolerance || 5;
+  const settings = getLocationSettings();
+  els.adminEmail.value = settings.adminEmail || "";
+  els.storeLat.value = settings.storeLat || "";
+  els.storeLng.value = settings.storeLng || "";
+  els.geoRadius.value = settings.geoRadius || 120;
+  els.lateTolerance.value = settings.lateTolerance || 5;
+}
+
+async function exportStateBackup() {
+  try {
+    if (sharedStatePending && !sharedStateSaving) {
+      await flushSharedState();
+    }
+    const payload = {
+      type: "oss-kaffe-state-backup",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      source: window.location.origin,
+      state,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `oss-kaffe-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setBackupStatus("Respaldo exportado. Importalo solamente en el Netlify que queres actualizar.");
+  } catch (error) {
+    setBackupStatus(error.message || "No se pudo exportar el respaldo.", true);
+  }
+}
+
+function chooseStateBackupFile() {
+  els.backupImportFile.value = "";
+  els.backupImportFile.click();
+}
+
+async function importStateBackupFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const payload = JSON.parse(await file.text());
+    const importedState = payload?.type === "oss-kaffe-state-backup"
+      ? payload.state
+      : payload?.state || payload;
+
+    if (!looksLikeStateBackup(importedState)) {
+      throw new Error("El archivo no parece ser un respaldo valido de OSS Kaffe.");
+    }
+
+    const source = payload?.source ? `\nOrigen: ${payload.source}` : "";
+    const exportedAt = payload?.exportedAt ? `\nExportado: ${formatDateTime(new Date(payload.exportedAt))}` : "";
+    const ok = confirm(
+      `Esto reemplazara los datos de este sitio Netlify por el respaldo seleccionado.${source}${exportedAt}\n\nAntes de seguir, exporta un respaldo de este sitio si queres conservarlo.`
+    );
+    if (!ok) {
+      setBackupStatus("Importacion cancelada.");
+      return;
+    }
+
+    const nextState = seedDefaultHolidays(mergeState(DEFAULT_STATE, importedState));
+
+    if (sharedStateEnabled && appRole === "admin") {
+      const response = await fetch("/api/state", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: nextState }),
+      });
+      if (!response.ok) throw new Error("No se pudo guardar el respaldo en Netlify.");
+    }
+
+    state = nextState;
+    saveState({ shared: false });
+    populateSelectors();
+    hydrateSettingsForm();
+    renderEmployeeChoiceButtons();
+    render();
+    setBackupStatus("Respaldo importado y guardado. Este sitio ya tiene la misma base de datos del archivo.");
+  } catch (error) {
+    setBackupStatus(error.message || "No se pudo importar el respaldo.", true);
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function looksLikeStateBackup(candidate) {
+  return !!candidate
+    && typeof candidate === "object"
+    && Array.isArray(candidate.punches)
+    && Array.isArray(candidate.changes)
+    && Array.isArray(candidate.sales)
+    && Array.isArray(candidate.expenses)
+    && candidate.settings
+    && typeof candidate.settings === "object";
+}
+
+function setBackupStatus(message, isError = false) {
+  if (!els.backupStatus) return;
+  els.backupStatus.textContent = message;
+  els.backupStatus.classList.toggle("is-error", isError);
 }
 
 function addHoliday() {
@@ -680,16 +909,18 @@ function addHoliday() {
     close: els.holidayClose.value || "19:00",
   };
 
-  state.settings.holidays = [
-    ...state.settings.holidays.filter((holiday) => holiday.date !== nextHoliday.date),
-    nextHoliday,
-  ];
+  updateLocationSettings({
+    holidays: [
+      ...(getLocationSettings().holidays || []).filter((holiday) => holiday.date !== nextHoliday.date),
+      nextHoliday,
+    ],
+  });
   els.holidayName.value = "";
   render();
 }
 
 function sendLateReport() {
-  const email = state.settings.adminEmail || els.adminEmail.value.trim();
+  const email = getLocationSettings().adminEmail || els.adminEmail.value.trim();
   if (!email) {
     setActiveTab("settings");
     els.adminEmail.focus();
@@ -697,7 +928,7 @@ function sendLateReport() {
   }
 
   const monthKey = monthInputValue(activeMonth);
-  const flagged = state.punches.filter((punch) => {
+  const flagged = getLocationPunches().filter((punch) => {
     return punch.date.startsWith(monthKey) && (punch.status === "late" || punch.status === "outside");
   });
 
@@ -710,7 +941,7 @@ function sendLateReport() {
         .join("\n")
     : "No hay llegadas tarde ni fichajes fuera de radio en el mes seleccionado.";
 
-  const subject = `Reporte de fichajes Oss Barcelona ${monthKey}`;
+  const subject = `Reporte de fichajes Oss ${getLocation().label} ${monthKey}`;
   window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
@@ -745,6 +976,11 @@ function exportCsv() {
 }
 
 function getBaseShifts(dateKey) {
+  if (activeLocationId === "madrid") return getMadridBaseShifts(dateKey);
+  return getBarcelonaBaseShifts(dateKey);
+}
+
+function getBarcelonaBaseShifts(dateKey) {
   const date = parseDateKey(dateKey);
   const day = date.getDay();
   const shifts = [];
@@ -773,9 +1009,39 @@ function getBaseShifts(dateKey) {
   return shifts;
 }
 
+function getMadridBaseShifts(dateKey) {
+  const date = parseDateKey(dateKey);
+  const day = date.getDay();
+  const shifts = [];
+
+  if (day >= 1 && day <= 5) {
+    shifts.push(makeShift("micaela", 8.5, 14, "base"));
+  }
+
+  if (day === 1) {
+    shifts.push(makeShift("bonnie", 16, 19, "base"));
+  }
+  if (day === 2 || day === 4) {
+    shifts.push(makeShift("perla", 16, 20, "base"));
+  }
+  if (day === 3 || day === 5) {
+    shifts.push(makeShift("guillermo", 16, 20, "base"));
+  }
+  if (day === 6) {
+    shifts.push(makeShift("perla", 9, 14, "base"));
+    shifts.push(makeShift("guillermo", 16, 20, "base"));
+  }
+  if (day === 0) {
+    shifts.push(makeShift("guillermo", 10, 15, "base"));
+    shifts.push(makeShift("bonnie", 15, 20, "base"));
+  }
+
+  return shifts;
+}
+
 function getShiftsForDate(dateKey) {
   let shifts = getBaseShifts(dateKey);
-  const approved = state.changes.filter((change) => change.date === dateKey && change.status === "approved");
+  const approved = getLocationChanges().filter((change) => change.date === dateKey && change.status === "approved");
 
   approved.forEach((change) => {
     const start = timeToDecimal(change.start);
@@ -804,28 +1070,46 @@ function getShiftsForDate(dateKey) {
     }
 
     if (change.action === "owner") {
-      shifts.push(makeShift("pablo", start, end, "cobertura"));
+      if (activeLocationId === DEFAULT_LOCATION_ID) {
+        shifts.push(makeShift("pablo", start, end, "cobertura"));
+      }
     }
   });
 
   return shifts
+    .filter((shift) => getEmployeeLocationId(shift.employeeId) === activeLocationId)
     .filter((shift) => isEmployeeActiveOnDate(getEmployee(shift.employeeId, dateKey), dateKey))
     .sort((a, b) => a.start - b.start || a.end - b.end);
 }
 
 function getOpenLabel(day) {
-  const hours = getRegularOpeningHours(day);
-  return `${formatHour(hours.open)}-${formatHour(hours.close)} local`;
+  return getRegularOpeningPeriods(day)
+    .map((hours) => `${formatHour(hours.open)}-${formatHour(hours.close)}`)
+    .join(" / ") + " local";
+}
+
+function getRegularOpeningPeriods(day) {
+  if (activeLocationId === "madrid") {
+    if (day === 1) return [{ open: 8.5, close: 14 }, { open: 16, close: 19 }];
+    if (day >= 2 && day <= 5) return [{ open: 8.5, close: 14 }, { open: 16, close: 20 }];
+    if (day === 6) return [{ open: 9, close: 14 }, { open: 16, close: 20 }];
+    return [{ open: 10, close: 20 }];
+  }
+  if (day === 6) return [{ open: 9, close: 19 }];
+  if (day === 0) return [{ open: 10, close: 19 }];
+  return [{ open: 8.5, close: 19 }];
 }
 
 function getRegularOpeningHours(day) {
-  if (day === 6) return { open: 9, close: 19 };
-  if (day === 0) return { open: 10, close: 19 };
-  return { open: 8.5, close: 19 };
+  const periods = getRegularOpeningPeriods(day);
+  if (Array.isArray(periods)) {
+    return { open: periods[0].open, close: periods[periods.length - 1].close };
+  }
+  return periods;
 }
 
 function getHoliday(dateKey) {
-  return state.settings.holidays.find((holiday) => holiday.date === dateKey);
+  return (getLocationSettings().holidays || []).find((holiday) => holiday.date === dateKey);
 }
 
 function makeShift(employeeId, start, end, source) {
@@ -860,6 +1144,14 @@ function getEmployees(includeInactive = false) {
   const employees = Array.isArray(state?.employees) && state.employees.length
     ? state.employees
     : DEFAULT_EMPLOYEES;
+  const filtered = employees.filter((employee) => normalizeLocationId(employee.locationId) === activeLocationId);
+  return includeInactive ? filtered : filtered.filter((employee) => employee.active !== false);
+}
+
+function getAllEmployees(includeInactive = false) {
+  const employees = Array.isArray(state?.employees) && state.employees.length
+    ? state.employees
+    : DEFAULT_EMPLOYEES;
   return includeInactive ? employees : employees.filter((employee) => employee.active !== false);
 }
 
@@ -871,7 +1163,7 @@ function isEmployeeActiveOnDate(employee, dateKey = toDateInput(new Date())) {
 }
 
 function getEmployee(id, dateKey = toDateInput(new Date())) {
-  const employee = getEmployees(true).find((item) => item.id === id) || {
+  const employee = (state?.employees || DEFAULT_EMPLOYEES).find((item) => item.id === id) || {
     id,
     label: "Empleado",
     role: "Team",
@@ -879,7 +1171,7 @@ function getEmployee(id, dateKey = toDateInput(new Date())) {
     active: false,
   };
   if (employee.id !== "third") return employee;
-  const label = dateKey >= state.settings.palomaLeaveDate ? "Reemplazo Paloma" : "Paloma";
+  const label = dateKey >= getLocationSettings(employee.locationId).palomaLeaveDate ? "Reemplazo Paloma" : "Paloma";
   return { ...employee, label };
 }
 
@@ -891,13 +1183,13 @@ function getPunchStatus(employeeId, dateKey, timestamp, geoResult) {
 
   if (!shift) return geoResult.status;
   const scheduledStart = dateWithTime(dateKey, shift.start);
-  const tolerance = Number(state.settings.lateTolerance || 5) * 60 * 1000;
+  const tolerance = Number(getLocationSettings().lateTolerance || 5) * 60 * 1000;
   return timestamp.getTime() > scheduledStart.getTime() + tolerance ? "late" : geoResult.status;
 }
 
 function getRealHoursForMonth(monthDate) {
   const monthKey = monthInputValue(monthDate);
-  const punches = state.punches
+  const punches = getLocationPunches()
     .filter((punch) => punch.date.startsWith(monthKey))
     .slice()
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -928,7 +1220,7 @@ function getSuggestions() {
   const minimumVisitors = Number(els.minimumVisitors?.value || 32);
   const monthKey = monthInputValue(activeMonth);
 
-  return state.trafficData
+  return getLocationTrafficData()
     .filter((item) => item.date.startsWith(monthKey))
     .map((item) => {
       const hour = Number(item.hour);
@@ -972,8 +1264,9 @@ function evaluateGeo(geo) {
     };
   }
 
-  const lat = Number(state.settings.storeLat);
-  const lng = Number(state.settings.storeLng);
+  const settings = getLocationSettings();
+  const lat = Number(settings.storeLat);
+  const lng = Number(settings.storeLng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return {
       status: "ok",
@@ -983,7 +1276,7 @@ function evaluateGeo(geo) {
   }
 
   const distance = distanceInMeters(lat, lng, geo.latitude, geo.longitude);
-  const radius = Number(state.settings.geoRadius || 120);
+  const radius = Number(settings.geoRadius || 120);
   return {
     status: distance <= radius ? "ok" : "outside",
     label: `${Math.round(distance)} m del local`,
@@ -1177,28 +1470,106 @@ function mergeState(base, saved) {
     ...(base.expenseCategoryOverrides || {}),
     ...(saved.expenseCategoryOverrides || {}),
   };
+  const migratedEmployees = Array.isArray(saved.employees) && saved.employees.length
+    ? mergeDefaultEmployees(saved.employees)
+    : structuredClone(base.employees);
+  const legacySettings = {
+    ...base.settings,
+    ...(saved.settings || {}),
+    holidays: saved.settings?.holidays || base.settings.holidays,
+  };
+  const locationSettings = {
+    ...structuredClone(base.locationSettings || {}),
+    ...(saved.locationSettings || {}),
+    barcelona: {
+      ...(base.locationSettings?.barcelona || {}),
+      ...legacySettings,
+      ...(saved.locationSettings?.barcelona || {}),
+      holidays: saved.locationSettings?.barcelona?.holidays || legacySettings.holidays,
+    },
+    madrid: {
+      ...(base.locationSettings?.madrid || {}),
+      ...(saved.locationSettings?.madrid || {}),
+      holidays: saved.locationSettings?.madrid?.holidays || base.locationSettings?.madrid?.holidays || MADRID_HOLIDAYS_2026,
+    },
+  };
   const merged = {
     ...structuredClone(base),
     ...saved,
-    employees: Array.isArray(saved.employees) && saved.employees.length
-      ? saved.employees
-      : structuredClone(base.employees),
+    locations: { ...LOCATIONS, ...(saved.locations || {}) },
+    employees: migratedEmployees,
     expenseCategoryOverrides,
     wasteRecords: saved.wasteRecords || base.wasteRecords,
     profiles: { ...base.profiles, ...(saved.profiles || {}) },
-    settings: {
-      ...base.settings,
-      ...(saved.settings || {}),
-      holidays: saved.settings?.holidays || base.settings.holidays,
-    },
+    locationSettings,
+    settings: legacySettings,
   };
+  addDefaultProfilesForNewEmployees(merged);
+  tagLegacyRecordsWithLocation(merged);
   merged.expenses = (merged.expenses || []).map((expense) =>
     applyExpenseCategoryOverride(expense, expenseCategoryOverrides)
   );
   return merged;
 }
 
+function mergeDefaultEmployees(savedEmployees) {
+  const byId = new Map(savedEmployees.map((employee) => [employee.id, employee]));
+  DEFAULT_EMPLOYEES.forEach((employee) => {
+    if (!byId.has(employee.id)) byId.set(employee.id, structuredClone(employee));
+  });
+  return [...byId.values()].map((employee) => ({
+    ...employee,
+    locationId: normalizeLocationId(employee.locationId || employee.branch || employee.store || DEFAULT_LOCATION_ID),
+  }));
+}
+
+function addDefaultProfilesForNewEmployees(nextState) {
+  if (!nextState.profiles) nextState.profiles = {};
+  (nextState.employees || []).forEach((employee) => {
+    nextState.profiles[employee.id] = {
+      ...(nextState.profiles[employee.id] || {}),
+      locationId: normalizeLocationId(nextState.profiles[employee.id]?.locationId || employee.locationId),
+    };
+  });
+}
+
+function tagLegacyRecordsWithLocation(nextState) {
+  const employeeLocations = new Map(
+    (nextState.employees || []).map((employee) => [employee.id, normalizeLocationId(employee.locationId)])
+  );
+  ["punches", "changes", "trafficData", "sales", "expenses", "wasteRecords"].forEach((key) => {
+    nextState[key] = (nextState[key] || []).map((item) => ({
+      ...item,
+      locationId: normalizeLocationId(item.locationId || inferRecordLocationId(item, employeeLocations)),
+    }));
+  });
+}
+
+function inferRecordLocationId(item, employeeLocations = new Map()) {
+  if (item?.employeeId) return employeeLocations.get(item.employeeId) || DEFAULT_LOCATION_ID;
+  return DEFAULT_LOCATION_ID;
+}
+
 function seedDefaultHolidays(nextState) {
+  Object.keys(DEFAULT_LOCATION_SETTINGS).forEach((locationId) => {
+    const current = nextState.locationSettings?.[locationId] || {};
+    const defaults = DEFAULT_LOCATION_SETTINGS[locationId];
+    if (!nextState.locationSettings) nextState.locationSettings = {};
+    if ((current.holidaySeedVersion || 0) < HOLIDAY_SEED_VERSION) {
+      const existingByDate = new Map((current.holidays || []).map((holiday) => [holiday.date, holiday]));
+      nextState.locationSettings[locationId] = {
+        ...defaults,
+        ...current,
+        holidays: defaults.holidays.map((holiday) => existingByDate.get(holiday.date) || holiday).concat(
+          (current.holidays || []).filter((holiday) =>
+            !defaults.holidays.some((defaultHoliday) => defaultHoliday.date === holiday.date)
+          ),
+        ),
+        holidaySeedVersion: HOLIDAY_SEED_VERSION,
+      };
+    }
+  });
+
   if ((nextState.settings.holidaySeedVersion || 0) >= HOLIDAY_SEED_VERSION) {
     return nextState;
   }
@@ -1213,6 +1584,90 @@ function seedDefaultHolidays(nextState) {
   );
   nextState.settings.holidaySeedVersion = HOLIDAY_SEED_VERSION;
   return nextState;
+}
+
+function normalizeLocationId(value) {
+  return LOCATION_IDS.includes(value) ? value : DEFAULT_LOCATION_ID;
+}
+
+function getLocation(locationId = activeLocationId) {
+  return LOCATIONS[normalizeLocationId(locationId)] || LOCATIONS[DEFAULT_LOCATION_ID];
+}
+
+function getEmployeeLocationId(employeeId) {
+  const employee = (state?.employees || DEFAULT_EMPLOYEES).find((item) => item.id === employeeId);
+  return normalizeLocationId(employee?.locationId || state?.profiles?.[employeeId]?.locationId || DEFAULT_LOCATION_ID);
+}
+
+function belongsToActiveLocation(item) {
+  return normalizeLocationId(item?.locationId || inferRecordLocationId(item)) === activeLocationId;
+}
+
+function getLocationSettings(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  if (!state.locationSettings) state.locationSettings = structuredClone(DEFAULT_LOCATION_SETTINGS);
+  if (!state.locationSettings[id]) state.locationSettings[id] = structuredClone(DEFAULT_LOCATION_SETTINGS[id]);
+  return state.locationSettings[id];
+}
+
+function updateLocationSettings(values, locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  state.locationSettings = {
+    ...(state.locationSettings || {}),
+    [id]: {
+      ...getLocationSettings(id),
+      ...values,
+    },
+  };
+  if (id === DEFAULT_LOCATION_ID) {
+    state.settings = { ...state.settings, ...state.locationSettings[id] };
+  }
+}
+
+function getLocationSales(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  return (state.sales || []).filter((sale) => normalizeLocationId(sale.locationId) === id);
+}
+
+function getLocationExpenses(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  return (state.expenses || []).filter((expense) => normalizeLocationId(expense.locationId) === id);
+}
+
+function getLocationWasteRecords(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  return (state.wasteRecords || []).filter((record) => normalizeLocationId(record.locationId) === id);
+}
+
+function getLocationPunches(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  return (state.punches || []).filter((punch) => normalizeLocationId(punch.locationId || getEmployeeLocationId(punch.employeeId)) === id);
+}
+
+function getLocationChanges(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  return (state.changes || []).filter((change) => normalizeLocationId(change.locationId || getEmployeeLocationId(change.employeeId)) === id);
+}
+
+function getLocationTrafficData(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  return (state.trafficData || []).filter((item) => normalizeLocationId(item.locationId) === id);
+}
+
+function getLocationBudgets(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  if (!state.locationBudgets) {
+    state.locationBudgets = {
+      [DEFAULT_LOCATION_ID]: state.budgets || {},
+    };
+  }
+  if (!state.locationBudgets[id]) state.locationBudgets[id] = {};
+  if (id === DEFAULT_LOCATION_ID) state.budgets = state.locationBudgets[id];
+  return state.locationBudgets[id];
+}
+
+function tagWithActiveLocation(item) {
+  return { ...item, locationId: activeLocationId };
 }
 
 function renderEmpty(container) {
@@ -1368,6 +1823,12 @@ function initRoleScreen() {
   document.querySelector("#backFromEmployeeLogin").addEventListener("click", () => showRoleStep("roleStepEmployee"));
   document.querySelector("#backFromEmployeeSetup").addEventListener("click", () => showRoleStep("roleStepEmployee"));
   document.querySelector("#backFromVisit").addEventListener("click", () => showRoleStep("roleStep1"));
+  document.querySelector("#backFromLocation").addEventListener("click", () => {
+    showRoleStep(pendingLocationRole === "visitor" ? "roleStepVisit" : "roleStepAdmin");
+  });
+  document.querySelectorAll("[data-location-choice]").forEach((button) => {
+    button.addEventListener("click", () => chooseLocation(button.dataset.locationChoice));
+  });
   document.querySelector("#submitEmployeeLogin").addEventListener("click", submitEmployeeLogin);
   document.querySelector("#submitEmployeeSetup").addEventListener("click", submitEmployeeSetup);
   document.querySelector("#submitVisitLogin").addEventListener("click", submitVisitLogin);
@@ -1384,21 +1845,33 @@ function initRoleScreen() {
 function renderEmployeeChoiceButtons() {
   const empButtons = document.querySelector("#empChoiceButtons");
   if (!empButtons) return;
-  empButtons.innerHTML = getEmployees()
+  empButtons.innerHTML = getAllEmployees()
     .filter((employee) => employee.canLogin !== false)
     .map(
       (employee) =>
-        `<button class="role-btn" data-emp-id="${employee.id}" style="background:${employee.color}" type="button">${escapeHtml(employee.label)}</button>`,
+        `<button class="role-btn" data-emp-id="${employee.id}" style="background:${employee.color}" type="button">${escapeHtml(employee.label)}<small>${getLocation(employee.locationId).label}</small></button>`,
     )
     .join("");
 }
 
 function showRoleStep(id) {
-  ["roleStep1", "roleStepEmployee", "roleStepAdmin", "roleStepEmployeeLogin", "roleStepEmployeeSetup", "roleStepVisit"]
+  ["roleStep1", "roleStepEmployee", "roleStepAdmin", "roleStepEmployeeLogin", "roleStepEmployeeSetup", "roleStepVisit", "roleStepLocation"]
     .forEach((stepId) => {
       const element = document.querySelector(`#${stepId}`);
       if (element) element.hidden = stepId !== id;
     });
+}
+
+function showLocationStep(role) {
+  pendingLocationRole = role;
+  showRoleStep("roleStepLocation");
+}
+
+function chooseLocation(locationId) {
+  activeLocationId = normalizeLocationId(locationId);
+  if (pendingLocationRole === "visitor") setVisitMode(activeLocationId);
+  else setAdminMode(activeLocationId);
+  pendingLocationRole = null;
 }
 
 async function beginEmployeeAccess(employeeId) {
@@ -1477,7 +1950,7 @@ async function submitVisitLogin() {
     errorElement.hidden = false;
     return;
   }
-  setVisitMode();
+  showLocationStep("visitor");
 }
 
 async function tryAdminPin() {
@@ -1488,7 +1961,7 @@ async function tryAdminPin() {
   const sharedLogin = await connectSharedState('admin');
   if (sharedLogin.authenticated && (sharedLogin.available || pin === correct)) {
     pinError.hidden = true;
-    setAdminMode();
+    showLocationStep("admin");
   } else {
     pinError.textContent = sharedLogin.error || "PIN incorrecto. Intentá de nuevo.";
     pinError.hidden = false;
@@ -1497,7 +1970,8 @@ async function tryAdminPin() {
   }
 }
 
-function setAdminMode() {
+function setAdminMode(locationId = DEFAULT_LOCATION_ID) {
+  activeLocationId = normalizeLocationId(locationId);
   appRole = "admin";
   document.body.classList.remove("visit-mode");
   document.querySelector("#role-screen").hidden = true;
@@ -1507,6 +1981,8 @@ function setAdminMode() {
     adminInited = true;
     init();
   } else {
+    populateSelectors();
+    hydrateSettingsForm();
     render();
     initBistrosoftSync();
   }
@@ -1516,6 +1992,7 @@ async function enterEmployeeMode(employeeId) {
   appRole = "employee";
   document.body.classList.remove("visit-mode");
   activeEmployeeId = employeeId;
+  activeLocationId = getEmployeeLocationId(employeeId);
   document.querySelector("#role-screen").hidden = true;
   document.querySelector(".app-shell").hidden = true;
   document.querySelector("#employee-app").hidden = false;
@@ -1537,7 +2014,8 @@ async function enterEmployeeMode(employeeId) {
   }
 }
 
-function setVisitMode() {
+function setVisitMode(locationId = DEFAULT_LOCATION_ID) {
+  activeLocationId = normalizeLocationId(locationId);
   appRole = "visitor";
   activeEmployeeId = null;
   document.body.classList.add("visit-mode");
@@ -1549,6 +2027,8 @@ function setVisitMode() {
     adminInited = true;
     init();
   } else {
+    populateSelectors();
+    hydrateSettingsForm();
     render();
   }
   activeFinTab = 'monthly';
@@ -1561,7 +2041,9 @@ function exitToRoleScreen() {
   disconnectSharedState();
   appRole = null;
   activeEmployeeId = null;
+  activeLocationId = DEFAULT_LOCATION_ID;
   pendingEmployeeId = null;
+  pendingLocationRole = null;
   document.body.classList.remove("visit-mode");
   document.querySelector(".app-shell").hidden = true;
   document.querySelector("#employee-app").hidden = true;
@@ -1776,7 +2258,7 @@ function renderEmpHours() {
   const contracted = hoursPerWeek > 0 ? hoursPerWeek * (new Date(year, month + 1, 0).getDate() / 7) : 0;
   const byDate = workedHoursByDate(activeEmployeeId, empHoursMonth);
   const worked = [...byDate.values()].reduce((sum, value) => sum + value, 0);
-  const holidays = (state.settings.holidays || []).filter((holiday) => holiday.date.startsWith(monthInputValue(empHoursMonth)));
+  const holidays = (getLocationSettings().holidays || []).filter((holiday) => holiday.date.startsWith(monthInputValue(empHoursMonth)));
   const holidayHours = holidays.reduce((sum, holiday) => sum + (byDate.get(holiday.date) || 0), 0);
   const difference = worked - contracted;
   const differenceClass = difference >= 0 ? 'hours-positive' : 'hours-negative';
@@ -1868,6 +2350,7 @@ async function confirmWasteAndPunch() {
 
   state.wasteRecords.push({
     id: createId(),
+    locationId: activeLocationId,
     date: toDateInput(new Date()),
     employeeId: activeEmployeeId,
     items,
@@ -1895,6 +2378,7 @@ async function performEmpPunch(type) {
   state.punches.push({
     id: createId(),
     employeeId,
+    locationId: activeLocationId,
     type,
     timestamp: now.toISOString(),
     date: dateKey,
@@ -1938,6 +2422,7 @@ function autoCloseForgottenPunches(employeeId) {
     state.punches.push({
       id: createId(),
       employeeId,
+      locationId: getEmployeeLocationId(employeeId),
       type: 'out',
       timestamp: end.toISOString(),
       date: dateKey,
@@ -2004,7 +2489,10 @@ function getProfile(employeeId) {
 }
 
 function saveProfileData(employeeId, data) {
-  state.profiles[employeeId] = { ...getProfile(employeeId), ...data };
+  const normalizedLocation = data.locationId ? normalizeLocationId(data.locationId) : getEmployeeLocationId(employeeId);
+  const employee = (state.employees || []).find((item) => item.id === employeeId);
+  if (employee) employee.locationId = normalizedLocation;
+  state.profiles[employeeId] = { ...getProfile(employeeId), ...data, locationId: normalizedLocation };
   saveState();
 }
 
@@ -2098,6 +2586,7 @@ function handleTeamMemberForm(event) {
   const label = document.querySelector('#teamMemberName').value.trim();
   const role = document.querySelector('#teamMemberRole').value.trim();
   const area = document.querySelector('#teamMemberArea').value;
+  const locationId = normalizeLocationId(document.querySelector('#teamMemberLocation')?.value || activeLocationId);
   const color = document.querySelector('#teamMemberColor').value || '#416877';
   if (!label || !role) return;
 
@@ -2107,12 +2596,14 @@ function handleTeamMemberForm(event) {
     label,
     role,
     color,
+    locationId,
     active: true,
     canLogin: true,
     activeFrom: toDateInput(new Date()),
   });
-  state.profiles[id] = { ...(state.profiles[id] || {}), area };
+  state.profiles[id] = { ...(state.profiles[id] || {}), area, locationId };
   document.querySelector('#teamMemberForm').reset();
+  document.querySelector('#teamMemberLocation').value = activeLocationId;
   document.querySelector('#teamMemberColor').value = '#416877';
   saveState();
   populateSelectors();
@@ -2123,7 +2614,7 @@ function handleTeamMemberForm(event) {
 function renderPersonnelPanel() {
   const container = document.querySelector('#teamMemberList');
   if (!container) return;
-  const employees = getEmployees(true).filter((employee) => !employee.system);
+  const employees = getAllEmployees(true).filter((employee) => !employee.system);
   container.innerHTML = employees.map((employee) => {
     const active = employee.active !== false;
     const profile = getProfile(employee.id);
@@ -2139,6 +2630,13 @@ function renderPersonnelPanel() {
           <label>
             Rol
             <input type="text" value="${escapeHtml(employee.role)}" data-team-role="${employee.id}" maxlength="60" />
+          </label>
+          <label>
+            Sucursal
+            <select data-team-location="${employee.id}">
+              <option value="barcelona"${normalizeLocationId(employee.locationId) === 'barcelona' ? ' selected' : ''}>Barcelona</option>
+              <option value="madrid"${normalizeLocationId(employee.locationId) === 'madrid' ? ' selected' : ''}>Madrid</option>
+            </select>
           </label>
           <label>
             Color en grilla
@@ -2169,8 +2667,9 @@ function renderPersonnelPanel() {
       const id = button.dataset.saveTeam;
       const employee = state.employees.find((item) => item.id === id);
       const roleInput = container.querySelector(`[data-team-role="${id}"]`);
+      const locationInput = container.querySelector(`[data-team-location="${id}"]`);
       const colorInput = container.querySelector(`[data-team-color="${id}"]`);
-      if (!employee || !roleInput || !colorInput) return;
+      if (!employee || !roleInput || !colorInput || !locationInput) return;
 
       const role = roleInput.value.trim();
       if (!role) {
@@ -2181,6 +2680,8 @@ function renderPersonnelPanel() {
 
       employee.role = role;
       employee.color = colorInput.value;
+      employee.locationId = normalizeLocationId(locationInput.value);
+      state.profiles[id] = { ...(state.profiles[id] || {}), locationId: employee.locationId };
       saveState();
       populateSelectors();
       renderEmployeeChoiceButtons();
@@ -2436,6 +2937,13 @@ function renderAdminFichas() {
   const container = document.querySelector("#fichasGrid");
   if (!container) return;
 
+  if (activeAdminFichaEditId) {
+    const activeForm = container.querySelector(`[data-ficha-form="${activeAdminFichaEditId}"]`);
+    if (activeForm && !activeForm.hidden) {
+      adminFichaEditDraft = readFichaForm(activeForm);
+    }
+  }
+
   const fields = [
     { key: "fullName", label: "Nombre completo" },
     { key: "phone", label: "Teléfono" },
@@ -2445,6 +2953,7 @@ function renderAdminFichas() {
     { key: "ssNumber", label: "N° Seg. Social" },
     { key: "iban", label: "IBAN" },
     { key: "area", label: "Área" },
+    { key: "locationId", label: "Sucursal" },
     { key: "contractType", label: "Contrato" },
     { key: "startDate", label: "Fecha inicio" },
     { key: "emergencyName", label: "Urgencia nombre" },
@@ -2453,6 +2962,10 @@ function renderAdminFichas() {
 
   container.innerHTML = getEmployees(true).map((emp) => {
     const profile = getProfile(emp.id);
+    const isEditing = activeAdminFichaEditId === emp.id;
+    const formProfile = isEditing && adminFichaEditDraft
+      ? { locationId: emp.locationId, ...profile, ...adminFichaEditDraft }
+      : { locationId: emp.locationId, ...profile };
     const rows = fields
       .map((f) => {
         const val = profile[f.key];
@@ -2464,73 +2977,79 @@ function renderAdminFichas() {
       .join("");
 
     return `
-      <div class="ficha-card${emp.active === false ? ' is-inactive' : ''}" data-ficha-card="${emp.id}">
+      <div class="ficha-card${emp.active === false ? ' is-inactive' : ''}${isEditing ? ' is-editing' : ''}" data-ficha-card="${emp.id}">
         <div class="ficha-header" style="background:${emp.color}">
           <div class="ficha-name">${escapeHtml(emp.label)}</div>
           <div class="ficha-role">${escapeHtml(emp.role)}${emp.active === false ? ' · Baja' : ''}</div>
         </div>
         <div class="ficha-card-actions">
-          <button class="mini-button" type="button" data-edit-ficha="${emp.id}">Editar ficha</button>
+          <button class="mini-button" type="button" data-edit-ficha="${emp.id}"${isEditing ? ' hidden' : ''}>Editar ficha</button>
         </div>
-        <div class="ficha-body" data-ficha-view="${emp.id}">${rows}</div>
-        <form class="ficha-edit-form" data-ficha-form="${emp.id}" hidden>
+        <div class="ficha-body" data-ficha-view="${emp.id}"${isEditing ? ' hidden' : ''}>${rows}</div>
+        <form class="ficha-edit-form" data-ficha-form="${emp.id}"${isEditing ? '' : ' hidden'}>
           <div class="ficha-edit-grid">
             <label>Nombre completo
-              <input name="fullName" type="text" value="${escapeHtml(profile.fullName || '')}" />
+              <input name="fullName" type="text" value="${escapeHtml(formProfile.fullName || '')}" />
             </label>
             <label>Teléfono
-              <input name="phone" type="tel" value="${escapeHtml(profile.phone || '')}" />
+              <input name="phone" type="tel" value="${escapeHtml(formProfile.phone || '')}" />
             </label>
             <label>Email
-              <input name="email" type="email" value="${escapeHtml(profile.email || '')}" />
+              <input name="email" type="email" value="${escapeHtml(formProfile.email || '')}" />
             </label>
             <label>Dirección
-              <input name="address" type="text" value="${escapeHtml(profile.address || '')}" />
+              <input name="address" type="text" value="${escapeHtml(formProfile.address || '')}" />
             </label>
             <label>DNI / NIE
-              <input name="dni" type="text" value="${escapeHtml(profile.dni || '')}" />
+              <input name="dni" type="text" value="${escapeHtml(formProfile.dni || '')}" />
             </label>
             <label>N° Seg. Social
-              <input name="ssNumber" type="text" value="${escapeHtml(profile.ssNumber || '')}" />
+              <input name="ssNumber" type="text" value="${escapeHtml(formProfile.ssNumber || '')}" />
             </label>
             <label>IBAN
-              <input name="iban" type="text" value="${escapeHtml(profile.iban || '')}" />
+              <input name="iban" type="text" value="${escapeHtml(formProfile.iban || '')}" />
             </label>
             <label>Área
               <select name="area">
                 <option value="">Sin definir</option>
-                <option value="Barista"${profile.area === 'Barista' ? ' selected' : ''}>Barista</option>
-                <option value="Pastelería"${profile.area === 'Pastelería' ? ' selected' : ''}>Pastelería</option>
+                <option value="Barista"${formProfile.area === 'Barista' ? ' selected' : ''}>Barista</option>
+                <option value="Pastelería"${formProfile.area === 'Pastelería' ? ' selected' : ''}>Pastelería</option>
+              </select>
+            </label>
+            <label>Sucursal
+              <select name="locationId">
+                <option value="barcelona"${normalizeLocationId(formProfile.locationId) === 'barcelona' ? ' selected' : ''}>Barcelona</option>
+                <option value="madrid"${normalizeLocationId(formProfile.locationId) === 'madrid' ? ' selected' : ''}>Madrid</option>
               </select>
             </label>
             <label>Contrato
               <select name="contractType">
                 <option value="">Sin definir</option>
-                <option value="Indefinido"${profile.contractType === 'Indefinido' ? ' selected' : ''}>Indefinido</option>
-                <option value="Temporal"${profile.contractType === 'Temporal' ? ' selected' : ''}>Temporal</option>
-                <option value="Prácticas"${profile.contractType === 'Prácticas' ? ' selected' : ''}>Prácticas</option>
-                <option value="Autónomo"${profile.contractType === 'Autónomo' ? ' selected' : ''}>Autónomo</option>
+                <option value="Indefinido"${formProfile.contractType === 'Indefinido' ? ' selected' : ''}>Indefinido</option>
+                <option value="Temporal"${formProfile.contractType === 'Temporal' ? ' selected' : ''}>Temporal</option>
+                <option value="Prácticas"${formProfile.contractType === 'Prácticas' ? ' selected' : ''}>Prácticas</option>
+                <option value="Autónomo"${formProfile.contractType === 'Autónomo' ? ' selected' : ''}>Autónomo</option>
               </select>
             </label>
             <label>Fecha inicio
-              <input name="startDate" type="date" value="${escapeHtml(profile.startDate || '')}" />
+              <input name="startDate" type="date" value="${escapeHtml(formProfile.startDate || '')}" />
             </label>
             <label>Urgencia nombre
-              <input name="emergencyName" type="text" value="${escapeHtml(profile.emergencyName || '')}" />
+              <input name="emergencyName" type="text" value="${escapeHtml(formProfile.emergencyName || '')}" />
             </label>
             <label>Urgencia teléfono
-              <input name="emergencyPhone" type="tel" value="${escapeHtml(profile.emergencyPhone || '')}" />
+              <input name="emergencyPhone" type="tel" value="${escapeHtml(formProfile.emergencyPhone || '')}" />
             </label>
           </div>
           <label>Nota interna (solo admin)
-            <textarea name="adminNotes" rows="3" placeholder="Observaciones, documentación pendiente...">${escapeHtml(profile.adminNotes || '')}</textarea>
+            <textarea name="adminNotes" rows="3" placeholder="Observaciones, documentación pendiente...">${escapeHtml(formProfile.adminNotes || '')}</textarea>
           </label>
           <div class="ficha-edit-actions">
             <button class="primary-button" type="submit">Guardar cambios</button>
             <button class="ghost-button" type="button" data-cancel-ficha="${emp.id}">Cancelar</button>
           </div>
         </form>
-        <div class="ficha-admin-notes" data-ficha-notes="${emp.id}">
+        <div class="ficha-admin-notes" data-ficha-notes="${emp.id}"${isEditing ? ' hidden' : ''}>
           <label style="display:block;font-size:0.8rem;font-weight:800;color:var(--muted)">Nota interna (solo admin)</label>
           <p>${profile.adminNotes ? escapeHtml(profile.adminNotes) : 'Sin observaciones.'}</p>
         </div>
@@ -2540,35 +3059,50 @@ function renderAdminFichas() {
   container.querySelectorAll("[data-edit-ficha]").forEach((button) => {
     button.addEventListener("click", () => {
       const id = button.dataset.editFicha;
-      container.querySelector(`[data-ficha-card="${id}"]`).classList.add("is-editing");
-      container.querySelector(`[data-ficha-view="${id}"]`).hidden = true;
-      container.querySelector(`[data-ficha-notes="${id}"]`).hidden = true;
-      container.querySelector(`[data-ficha-form="${id}"]`).hidden = false;
-      button.hidden = true;
+      activeAdminFichaEditId = id;
+      adminFichaEditDraft = { ...getProfile(id) };
+      renderAdminFichas();
     });
   });
 
   container.querySelectorAll("[data-cancel-ficha]").forEach((button) => {
-    button.addEventListener("click", renderAdminFichas);
-  });
-
-  container.querySelectorAll("[data-ficha-form]").forEach((form) => {
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const data = {};
-      new FormData(form).forEach((value, key) => {
-        data[key] = String(value).trim();
-      });
-      saveProfileData(form.dataset.fichaForm, data);
+    button.addEventListener("click", () => {
+      activeAdminFichaEditId = null;
+      adminFichaEditDraft = null;
       renderAdminFichas();
     });
   });
+
+  container.querySelectorAll("[data-ficha-form]").forEach((form) => {
+    form.addEventListener("input", () => {
+      if (form.dataset.fichaForm === activeAdminFichaEditId) {
+        adminFichaEditDraft = readFichaForm(form);
+      }
+    });
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const data = readFichaForm(form);
+      saveProfileData(form.dataset.fichaForm, data);
+      activeAdminFichaEditId = null;
+      adminFichaEditDraft = null;
+      renderAdminFichas();
+    });
+  });
+}
+
+function readFichaForm(form) {
+  const data = {};
+  new FormData(form).forEach((value, key) => {
+    data[key] = String(value).trim();
+  });
+  return data;
 }
 
 function handleEmpChangeForm(event) {
   event.preventDefault();
   state.changes.push({
     id: createId(),
+    locationId: activeLocationId,
     date: document.querySelector("#empChangeDate").value,
     employeeId: activeEmployeeId,
     replacementEmployeeId: "",
@@ -2668,7 +3202,7 @@ function initFinanzas() {
 
   document.querySelector('#finClearSales').addEventListener('click', () => {
     if (confirm('¿Borrar todas las ventas importadas?')) {
-      state.sales = [];
+      state.sales = (state.sales || []).filter((sale) => !belongsToActiveLocation(sale));
       render();
     }
   });
@@ -2720,10 +3254,20 @@ async function handleBistrosoftSyncClick() {
 }
 
 async function initBistrosoftSync() {
+  clearInterval(finBistroSync.timer);
+  finBistroSync.timer = null;
+  finBistroSync.available = null;
+  finBistroSync.backendAvailable = null;
+  finBistroSync.connected = false;
+  finBistroSync.lastSyncAt = null;
+  finBistroSync.lastRange = null;
+  finBistroSync.lastCount = 0;
+  finBistroSync.error = null;
+  finBistroSync.historyProgress = null;
   renderFinSyncStatus();
 
   try {
-    const response = await fetch('/api/bistrosoft/status', { cache: 'no-store' });
+    const response = await fetch(`/api/bistrosoft/status?location=${encodeURIComponent(activeLocationId)}`, { cache: 'no-store' });
     if (!response.ok) throw new Error('Servidor local no disponible');
 
     const status = await response.json();
@@ -2788,7 +3332,7 @@ async function syncBistrosoftRange(from, until, silent = true) {
 }
 
 async function fetchBistrosoftRange(from, until) {
-  const query = new URLSearchParams({ from, until });
+  const query = new URLSearchParams({ from, until, location: activeLocationId });
   const response = await fetch(`/api/bistrosoft/sales?${query}`, { cache: 'no-store' });
   const payload = await response.json();
   if (!response.ok || !payload.ok || !Array.isArray(payload.sales)) {
@@ -2797,19 +3341,21 @@ async function fetchBistrosoftRange(from, until) {
 
   const imported = payload.sales.filter((sale) =>
     sale && typeof sale.date === 'string' && Number.isFinite(Number(sale.total))
-  );
+  ).map((sale) => ({ ...sale, locationId: activeLocationId }));
   const importedExpenses = (payload.expenses || [])
     .filter((expense) =>
       expense && typeof expense.date === 'string' && Number.isFinite(Number(expense.amount))
     )
-    .map((expense) => applyExpenseCategoryOverride(expense));
+    .map((expense) => applyExpenseCategoryOverride({ ...expense, locationId: activeLocationId }));
   state.sales = [
-    ...state.sales.filter((sale) => !(sale.date >= from && sale.date < until)),
+    ...state.sales.filter((sale) =>
+      !(belongsToActiveLocation(sale) && sale.date >= from && sale.date < until)
+    ),
     ...imported,
   ];
   state.expenses = [
     ...state.expenses.filter((expense) =>
-      !(expense._source === 'bistrosoft' && expense.date >= from && expense.date < until)
+      !(belongsToActiveLocation(expense) && expense._source === 'bistrosoft' && expense.date >= from && expense.date < until)
     ),
     ...importedExpenses,
   ];
@@ -2834,14 +3380,17 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
   renderFinSyncStatus();
 
   try {
-    const response = await fetch('/api/bistrosoft/months', { cache: 'no-store' });
+    const response = await fetch(`/api/bistrosoft/months?location=${encodeURIComponent(activeLocationId)}`, { cache: 'no-store' });
     const payload = await response.json();
     if (!response.ok || !payload.ok || !Array.isArray(payload.months)) {
       throw new Error(payload.error || 'No se pudo consultar el historial de Bistrosoft.');
     }
 
-    const syncedSalesMonths = new Set(state.bistroSalesSyncedMonths || []);
-    const syncedExpenseMonths = new Set(state.bistroExpenseSyncedMonths || []);
+    const locationSync = state.bistroSyncedMonthsByLocation?.[activeLocationId] || {};
+    const legacySalesMonths = activeLocationId === DEFAULT_LOCATION_ID ? state.bistroSalesSyncedMonths || [] : [];
+    const legacyExpenseMonths = activeLocationId === DEFAULT_LOCATION_ID ? state.bistroExpenseSyncedMonths || [] : [];
+    const syncedSalesMonths = new Set(locationSync.sales || legacySalesMonths);
+    const syncedExpenseMonths = new Set(locationSync.expenses || legacyExpenseMonths);
     const allMonths = payload.months.slice().sort();
     const months = onlyMissing
       ? allMonths.filter((month) =>
@@ -2903,7 +3452,7 @@ function renderFinSyncStatus() {
   button.textContent = finBistroSync.available === false ? 'Reintentar conexion' : 'Sincronizar ahora';
 
   if (finBistroSync.syncing) {
-    title.textContent = 'Sincronizando Bistrosoft...';
+    title.textContent = `Sincronizando Bistrosoft ${getLocation().label}...`;
     detail.textContent = finBistroSync.historyProgress || 'Leyendo las ventas del periodo seleccionado.';
     return;
   }
@@ -2913,7 +3462,7 @@ function renderFinSyncStatus() {
       ? 'Bistrosoft no esta configurado en el hosting'
       : 'La web se abrio sin el servidor de Bistrosoft';
     detail.textContent = finBistroSync.backendAvailable
-      ? 'Configura BISTROSOFT_USERNAME y BISTROSOFT_PASSWORD en el servidor.'
+      ? `Configura las variables Bistrosoft de ${getLocation().label} en Netlify.`
       : finBistroSync.error || 'Ejecuta ABRIR APLICACION.cmd.';
     return;
   }
@@ -2928,7 +3477,7 @@ function renderFinSyncStatus() {
     const syncDate = finBistroSync.lastSyncAt
       ? new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(finBistroSync.lastSyncAt))
       : 'pendiente';
-    title.textContent = 'Bistrosoft conectado';
+    title.textContent = `Bistrosoft ${getLocation().label} conectado`;
     detail.textContent = `Ultima lectura: ${syncDate}${finBistroSync.lastCount ? ` · ${finBistroSync.lastCount} ventas` : ''}`;
     return;
   }
@@ -2974,6 +3523,7 @@ function renderFinanzas() {
   else if (activeFinTab === 'monthly') renderFinMonthly();
   else if (activeFinTab === 'pnl') renderFinPnl();
   else if (activeFinTab === 'presupuesto') renderFinPresupuesto();
+  else if (activeFinTab === 'audit') renderFinAudit();
 }
 
 // -------- HOY --------
@@ -2985,7 +3535,7 @@ function getMonthSalesProjection(referenceDate = new Date()) {
   const until = toDateInput(referenceDate);
   const elapsedDays = referenceDate.getDate();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const soldToDate = state.sales
+  const soldToDate = getLocationSales()
     .filter((sale) => sale.date >= from && sale.date <= until)
     .reduce((sum, sale) => sum + Number(sale.total || 0), 0);
   const dailyAverage = elapsedDays > 0 ? soldToDate / elapsedDays : 0;
@@ -3072,7 +3622,7 @@ function renderFinHoy() {
 function renderFinImport() {
   const byDate = groupSalesByDate();
   const dates = Object.keys(byDate).sort().reverse();
-  const totalTicketCount = state.sales.reduce((s, t) => s + (t.count || 1), 0);
+  const totalTicketCount = getLocationSales().reduce((s, t) => s + (t.count || 1), 0);
   document.querySelector('#finSalesSummary').textContent = `${totalTicketCount} tickets`;
 
   const list = document.querySelector('#finSalesList');
@@ -3104,7 +3654,7 @@ function renderFinImport() {
 
   list.querySelectorAll('[data-delete-day]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      state.sales = state.sales.filter((s) => s.date !== btn.dataset.deleteDay);
+      state.sales = state.sales.filter((s) => !(belongsToActiveLocation(s) && s.date === btn.dataset.deleteDay));
       render();
     });
   });
@@ -3114,7 +3664,7 @@ function renderFinImport() {
 
 function renderFinExpenses() {
   const monthKey = monthInputValue(finActiveMonth);
-  const expenses = state.expenses
+  const expenses = getLocationExpenses()
     .filter((expense) => expense.date.startsWith(monthKey))
     .slice()
     .sort((a, b) =>
@@ -3180,7 +3730,7 @@ function renderFinWaste() {
   const container = document.querySelector('#finWasteTable');
   if (!container) return;
   const monthKey = monthInputValue(finActiveMonth);
-  const records = (state.wasteRecords || [])
+  const records = getLocationWasteRecords()
     .filter((record) => record.date.startsWith(monthKey))
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date) || a.submittedAt.localeCompare(b.submittedAt));
@@ -3297,7 +3847,7 @@ function resetExpenseForm() {
 function renderFinDiferidos() {
   const container = document.querySelector('#finDiferidosList');
   const summaryEl = document.querySelector('#finDiferidosSummary');
-  const diferidos = state.expenses
+  const diferidos = getLocationExpenses()
     .filter((e) => e.isDiferido)
     .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
 
@@ -3386,7 +3936,7 @@ function renderFinDiferidos() {
       const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
       const yStr = yesterday.toISOString().slice(0, 10);
       state.expenses = state.expenses.map((e) =>
-        e.isDiferido && e.dueDate === key ? { ...e, dueDate: yStr } : e
+        belongsToActiveLocation(e) && e.isDiferido && e.dueDate === key ? { ...e, dueDate: yStr } : e
       );
       render();
     });
@@ -3449,8 +3999,8 @@ function renderFinMonthly() {
 
   // ── Resumen por concepto ──
   const monthKey = monthInputValue(finActiveMonth);
-  const budget   = (state.budgets || {})[monthKey] || {};
-  const monthExp = state.expenses.filter((e) => e.date.startsWith(monthKey));
+  const budget   = getLocationBudgets()[monthKey] || {};
+  const monthExp = getLocationExpenses().filter((e) => e.date.startsWith(monthKey));
 
   // totales reales por categoría
   const catTotals = {};
@@ -3578,17 +4128,19 @@ function appendMonthlyResultSummary(totSales, totalExpenses, result, resultClass
 function renderFinPnl() {
   document.querySelector('#finPnlYear').textContent = finPnlYear;
   const catIds = EXPENSE_CATEGORIES.map((c) => c.id);
+  const locationSales = getLocationSales();
+  const locationExpenses = getLocationExpenses();
   const yearTotByCat = {};
   catIds.forEach((id) => { yearTotByCat[id] = 0; });
   let yearTotSales = 0, yearTotExp = 0;
 
   const rows = MONTH_NAMES.map((monthName, mi) => {
     const monthKey = `${finPnlYear}-${String(mi + 1).padStart(2, '0')}`;
-    const mSales = state.sales.filter((s) => s.date.startsWith(monthKey)).reduce((s, t) => s + t.total, 0);
+    const mSales = locationSales.filter((s) => s.date.startsWith(monthKey)).reduce((s, t) => s + t.total, 0);
     const byCat = {};
     catIds.forEach((id) => { byCat[id] = 0; });
     // Para gastos diferidos TC usar dueDate; para el resto usar date
-    state.expenses.filter((e) => {
+    locationExpenses.filter((e) => {
       const effectiveDate = (e.isDiferido && e.dueDate) ? e.dueDate : e.date;
       return effectiveDate.startsWith(monthKey);
     }).forEach((e) => {
@@ -3662,7 +4214,11 @@ async function handleSalesCsvImport(event) {
   }
 
   const dates = [...new Set(imported.map((t) => t.date))].sort();
-  state.sales = [...state.sales.filter((s) => !dates.includes(s.date)), ...imported];
+  const taggedImported = imported.map((ticket) => ({ ...ticket, locationId: activeLocationId }));
+  state.sales = [
+    ...state.sales.filter((s) => !(belongsToActiveLocation(s) && dates.includes(s.date))),
+    ...taggedImported,
+  ];
 
   finPendingFile = null;
   document.querySelector('#finFileInput').value = '';
@@ -3835,6 +4391,7 @@ function handleExpenseForm(event) {
     isDiferido:  isDif,
     dueDate:     isDif ? document.querySelector('#finExpDueDate').value : null,
     paymentMethod: isDif ? 'tc' : 'efectivo',
+    locationId:   normalizeLocationId(existingExpense?.locationId || activeLocationId),
   };
 
   if (finEditingExpenseId) {
@@ -4110,17 +4667,17 @@ function renderFinPresupuesto() {
   const monthKey   = monthInputValue(finActiveMonth);
   const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
 
-  if (!state.budgets) state.budgets = {};
-  const budget = state.budgets[monthKey] || {};
+  const locationBudgets = getLocationBudgets();
+  const budget = locationBudgets[monthKey] || {};
 
   // Gastos reales del mes por categoría
   const realExp = {};
-  state.expenses
+  getLocationExpenses()
     .filter((e) => e.date.startsWith(monthKey))
     .forEach((e) => { realExp[e.category] = (realExp[e.category] || 0) + e.amount; });
 
   // Ventas reales
-  const realSales    = state.sales.filter((s) => s.date.startsWith(monthKey)).reduce((s, t) => s + t.total, 0);
+  const realSales    = getLocationSales().filter((s) => s.date.startsWith(monthKey)).reduce((s, t) => s + t.total, 0);
   const budgetSales  = parseFloat(budget['ventas']) || 0;
   const salesDiff    = realSales - budgetSales;
   const salesDiffCls = salesDiff >= 0 ? 'fin-cell-positive' : 'fin-cell-negative';
@@ -4258,9 +4815,11 @@ function renderFinPresupuesto() {
       const key   = ev.target.dataset.bkey;
       const month = ev.target.dataset.bmonth;
       const val   = parseFloat(ev.target.value) || 0;
-      if (!state.budgets[month]) state.budgets[month] = {};
-      if (val > 0) state.budgets[month][key] = val;
-      else         delete state.budgets[month][key];
+      const budgets = getLocationBudgets();
+      if (!budgets[month]) budgets[month] = {};
+      if (val > 0) budgets[month][key] = val;
+      else         delete budgets[month][key];
+      if (activeLocationId === DEFAULT_LOCATION_ID) state.budgets = budgets;
       saveState();
       renderFinPresupuesto();
     });
@@ -4275,8 +4834,10 @@ function renderFinResumen() {
 
   // Recoger todos los meses con datos
   const monthSet = new Set();
-  state.sales.forEach((s) => monthSet.add(s.date.slice(0, 7)));
-  state.expenses.forEach((e) => monthSet.add(e.date.slice(0, 7)));
+  const locationSales = getLocationSales();
+  const locationExpenses = getLocationExpenses();
+  locationSales.forEach((s) => monthSet.add(s.date.slice(0, 7)));
+  locationExpenses.forEach((e) => monthSet.add(e.date.slice(0, 7)));
   const months = [...monthSet].sort();
 
   if (months.length === 0) {
@@ -4287,8 +4848,8 @@ function renderFinResumen() {
   // Calcular métricas por mes
   const data = months.map((ym) => {
     const [y, m] = ym.split('-').map(Number);
-    const sales    = state.sales.filter((s) => s.date.startsWith(ym));
-    const expenses = state.expenses.filter((e) => e.date.startsWith(ym));
+    const sales    = locationSales.filter((s) => s.date.startsWith(ym));
+    const expenses = locationExpenses.filter((e) => e.date.startsWith(ym));
     const totalSales    = sales.reduce((s, t) => s + t.total, 0);
     const totalTickets  = sales.reduce((s, t) => s + (t.count || 1), 0);
     const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
@@ -4421,11 +4982,134 @@ function renderFinResumen() {
     </div>`;
 }
 
+// -------- AUDITORIA SUCURSALES --------
+
+function summarizeSalesForLocation(locationId, monthKey) {
+  const map = new Map();
+  getLocationSales(locationId)
+    .filter((sale) => sale.date.startsWith(monthKey))
+    .forEach((sale) => {
+      const current = map.get(sale.date) || { sales: 0, tickets: 0 };
+      current.sales += Number(sale.total || 0);
+      current.tickets += Number(sale.count || 1);
+      map.set(sale.date, current);
+    });
+  return map;
+}
+
+function renderFinAudit() {
+  const el = document.querySelector('#finAuditContent');
+  if (!el) return;
+
+  const monthKey = monthInputValue(finActiveMonth);
+  const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  const days = getMonthDays(finActiveMonth);
+  const branchMaps = {
+    barcelona: summarizeSalesForLocation('barcelona', monthKey),
+    madrid: summarizeSalesForLocation('madrid', monthKey),
+  };
+
+  const rowsData = days.map((date) => {
+    const dateKey = toDateInput(date);
+    const barcelona = branchMaps.barcelona.get(dateKey) || { sales: 0, tickets: 0 };
+    const madrid = branchMaps.madrid.get(dateKey) || { sales: 0, tickets: 0 };
+    return {
+      dateKey,
+      barcelona,
+      madrid,
+      total: barcelona.sales + madrid.sales,
+      diff: barcelona.sales - madrid.sales,
+    };
+  });
+
+  const totals = rowsData.reduce((acc, row) => {
+    acc.barcelonaSales += row.barcelona.sales;
+    acc.barcelonaTickets += row.barcelona.tickets;
+    acc.madridSales += row.madrid.sales;
+    acc.madridTickets += row.madrid.tickets;
+    acc.totalSales += row.total;
+    return acc;
+  }, {
+    barcelonaSales: 0,
+    barcelonaTickets: 0,
+    madridSales: 0,
+    madridTickets: 0,
+    totalSales: 0,
+  });
+  const maxDaily = Math.max(
+    1,
+    ...rowsData.map((row) => Math.max(row.barcelona.sales, row.madrid.sales, row.total)),
+  );
+
+  const rows = rowsData.map((row) => {
+    const hasData = row.total > 0;
+    const diffClass = row.diff > 0 ? 'fin-cell-positive' : row.diff < 0 ? 'fin-cell-negative' : '';
+    const bPct = Math.round(row.barcelona.sales / maxDaily * 100);
+    const mPct = Math.round(row.madrid.sales / maxDaily * 100);
+    return `
+      <tr${hasData ? '' : ' class="fin-row-empty"'}>
+        <td>${formatHumanDate(row.dateKey)}</td>
+        <td class="fin-cell-num">
+          ${row.barcelona.sales > 0 ? formatEur(row.barcelona.sales) : '&mdash;'}
+          ${row.barcelona.sales > 0 ? `<div class="fin-mini-bar-wrap"><div class="fin-mini-bar fin-mini-bar-sales" style="width:${bPct}%"></div></div>` : ''}
+        </td>
+        <td class="fin-cell-num">${row.barcelona.tickets || '&mdash;'}</td>
+        <td class="fin-cell-num">
+          ${row.madrid.sales > 0 ? formatEur(row.madrid.sales) : '&mdash;'}
+          ${row.madrid.sales > 0 ? `<div class="fin-mini-bar-wrap"><div class="fin-mini-bar" style="width:${mPct}%;background:var(--coffee)"></div></div>` : ''}
+        </td>
+        <td class="fin-cell-num">${row.madrid.tickets || '&mdash;'}</td>
+        <td class="fin-cell-num">${row.total > 0 ? formatEur(row.total) : '&mdash;'}</td>
+        <td class="fin-cell-num ${diffClass}">${hasData ? (row.diff >= 0 ? '+' : '') + formatEur(row.diff) : '&mdash;'}</td>
+      </tr>`;
+  }).join('');
+
+  const totalDiff = totals.barcelonaSales - totals.madridSales;
+  const totalDiffClass = totalDiff >= 0 ? 'fin-cell-positive' : 'fin-cell-negative';
+  el.innerHTML = `
+    <div class="fin-table-header" style="margin-bottom:16px">
+      <div>
+        <h3>Auditoria diaria Barcelona / Madrid</h3>
+        <p class="form-note">Comparativo mensual por dia para detectar rapido diferencias, faltantes o picos de venta.</p>
+      </div>
+      <strong>${monthLabel}</strong>
+    </div>
+    <div class="fin-kpi-grid fin-resumen-kpi-grid" style="margin-bottom:18px">
+      <div class="fin-kpi-card"><span>Barcelona</span><strong>${formatEur(totals.barcelonaSales)}</strong><small>${totals.barcelonaTickets} tickets</small></div>
+      <div class="fin-kpi-card"><span>Madrid</span><strong>${formatEur(totals.madridSales)}</strong><small>${totals.madridTickets} tickets</small></div>
+      <div class="fin-kpi-card"><span>Total dos locales</span><strong>${formatEur(totals.totalSales)}</strong></div>
+      <div class="fin-kpi-card"><span>Diferencia BCN - MAD</span><strong class="${totalDiffClass}">${(totalDiff >= 0 ? '+' : '') + formatEur(totalDiff)}</strong></div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="fin-table">
+        <thead><tr>
+          <th>Fecha</th>
+          <th class="fin-cell-num">Barcelona</th>
+          <th class="fin-cell-num">Tickets BCN</th>
+          <th class="fin-cell-num">Madrid</th>
+          <th class="fin-cell-num">Tickets MAD</th>
+          <th class="fin-cell-num">Total</th>
+          <th class="fin-cell-num">Dif. BCN-MAD</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="fin-total-row">
+          <td>Total ${monthLabel}</td>
+          <td class="fin-cell-num">${formatEur(totals.barcelonaSales)}</td>
+          <td class="fin-cell-num">${totals.barcelonaTickets}</td>
+          <td class="fin-cell-num">${formatEur(totals.madridSales)}</td>
+          <td class="fin-cell-num">${totals.madridTickets}</td>
+          <td class="fin-cell-num">${formatEur(totals.totalSales)}</td>
+          <td class="fin-cell-num ${totalDiffClass}">${(totalDiff >= 0 ? '+' : '') + formatEur(totalDiff)}</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+}
+
 // -------- METRICS --------
 
 function calcDayMetrics(date) {
-  const sales = state.sales.filter((s) => s.date === date);
-  const expenses = state.expenses.filter((e) => e.date === date);
+  const sales = getLocationSales().filter((s) => s.date === date);
+  const expenses = getLocationExpenses().filter((e) => e.date === date);
   const totalSales = sales.reduce((s, t) => s + t.total, 0);
   const ticketCount = sales.reduce((s, t) => s + (t.count || 1), 0);
   const avgTicket = ticketCount > 0 ? totalSales / ticketCount : 0;
@@ -4456,7 +5140,7 @@ function calcDayMetrics(date) {
 
 function groupSalesByDate() {
   const map = {};
-  state.sales.forEach((s) => {
+  getLocationSales().forEach((s) => {
     if (!map[s.date]) map[s.date] = [];
     map[s.date].push(s);
   });
@@ -4475,23 +5159,25 @@ function exportMonthlyCsv() {
     rows.push([dk, m.totalSales.toFixed(2), m.ticketCount, m.ticketCount ? m.avgTicket.toFixed(2) : '', m.totalExpenses.toFixed(2), (m.totalSales - m.totalExpenses).toFixed(2)]);
   });
   rows.push(['TOTAL', totS.toFixed(2), totT, totT ? (totS / totT).toFixed(2) : '', totE.toFixed(2), (totS - totE).toFixed(2)]);
-  downloadCsv(rows, `oss-finanzas-${monthInputValue(finActiveMonth)}.csv`);
+  downloadCsv(rows, `oss-finanzas-${activeLocationId}-${monthInputValue(finActiveMonth)}.csv`);
 }
 
 function exportPnlCsv() {
   const catIds = EXPENSE_CATEGORIES.map((c) => c.id);
   const catLabels = EXPENSE_CATEGORIES.map((c) => c.label);
   const rows = [['Mes', 'Ventas', ...catLabels, 'Total gastos', 'Resultado']];
+  const locationSales = getLocationSales();
+  const locationExpenses = getLocationExpenses();
   MONTH_NAMES.forEach((name, mi) => {
     const mk = `${finPnlYear}-${String(mi + 1).padStart(2, '0')}`;
-    const mSales = state.sales.filter((s) => s.date.startsWith(mk)).reduce((s, t) => s + t.total, 0);
+    const mSales = locationSales.filter((s) => s.date.startsWith(mk)).reduce((s, t) => s + t.total, 0);
     const byCat = {};
     catIds.forEach((id) => { byCat[id] = 0; });
-    state.expenses.filter((e) => e.date.startsWith(mk)).forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
+    locationExpenses.filter((e) => e.date.startsWith(mk)).forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
     const mExp = catIds.reduce((s, id) => s + byCat[id], 0);
     rows.push([name, mSales.toFixed(2), ...catIds.map((id) => byCat[id].toFixed(2)), mExp.toFixed(2), (mSales - mExp).toFixed(2)]);
   });
-  downloadCsv(rows, `oss-pnl-${finPnlYear}.csv`);
+  downloadCsv(rows, `oss-pnl-${activeLocationId}-${finPnlYear}.csv`);
 }
 
 function downloadCsv(rows, filename) {
