@@ -935,13 +935,7 @@ async function importStateBackupFile(event) {
     const nextState = seedDefaultHolidays(mergeState(DEFAULT_STATE, importedState));
 
     if (sharedStateEnabled && appRole === "admin") {
-      const response = await fetch("/api/state", {
-        method: "PUT",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: nextState }),
-      });
-      if (!response.ok) throw new Error("No se pudo guardar el respaldo en Netlify.");
+      await saveImportedStateToServer(nextState);
     }
 
     state = nextState;
@@ -955,6 +949,39 @@ async function importStateBackupFile(event) {
     setBackupStatus(error.message || "No se pudo importar el respaldo.", true);
   } finally {
     event.target.value = "";
+  }
+}
+
+async function parseApiError(response, fallback) {
+  try {
+    const payload = await response.json();
+    return payload?.error || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+async function saveImportedStateToServer(nextState) {
+  const body = JSON.stringify({ state: nextState });
+  let response = await fetch("/api/state/import", {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+
+  if (response.status === 404) {
+    response = await fetch("/api/state", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+  }
+
+  if (!response.ok) {
+    const detail = await parseApiError(response, "No se pudo guardar el respaldo en Netlify.");
+    throw new Error(`${detail} (HTTP ${response.status})`);
   }
 }
 
@@ -1637,7 +1664,10 @@ async function flushSharedState() {
       exitToRoleScreen();
       return;
     }
-    if (!response.ok) throw new Error('No se pudo guardar el estado compartido.');
+    if (!response.ok) {
+      const detail = await parseApiError(response, 'No se pudo guardar el estado compartido.');
+      throw new Error(`${detail} (HTTP ${response.status})`);
+    }
   } catch (error) {
     console.warn(error.message);
     sharedStatePending = true;

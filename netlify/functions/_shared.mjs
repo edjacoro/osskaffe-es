@@ -168,6 +168,14 @@ export async function updateState(mutator) {
   throw new Error("No se pudo guardar el estado por escrituras simultaneas.");
 }
 
+export async function replaceState(nextState) {
+  if (!nextState || typeof nextState !== "object") {
+    throw new Error("Estado invalido.");
+  }
+  await stateStore().setJSON(STATE_KEY, nextState);
+  return nextState;
+}
+
 export function isActiveEmployee(fullState, employeeId) {
   const employees = Array.isArray(fullState?.employees) ? fullState.employees : [
     { id: "chelo", active: true, canLogin: true, locationId: "barcelona" },

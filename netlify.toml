@@ -29,6 +29,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/state/import"
+  to = "/.netlify/functions/state-import"
+  status = 200
+
+[[redirects]]
   from = "/api/team"
   to = "/.netlify/functions/team-list"
   status = 200
