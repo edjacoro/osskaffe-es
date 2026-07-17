@@ -1502,6 +1502,21 @@ textarea {
   font-weight: 400;
 }
 
+.ficha-schedule-summary {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fbfc;
+  font-size: 0.84rem;
+}
+
+.ficha-schedule-summary strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+}
+
 .ficha-admin-notes {
   padding: 12px 20px 16px;
   border-top: 1px solid var(--line);
@@ -1536,11 +1551,96 @@ textarea {
   margin-top: 4px;
 }
 
+.base-schedule-editor {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbfc;
+}
+
+.base-schedule-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+  gap: 12px;
+  align-items: start;
+}
+
+.base-schedule-head h4 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.base-schedule-anchor {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px dashed #c8d7e1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.base-schedule-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 10px 0;
+}
+
+.base-schedule-week {
+  margin-top: 12px;
+}
+
+.base-schedule-week-title {
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.base-schedule-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.base-schedule-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(110px, 140px) minmax(110px, 140px);
+  gap: 8px;
+  align-items: end;
+  padding: 8px;
+  border: 1px solid #e1ebf1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.base-schedule-row.is-disabled {
+  opacity: 0.58;
+  background: #f3f6f8;
+}
+
+.base-schedule-day {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  font-weight: 850;
+}
+
+.base-schedule-day input {
+  width: auto;
+}
+
 @media (max-width: 620px) {
   .ficha-card.is-editing {
     grid-column: auto;
   }
   .ficha-edit-grid {
+    grid-template-columns: 1fr;
+  }
+  .base-schedule-head,
+  .base-schedule-row {
     grid-template-columns: 1fr;
   }
 }
@@ -1692,7 +1792,7 @@ textarea {
 
 .fin-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   padding: 20px;
   border-bottom: 1px solid var(--line);
@@ -1717,6 +1817,13 @@ textarea {
   font-size: 1.55rem;
   color: var(--blue-dark);
   line-height: 1.1;
+}
+
+.fin-kpi-card small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .fin-kpi-positive {
@@ -1848,14 +1955,70 @@ textarea {
 .heatmap-table th,
 .heatmap-table td {
   text-align: center;
-  min-width: 82px;
+  min-width: 38px;
+  padding: 6px 5px;
 }
 
 .heatmap-cell {
-  border-radius: 8px;
+  height: 32px;
+  border: 2px solid #fff;
+  border-radius: 6px;
   color: var(--ink);
   font-size: 0.78rem;
   line-height: 1.2;
+}
+
+.traffic-visual-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(420px, 1.25fr);
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.traffic-visual-grid h3 {
+  margin: 0 0 10px;
+}
+
+.traffic-heatmap-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.traffic-heatmap-panel h3 small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.traffic-heatmap-scroll {
+  overflow-x: auto;
+}
+
+.traffic-heatmap-panel .fin-table {
+  min-width: 0;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 1050px) {
+  .fin-kpi-grid,
+  .fin-resumen-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .traffic-visual-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .fin-kpi-grid,
+  .fin-resumen-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 .heatmap-cell strong,
@@ -1882,6 +2045,18 @@ textarea {
 /* ── Resumen KPIs ── */
 .fin-resumen-kpi-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 1050px) {
+  .fin-resumen-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .fin-resumen-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 .fin-resumen-current {

@@ -108,6 +108,74 @@ const DEFAULT_EMPLOYEES = [
   },
 ];
 
+const SCHEDULE_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DEFAULT_SCHEDULE_ANCHOR = "2026-01-05";
+
+function scheduleWeek(entries = {}) {
+  return SCHEDULE_DAY_ORDER.reduce((week, day) => {
+    const value = entries[day];
+    week[day] = value ? [{ start: value[0], end: value[1] }] : [];
+    return week;
+  }, {});
+}
+
+function baseSchedule(weekA = {}, options = {}) {
+  return {
+    mode: options.mode || "weekly",
+    anchorDate: options.anchorDate || DEFAULT_SCHEDULE_ANCHOR,
+    weeks: {
+      a: scheduleWeek(weekA),
+      b: scheduleWeek(options.weekB || weekA),
+    },
+  };
+}
+
+const DEFAULT_BASE_SCHEDULES = {
+  chelo: baseSchedule({
+    1: ["14:00", "20:00"],
+    2: ["14:00", "20:00"],
+    3: ["14:00", "20:00"],
+    4: ["14:00", "20:00"],
+    5: ["14:00", "20:00"],
+  }),
+  sebastian: baseSchedule({
+    3: ["08:00", "14:00"],
+    4: ["08:00", "14:00"],
+    5: ["08:00", "14:00"],
+    6: ["08:30", "14:30"],
+    0: ["09:30", "14:30"],
+  }),
+  third: baseSchedule({
+    1: ["08:00", "14:00"],
+    2: ["08:00", "14:00"],
+    6: ["12:00", "20:00"],
+    0: ["12:00", "20:00"],
+  }),
+  pablo: baseSchedule({}),
+  micaela: baseSchedule({
+    1: ["08:30", "14:00"],
+    2: ["08:30", "14:00"],
+    3: ["08:30", "14:00"],
+    4: ["08:30", "14:00"],
+    5: ["08:30", "14:00"],
+  }),
+  bonnie: baseSchedule({
+    1: ["16:00", "19:00"],
+    0: ["15:00", "20:00"],
+  }),
+  perla: baseSchedule({
+    2: ["16:00", "20:00"],
+    4: ["16:00", "20:00"],
+    6: ["09:00", "14:00"],
+  }),
+  guillermo: baseSchedule({
+    3: ["16:00", "20:00"],
+    5: ["16:00", "20:00"],
+    6: ["16:00", "20:00"],
+    0: ["10:00", "15:00"],
+  }),
+};
+
 const HOLIDAY_SEED_VERSION = 1;
 const DEFAULT_HOLIDAYS_2026 = [
   { date: "2026-01-01", name: "Año Nuevo", open: "10:00", close: "19:00" },
@@ -178,6 +246,7 @@ const DEFAULT_STATE = {
   expenseCategoryOverrides: {},
   wasteRecords: [],
   contracts: {},
+  baseSchedules: DEFAULT_BASE_SCHEDULES,
   budgets: {},
   locations: LOCATIONS,
   locationSettings: DEFAULT_LOCATION_SETTINGS,
@@ -196,6 +265,7 @@ let empEventsInited = false;
 let activeFichasTab = 'fichas';
 let activeAdminFichaEditId = null;
 let adminFichaEditDraft = null;
+let adminBaseScheduleEditDraft = null;
 let sharedStateEnabled = false;
 let sharedStateSaveTimer = null;
 let sharedStatePollTimer = null;
@@ -280,6 +350,8 @@ async function refreshTeamDirectory() {
     const payload = await response.json();
     if (!payload.ok || !Array.isArray(payload.employees)) return;
     state.employees = payload.employees;
+    state.baseSchedules = mergeBaseSchedules(DEFAULT_BASE_SCHEDULES, state.baseSchedules, state.employees);
+    addDefaultProfilesForNewEmployees(state);
     renderEmployeeChoiceButtons();
   } catch (_) {
     // En uso local sin backend se conserva el Team guardado en el navegador.
@@ -295,6 +367,7 @@ function init() {
   if (!Array.isArray(state.employees)) state.employees = structuredClone(DEFAULT_EMPLOYEES);
   if (!Array.isArray(state.wasteRecords)) state.wasteRecords = [];
   state.employees = mergeDefaultEmployees(state.employees);
+  state.baseSchedules = mergeBaseSchedules(DEFAULT_BASE_SCHEDULES, state.baseSchedules, state.employees);
   addDefaultProfilesForNewEmployees(state);
   tagLegacyRecordsWithLocation(state);
   populateSelectors();
@@ -676,9 +749,13 @@ function renderTraffic() {
   els.suggestionList.innerHTML = `
     ${cards}
     ${unassignedNote}
-    ${renderHourlyHeatmap(analysis)}
-    <h3 style="margin:16px 0 10px">Refuerzos sugeridos</h3>
-    ${suggestionHtml}
+    <div class="traffic-visual-grid">
+      <section class="traffic-critical-panel">
+        <h3>Refuerzos sugeridos</h3>
+        ${suggestionHtml}
+      </section>
+      ${renderHourlyHeatmap(analysis)}
+    </div>
     ${renderPeakProductInsights(analysis)}
     ${renderArticleSalesInsights()}
     <h3 style="margin:18px 0 10px">Detalle por hora</h3>
@@ -1125,65 +1202,25 @@ function exportCsv() {
 }
 
 function getBaseShifts(dateKey) {
-  if (activeLocationId === "madrid") return getMadridBaseShifts(dateKey);
-  return getBarcelonaBaseShifts(dateKey);
-}
-
-function getBarcelonaBaseShifts(dateKey) {
   const date = parseDateKey(dateKey);
   const day = date.getDay();
   const shifts = [];
 
-  if (day >= 1 && day <= 5) {
-    shifts.push(makeShift("chelo", 14, 20, "base"));
-  }
-
-  if (day >= 3 && day <= 5) {
-    shifts.push(makeShift("sebastian", 8, 14, "base"));
-  }
-  if (day === 6) {
-    shifts.push(makeShift("sebastian", 8.5, 14.5, "base"));
-  }
-  if (day === 0) {
-    shifts.push(makeShift("sebastian", 9.5, 14.5, "base"));
-  }
-
-  if (day === 1 || day === 2) {
-    shifts.push(makeShift("third", 8, 14, "base"));
-  }
-  if (day === 6 || day === 0) {
-    shifts.push(makeShift("third", 12, 20, "base"));
-  }
-
-  return shifts;
-}
-
-function getMadridBaseShifts(dateKey) {
-  const date = parseDateKey(dateKey);
-  const day = date.getDay();
-  const shifts = [];
-
-  if (day >= 1 && day <= 5) {
-    shifts.push(makeShift("micaela", 8.5, 14, "base"));
-  }
-
-  if (day === 1) {
-    shifts.push(makeShift("bonnie", 16, 19, "base"));
-  }
-  if (day === 2 || day === 4) {
-    shifts.push(makeShift("perla", 16, 20, "base"));
-  }
-  if (day === 3 || day === 5) {
-    shifts.push(makeShift("guillermo", 16, 20, "base"));
-  }
-  if (day === 6) {
-    shifts.push(makeShift("perla", 9, 14, "base"));
-    shifts.push(makeShift("guillermo", 16, 20, "base"));
-  }
-  if (day === 0) {
-    shifts.push(makeShift("guillermo", 10, 15, "base"));
-    shifts.push(makeShift("bonnie", 15, 20, "base"));
-  }
+  getAllEmployees(true)
+    .filter((employee) => normalizeLocationId(employee.locationId) === activeLocationId)
+    .forEach((employee) => {
+      const schedule = getEmployeeBaseSchedule(employee.id);
+      const weekKey = getScheduleWeekKey(schedule, dateKey);
+      const dayShifts = schedule.weeks?.[weekKey]?.[day] || [];
+      dayShifts.forEach((shift) => {
+        shifts.push(makeShift(
+          employee.id,
+          timeToDecimal(shift.start),
+          timeToDecimal(shift.end),
+          schedule.mode === "biweekly" ? `Semana ${weekKey.toUpperCase()}` : "base",
+        ));
+      });
+    });
 
   return shifts;
 }
@@ -1263,6 +1300,55 @@ function getHoliday(dateKey) {
 
 function makeShift(employeeId, start, end, source) {
   return { id: createId(), employeeId, start, end, source };
+}
+
+function getEmployeeBaseSchedule(employeeId) {
+  if (!state.baseSchedules) {
+    state.baseSchedules = mergeBaseSchedules(DEFAULT_BASE_SCHEDULES, {}, state.employees || DEFAULT_EMPLOYEES);
+  }
+  if (!state.baseSchedules[employeeId]) {
+    state.baseSchedules[employeeId] = createBlankBaseSchedule();
+  }
+  state.baseSchedules[employeeId] = normalizeBaseSchedule(state.baseSchedules[employeeId]);
+  return state.baseSchedules[employeeId];
+}
+
+function saveEmployeeBaseSchedule(employeeId, schedule) {
+  if (!state.baseSchedules) state.baseSchedules = {};
+  state.baseSchedules[employeeId] = normalizeBaseSchedule(schedule);
+}
+
+function getScheduleWeekKey(schedule, dateKey) {
+  if (schedule.mode !== "biweekly") return "a";
+  const anchor = parseDateKey(schedule.anchorDate || DEFAULT_SCHEDULE_ANCHOR);
+  const date = parseDateKey(dateKey);
+  anchor.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  const weekDiff = Math.floor((date - anchor) / (7 * 24 * 60 * 60 * 1000));
+  return ((weekDiff % 2) + 2) % 2 === 0 ? "a" : "b";
+}
+
+function getScheduleWeekHours(week = {}) {
+  return SCHEDULE_DAY_ORDER.reduce((sum, day) => {
+    return sum + (week[day] || []).reduce((daySum, shift) => {
+      return daySum + Math.max(0, timeToDecimal(shift.end) - timeToDecimal(shift.start));
+    }, 0);
+  }, 0);
+}
+
+function getBaseScheduleSummary(employeeId) {
+  const schedule = getEmployeeBaseSchedule(employeeId);
+  const weekAHours = getScheduleWeekHours(schedule.weeks.a);
+  const weekBHours = getScheduleWeekHours(schedule.weeks.b);
+  const weekADays = SCHEDULE_DAY_ORDER.filter((day) => (schedule.weeks.a[day] || []).length).length;
+  const weekBDays = SCHEDULE_DAY_ORDER.filter((day) => (schedule.weeks.b[day] || []).length).length;
+
+  if (schedule.mode === "biweekly") {
+    return `Alternada A/B · A: ${weekADays} dias / ${formatHours(weekAHours)} · B: ${weekBDays} dias / ${formatHours(weekBHours)}`;
+  }
+
+  if (!weekADays) return "Sin grilla base fija";
+  return `Semanal fija · ${weekADays} dias / ${formatHours(weekAHours)}`;
 }
 
 function layoutShifts(shifts) {
@@ -1474,29 +1560,39 @@ function renderHourlyHeatmap(analysis) {
   if (!analysis.hourlyRows.length) return '';
   const hours = [...new Set(analysis.hourlyRows.map((item) => item.hour))]
     .sort((a, b) => a - b);
-  const maxTickets = Math.max(1, ...analysis.hourlyRows.map((item) => item.tickets));
-  const byDayHour = new Map(analysis.hourlyRows.map((item) => [`${new Date(`${item.date}T00:00:00`).getDay()}-${item.hour}`, item]));
+  const byDayHour = new Map();
+  analysis.hourlyRows.forEach((item) => {
+    const day = new Date(`${item.date}T00:00:00`).getDay();
+    const key = `${day}-${item.hour}`;
+    const current = byDayHour.get(key) || { tickets: 0, sales: 0 };
+    current.tickets += item.tickets;
+    current.sales += item.sales;
+    byDayHour.set(key, current);
+  });
+  const maxTickets = Math.max(1, ...[...byDayHour.values()].map((item) => item.tickets));
   const dayOrder = [1, 2, 3, 4, 5, 6, 0];
   const rows = dayOrder.map((day) => {
     const cells = hours.map((hour) => {
       const item = byDayHour.get(`${day}-${hour}`);
       const pct = item ? item.tickets / maxTickets : 0;
       const alpha = item ? Math.max(0.12, pct).toFixed(2) : 0;
-      const title = item ? `${item.tickets} tickets · ${formatEur(item.sales)} · carga ${item.loadPct.toFixed(0)}%` : 'Sin ventas';
+      const title = item ? `${item.tickets} tickets · ${formatEur(item.sales)}` : 'Sin ventas';
       return `<td class="heatmap-cell" title="${escapeHtml(title)}" style="background:rgba(196,109,71,${alpha})">
-        ${item ? `<strong>${item.tickets}</strong><small>${formatEur(item.sales)}</small>` : ''}
+        ${item ? `<strong>${item.tickets}</strong>` : ''}
       </td>`;
     }).join('');
     return `<tr><th>${DAY_NAMES[day]}</th>${cells}</tr>`;
   }).join('');
   return `
-    <h3 style="margin:18px 0 10px">Mapa de calor por día y hora</h3>
-    <div style="overflow-x:auto">
+    <section class="traffic-heatmap-panel">
+      <h3>Mapa de calor <small>tickets por día y hora</small></h3>
+      <div class="traffic-heatmap-scroll">
       <table class="fin-table heatmap-table">
-        <thead><tr><th>Día</th>${hours.map((hour) => `<th>${formatHour(hour)}</th>`).join('')}</tr></thead>
+        <thead><tr><th>Día</th>${hours.map((hour) => `<th>${String(hour).padStart(2, '0')}h</th>`).join('')}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>`;
+      </div>
+    </section>`;
 }
 
 function itemName(item) {
@@ -1844,6 +1940,7 @@ function mergeState(base, saved) {
     employees: migratedEmployees,
     expenseCategoryOverrides,
     wasteRecords: saved.wasteRecords || base.wasteRecords,
+    baseSchedules: mergeBaseSchedules(base.baseSchedules || DEFAULT_BASE_SCHEDULES, saved.baseSchedules, migratedEmployees),
     profiles: { ...base.profiles, ...(saved.profiles || {}) },
     locationSettings,
     settings: legacySettings,
@@ -1867,6 +1964,65 @@ function mergeDefaultEmployees(savedEmployees) {
     ...employee,
     locationId: normalizeLocationId(employee.locationId || employee.branch || employee.store || DEFAULT_LOCATION_ID),
   }));
+}
+
+function createBlankBaseSchedule() {
+  return baseSchedule({});
+}
+
+function mergeBaseSchedules(defaultSchedules = {}, savedSchedules = {}, employees = []) {
+  const schedules = {
+    ...structuredClone(defaultSchedules || {}),
+    ...structuredClone(savedSchedules || {}),
+  };
+
+  employees.forEach((employee) => {
+    schedules[employee.id] = normalizeBaseSchedule(schedules[employee.id] || createBlankBaseSchedule());
+  });
+
+  Object.keys(schedules).forEach((employeeId) => {
+    schedules[employeeId] = normalizeBaseSchedule(schedules[employeeId]);
+  });
+
+  return schedules;
+}
+
+function normalizeBaseSchedule(schedule = {}) {
+  return {
+    mode: schedule.mode === "biweekly" ? "biweekly" : "weekly",
+    anchorDate: isDateKey(schedule.anchorDate) ? schedule.anchorDate : DEFAULT_SCHEDULE_ANCHOR,
+    weeks: {
+      a: normalizeScheduleWeek(schedule.weeks?.a),
+      b: normalizeScheduleWeek(schedule.weeks?.b),
+    },
+  };
+}
+
+function normalizeScheduleWeek(week = {}) {
+  return SCHEDULE_DAY_ORDER.reduce((normalized, day) => {
+    normalized[day] = (Array.isArray(week?.[day]) ? week[day] : [])
+      .map((shift) => ({
+        start: normalizeTimeValue(shift?.start),
+        end: normalizeTimeValue(shift?.end),
+      }))
+      .filter((shift) => shift.start && shift.end && timeToDecimal(shift.end) > timeToDecimal(shift.start));
+    return normalized;
+  }, {});
+}
+
+function normalizeTimeValue(value) {
+  const text = String(value || "").trim();
+  if (/^\d{1,2}:\d{2}$/.test(text)) {
+    const [hours, minutes] = text.split(":").map(Number);
+    if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+      return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    }
+  }
+  return "";
+}
+
+function isDateKey(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 function addDefaultProfilesForNewEmployees(nextState) {
@@ -2839,6 +2995,7 @@ function saveProfileData(employeeId, data) {
   const employee = (state.employees || []).find((item) => item.id === employeeId);
   if (employee) employee.locationId = normalizedLocation;
   state.profiles[employeeId] = { ...getProfile(employeeId), ...data, locationId: normalizedLocation };
+  if (!state.baseSchedules?.[employeeId]) saveEmployeeBaseSchedule(employeeId, createBlankBaseSchedule());
   saveState();
 }
 
@@ -2948,6 +3105,8 @@ function handleTeamMemberForm(event) {
     activeFrom: toDateInput(new Date()),
   });
   state.profiles[id] = { ...(state.profiles[id] || {}), area, locationId };
+  if (!state.baseSchedules) state.baseSchedules = {};
+  state.baseSchedules[id] = createBlankBaseSchedule();
   document.querySelector('#teamMemberForm').reset();
   document.querySelector('#teamMemberLocation').value = activeLocationId;
   document.querySelector('#teamMemberColor').value = '#416877';
@@ -3287,6 +3446,7 @@ function renderAdminFichas() {
     const activeForm = container.querySelector(`[data-ficha-form="${activeAdminFichaEditId}"]`);
     if (activeForm && !activeForm.hidden) {
       adminFichaEditDraft = readFichaForm(activeForm);
+      adminBaseScheduleEditDraft = readBaseScheduleForm(activeForm);
     }
   }
 
@@ -3312,6 +3472,9 @@ function renderAdminFichas() {
     const formProfile = isEditing && adminFichaEditDraft
       ? { locationId: emp.locationId, ...profile, ...adminFichaEditDraft }
       : { locationId: emp.locationId, ...profile };
+    const formSchedule = isEditing && adminBaseScheduleEditDraft
+      ? normalizeBaseSchedule(adminBaseScheduleEditDraft)
+      : getEmployeeBaseSchedule(emp.id);
     const rows = fields
       .map((f) => {
         const val = profile[f.key];
@@ -3331,7 +3494,13 @@ function renderAdminFichas() {
         <div class="ficha-card-actions">
           <button class="mini-button" type="button" data-edit-ficha="${emp.id}"${isEditing ? ' hidden' : ''}>Editar ficha</button>
         </div>
-        <div class="ficha-body" data-ficha-view="${emp.id}"${isEditing ? ' hidden' : ''}>${rows}</div>
+        <div class="ficha-body" data-ficha-view="${emp.id}"${isEditing ? ' hidden' : ''}>
+          ${rows}
+          <div class="ficha-schedule-summary">
+            <span class="ficha-label">Grilla base</span>
+            <strong>${escapeHtml(getBaseScheduleSummary(emp.id))}</strong>
+          </div>
+        </div>
         <form class="ficha-edit-form" data-ficha-form="${emp.id}"${isEditing ? '' : ' hidden'}>
           <div class="ficha-edit-grid">
             <label>Nombre completo
@@ -3390,6 +3559,7 @@ function renderAdminFichas() {
           <label>Nota interna (solo admin)
             <textarea name="adminNotes" rows="3" placeholder="Observaciones, documentación pendiente...">${escapeHtml(formProfile.adminNotes || '')}</textarea>
           </label>
+          ${renderBaseScheduleEditor(emp, formSchedule)}
           <div class="ficha-edit-actions">
             <button class="primary-button" type="submit">Guardar cambios</button>
             <button class="ghost-button" type="button" data-cancel-ficha="${emp.id}">Cancelar</button>
@@ -3407,6 +3577,7 @@ function renderAdminFichas() {
       const id = button.dataset.editFicha;
       activeAdminFichaEditId = id;
       adminFichaEditDraft = { ...getProfile(id) };
+      adminBaseScheduleEditDraft = structuredClone(getEmployeeBaseSchedule(id));
       renderAdminFichas();
     });
   });
@@ -3415,24 +3586,166 @@ function renderAdminFichas() {
     button.addEventListener("click", () => {
       activeAdminFichaEditId = null;
       adminFichaEditDraft = null;
+      adminBaseScheduleEditDraft = null;
       renderAdminFichas();
     });
   });
 
   container.querySelectorAll("[data-ficha-form]").forEach((form) => {
-    form.addEventListener("input", () => {
+    const updateDraft = () => {
       if (form.dataset.fichaForm === activeAdminFichaEditId) {
         adminFichaEditDraft = readFichaForm(form);
+        adminBaseScheduleEditDraft = readBaseScheduleForm(form);
       }
-    });
+    };
+    bindBaseScheduleEditor(form);
+    form.addEventListener("input", updateDraft);
+    form.addEventListener("change", updateDraft);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const data = readFichaForm(form);
-      saveProfileData(form.dataset.fichaForm, data);
+      const employeeId = form.dataset.fichaForm;
+      saveEmployeeBaseSchedule(employeeId, readBaseScheduleForm(form));
+      saveProfileData(employeeId, data);
       activeAdminFichaEditId = null;
       adminFichaEditDraft = null;
+      adminBaseScheduleEditDraft = null;
       renderAdminFichas();
     });
+  });
+}
+
+function renderBaseScheduleEditor(employee, schedule) {
+  const normalized = normalizeBaseSchedule(schedule);
+  return `
+    <section class="base-schedule-editor" data-base-schedule-editor>
+      <div class="base-schedule-head">
+        <div>
+          <h4>Grilla base</h4>
+          <p class="form-note">Define los turnos recurrentes. Para excepciones puntuales segui usando Cambios.</p>
+        </div>
+        <label>
+          Tipo de grilla
+          <select data-schedule-mode aria-label="Tipo de grilla de ${escapeHtml(employee.label)}">
+            <option value="weekly"${normalized.mode === "weekly" ? " selected" : ""}>Semanal fija</option>
+            <option value="biweekly"${normalized.mode === "biweekly" ? " selected" : ""}>Alternada A/B</option>
+          </select>
+        </label>
+      </div>
+      <div class="base-schedule-anchor" data-schedule-anchor-wrap${normalized.mode === "biweekly" ? "" : " hidden"}>
+        <label>
+          Semana A empieza el
+          <input type="date" value="${escapeHtml(normalized.anchorDate)}" data-schedule-anchor />
+        </label>
+        <p class="form-note">Elegí un lunes de Semana A. La app alterna automaticamente A, B, A, B desde esa fecha.</p>
+      </div>
+      <div class="base-schedule-actions">
+        <button class="mini-button" type="button" data-copy-week-a>Copiar Semana A a B</button>
+      </div>
+      ${renderScheduleWeekEditor(normalized, "a", normalized.mode === "biweekly" ? "Semana A" : "Semana fija")}
+      ${renderScheduleWeekEditor(normalized, "b", "Semana B", normalized.mode !== "biweekly")}
+    </section>`;
+}
+
+function renderScheduleWeekEditor(schedule, weekKey, title, hidden = false) {
+  const week = schedule.weeks?.[weekKey] || {};
+  const rows = SCHEDULE_DAY_ORDER.map((day) => {
+    const shift = (week[day] || [])[0] || {};
+    const enabled = !!shift.start && !!shift.end;
+    const start = shift.start || "08:00";
+    const end = shift.end || "14:00";
+    return `
+      <div class="base-schedule-row${enabled ? "" : " is-disabled"}" data-schedule-row>
+        <label class="base-schedule-day">
+          <input type="checkbox" data-schedule-enabled data-week="${weekKey}" data-day="${day}"${enabled ? " checked" : ""} />
+          <span>${DAY_NAMES[day]}</span>
+        </label>
+        <label>Entrada
+          <input type="time" value="${escapeHtml(start)}" data-schedule-start data-week="${weekKey}" data-day="${day}"${enabled ? "" : " disabled"} />
+        </label>
+        <label>Salida
+          <input type="time" value="${escapeHtml(end)}" data-schedule-end data-week="${weekKey}" data-day="${day}"${enabled ? "" : " disabled"} />
+        </label>
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="base-schedule-week" data-schedule-week="${weekKey}"${hidden ? " hidden" : ""}>
+      <div class="base-schedule-week-title">${title}</div>
+      <div class="base-schedule-grid">${rows}</div>
+    </div>`;
+}
+
+function readBaseScheduleForm(form) {
+  const mode = form.querySelector("[data-schedule-mode]")?.value === "biweekly" ? "biweekly" : "weekly";
+  const anchorDate = form.querySelector("[data-schedule-anchor]")?.value || DEFAULT_SCHEDULE_ANCHOR;
+  const weeks = { a: {}, b: {} };
+
+  ["a", "b"].forEach((weekKey) => {
+    SCHEDULE_DAY_ORDER.forEach((day) => {
+      const enabled = form.querySelector(`[data-schedule-enabled][data-week="${weekKey}"][data-day="${day}"]`)?.checked;
+      const start = normalizeTimeValue(form.querySelector(`[data-schedule-start][data-week="${weekKey}"][data-day="${day}"]`)?.value);
+      const end = normalizeTimeValue(form.querySelector(`[data-schedule-end][data-week="${weekKey}"][data-day="${day}"]`)?.value);
+      weeks[weekKey][day] = enabled && start && end && timeToDecimal(end) > timeToDecimal(start)
+        ? [{ start, end }]
+        : [];
+    });
+  });
+
+  return normalizeBaseSchedule({ mode, anchorDate, weeks });
+}
+
+function bindBaseScheduleEditor(form) {
+  if (!form.querySelector("[data-base-schedule-editor]")) return;
+  syncBaseScheduleMode(form);
+  syncBaseScheduleRows(form);
+
+  form.querySelector("[data-schedule-mode]")?.addEventListener("change", () => {
+    syncBaseScheduleMode(form);
+  });
+
+  form.querySelectorAll("[data-schedule-enabled]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => syncBaseScheduleRow(checkbox.closest("[data-schedule-row]")));
+  });
+
+  form.querySelector("[data-copy-week-a]")?.addEventListener("click", () => {
+    const mode = form.querySelector("[data-schedule-mode]");
+    if (mode) mode.value = "biweekly";
+    SCHEDULE_DAY_ORDER.forEach((day) => {
+      const enabledA = form.querySelector(`[data-schedule-enabled][data-week="a"][data-day="${day}"]`);
+      const enabledB = form.querySelector(`[data-schedule-enabled][data-week="b"][data-day="${day}"]`);
+      const startA = form.querySelector(`[data-schedule-start][data-week="a"][data-day="${day}"]`);
+      const startB = form.querySelector(`[data-schedule-start][data-week="b"][data-day="${day}"]`);
+      const endA = form.querySelector(`[data-schedule-end][data-week="a"][data-day="${day}"]`);
+      const endB = form.querySelector(`[data-schedule-end][data-week="b"][data-day="${day}"]`);
+      if (enabledA && enabledB) enabledB.checked = enabledA.checked;
+      if (startA && startB) startB.value = startA.value;
+      if (endA && endB) endB.value = endA.value;
+    });
+    syncBaseScheduleMode(form);
+    syncBaseScheduleRows(form);
+    adminBaseScheduleEditDraft = readBaseScheduleForm(form);
+  });
+}
+
+function syncBaseScheduleMode(form) {
+  const isBiweekly = form.querySelector("[data-schedule-mode]")?.value === "biweekly";
+  const weekB = form.querySelector('[data-schedule-week="b"]');
+  const anchor = form.querySelector("[data-schedule-anchor-wrap]");
+  if (weekB) weekB.hidden = !isBiweekly;
+  if (anchor) anchor.hidden = !isBiweekly;
+}
+
+function syncBaseScheduleRows(form) {
+  form.querySelectorAll("[data-schedule-row]").forEach(syncBaseScheduleRow);
+}
+
+function syncBaseScheduleRow(row) {
+  if (!row) return;
+  const enabled = row.querySelector("[data-schedule-enabled]")?.checked;
+  row.classList.toggle("is-disabled", !enabled);
+  row.querySelectorAll('input[type="time"]').forEach((input) => {
+    input.disabled = !enabled;
   });
 }
 
@@ -3977,6 +4290,11 @@ function renderFinHoy() {
     <div class="fin-kpi-card">
       <span>Ticket promedio</span>
       <strong>${m.ticketCount ? formatEur(m.avgTicket) : '—'}</strong>
+    </div>
+    <div class="fin-kpi-card">
+      <span>Cross-selling</span>
+      <strong>${formatCrossSelling(m.crossSelling)}</strong>
+      <small>Café + alimento</small>
     </div>
     <div class="fin-kpi-card">
       <span>Gastos hoy</span>
@@ -5304,7 +5622,8 @@ function renderFinResumen() {
     const daysWithSales = new Set(sales.map((s) => s.date)).size;
     const ticketsPerDay = daysWithSales > 0 ? totalTickets / daysWithSales : 0;
     const salesPerDay   = daysWithSales > 0 ? totalSales   / daysWithSales : 0;
-    return { ym, year: y, month: m - 1, totalSales, totalTickets, totalExpenses, resultado, margen, avgTicket, daysWithSales, ticketsPerDay, salesPerDay };
+    const crossSelling  = calculateCrossSelling(sales);
+    return { ym, year: y, month: m - 1, totalSales, totalTickets, totalExpenses, resultado, margen, avgTicket, daysWithSales, ticketsPerDay, salesPerDay, crossSelling };
   });
 
   const currentYM  = monthInputValue(finActiveMonth);
@@ -5378,6 +5697,7 @@ function renderFinResumen() {
         <td class="fin-cell-num">${d.avgTicket > 0 ? formatEur(d.avgTicket) : '—'}</td>
         <td class="fin-cell-num">${d.salesPerDay > 0 ? formatEur(d.salesPerDay) : '—'}</td>
         <td class="fin-cell-num">${d.ticketsPerDay > 0 ? Math.round(d.ticketsPerDay) : '—'}</td>
+        <td class="fin-cell-num">${formatCrossSelling(d.crossSelling)}</td>
         <td class="fin-cell-num">
           ${d.totalExpenses > 0 ? formatEur(d.totalExpenses) : '—'}
           ${d.totalExpenses > 0 ? `<div class="fin-mini-bar-wrap"><div class="fin-mini-bar fin-mini-bar-exp" style="width:${expPct}%"></div></div>` : ''}
@@ -5394,6 +5714,7 @@ function renderFinResumen() {
   const allTickets = data.reduce((s, d) => s + d.totalTickets, 0);
   const allDays    = data.reduce((s, d) => s + d.daysWithSales, 0);
   const allMargen  = allSales > 0 ? (allRes / allSales) * 100 : 0;
+  const allCrossSelling = calculateCrossSelling(locationSales);
   const allResClass = allRes >= 0 ? 'fin-cell-positive' : 'fin-cell-negative';
 
   el.innerHTML = `
@@ -5407,6 +5728,7 @@ function renderFinResumen() {
           <th class="fin-cell-num">Ticket prom.</th>
           <th class="fin-cell-num">Venta/día (€)</th>
           <th class="fin-cell-num">Tickets/día</th>
+          <th class="fin-cell-num">Cross-selling</th>
           <th class="fin-cell-num">Gastos</th>
           <th class="fin-cell-num">Resultado</th>
           <th class="fin-cell-num">Margen %</th>
@@ -5419,6 +5741,7 @@ function renderFinResumen() {
           <td class="fin-cell-num">${allTickets > 0 ? formatEur(allSales / allTickets) : '—'}</td>
           <td class="fin-cell-num">${allDays > 0 ? formatEur(allSales / allDays) : '—'}</td>
           <td class="fin-cell-num">${allDays > 0 ? Math.round(allTickets / allDays) : '—'}</td>
+          <td class="fin-cell-num">${formatCrossSelling(allCrossSelling)}</td>
           <td class="fin-cell-num">${formatEur(allExp)}</td>
           <td class="fin-cell-num ${allResClass}">${(allRes >= 0 ? '+' : '') + formatEur(allRes)}</td>
           <td class="fin-cell-num ${allResClass}">${allMargen.toFixed(1)}%</td>
@@ -5552,6 +5875,54 @@ function renderFinAudit() {
 
 // -------- METRICS --------
 
+const COFFEE_ITEM_PATTERN = /\b(caf[eé]|coffee|espresso|ristretto|americano|cortado|macchiato|capuccino|cappuccino|latte|flat\s*white|mocca|mocha)\b/i;
+const NON_FOOD_ITEM_PATTERN = /\b(agua|water|refresco|soda|cola|fanta|sprite|zumo|jugo|juice|cerveza|beer|vino|wine|te|té|matcha|chai|leche|milk|bebida|drink)\b/i;
+const FOOD_ITEM_PATTERN = /\b(croissant|medialuna|tostad[ao]|toast|sandwich|sándwich|bocadillo|bagel|cookie|galleta|brownie|muffin|cake|tarta|pastel|bizcocho|boll|pan|bread|empanada|quiche|ensalada|salad|yogur|granola|avocado|aguacate|jamon|jamón|queso|cheese|comida|food|brunch|desayuno|breakfast)\b/i;
+
+function normalizeItemText(item) {
+  return itemName(item).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function isCoffeeItem(item) {
+  return COFFEE_ITEM_PATTERN.test(normalizeItemText(item));
+}
+
+function isFoodItem(item) {
+  const name = normalizeItemText(item);
+  if (!name || COFFEE_ITEM_PATTERN.test(name) || NON_FOOD_ITEM_PATTERN.test(name)) return false;
+  return FOOD_ITEM_PATTERN.test(name);
+}
+
+function calculateCrossSelling(sales) {
+  let coffeeQty = 0;
+  let pairedFoodQty = 0;
+  let ticketsWithDetail = 0;
+
+  sales.forEach((sale) => {
+    const items = Array.isArray(sale.items) ? sale.items : [];
+    if (!items.length) return;
+    ticketsWithDetail += 1;
+    const ticketCoffeeQty = items.filter(isCoffeeItem).reduce((sum, item) => sum + itemQuantity(item), 0);
+    if (ticketCoffeeQty <= 0) return;
+    coffeeQty += ticketCoffeeQty;
+    pairedFoodQty += items.filter(isFoodItem).reduce((sum, item) => sum + itemQuantity(item), 0);
+  });
+
+  return {
+    coffeeQty,
+    pairedFoodQty,
+    ticketsWithDetail,
+    coffeesPerFood: pairedFoodQty > 0 ? coffeeQty / pairedFoodQty : 0,
+  };
+}
+
+function formatCrossSelling(metric) {
+  if (!metric?.ticketsWithDetail || !metric.pairedFoodQty) return '—';
+  const ratio = metric.coffeesPerFood;
+  const value = ratio >= 10 ? ratio.toFixed(0) : ratio.toFixed(1).replace('.', ',');
+  return `1 cada ${value} cafés`;
+}
+
 function calcDayMetrics(date) {
   const sales = getLocationSales().filter((s) => s.date === date);
   const expenses = getLocationExpenses().filter((e) => e.date === date);
@@ -5580,7 +5951,8 @@ function calcDayMetrics(date) {
   });
   const topPairs = Object.entries(pairCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-  return { totalSales, ticketCount, avgTicket, totalExpenses, result: totalSales - totalExpenses, topItems, topPairs };
+  const crossSelling = calculateCrossSelling(sales);
+  return { totalSales, ticketCount, avgTicket, totalExpenses, result: totalSales - totalExpenses, topItems, topPairs, crossSelling };
 }
 
 function groupSalesByDate() {
