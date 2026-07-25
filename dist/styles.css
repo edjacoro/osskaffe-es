@@ -43,6 +43,8 @@ textarea {
 
 button {
   cursor: pointer;
+  font-weight: 800 !important;
+  text-transform: uppercase;
 }
 
 .app-shell {
@@ -284,7 +286,7 @@ h3 {
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -1502,6 +1504,21 @@ textarea {
   font-weight: 400;
 }
 
+.ficha-schedule-summary {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fbfc;
+  font-size: 0.84rem;
+}
+
+.ficha-schedule-summary strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+}
+
 .ficha-admin-notes {
   padding: 12px 20px 16px;
   border-top: 1px solid var(--line);
@@ -1536,11 +1553,96 @@ textarea {
   margin-top: 4px;
 }
 
+.base-schedule-editor {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbfc;
+}
+
+.base-schedule-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+  gap: 12px;
+  align-items: start;
+}
+
+.base-schedule-head h4 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.base-schedule-anchor {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px dashed #c8d7e1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.base-schedule-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 10px 0;
+}
+
+.base-schedule-week {
+  margin-top: 12px;
+}
+
+.base-schedule-week-title {
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.base-schedule-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.base-schedule-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(110px, 140px) minmax(110px, 140px);
+  gap: 8px;
+  align-items: end;
+  padding: 8px;
+  border: 1px solid #e1ebf1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.base-schedule-row.is-disabled {
+  opacity: 0.58;
+  background: #f3f6f8;
+}
+
+.base-schedule-day {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  font-weight: 850;
+}
+
+.base-schedule-day input {
+  width: auto;
+}
+
 @media (max-width: 620px) {
   .ficha-card.is-editing {
     grid-column: auto;
   }
   .ficha-edit-grid {
+    grid-template-columns: 1fr;
+  }
+  .base-schedule-head,
+  .base-schedule-row {
     grid-template-columns: 1fr;
   }
 }
@@ -1719,6 +1821,13 @@ textarea {
   line-height: 1.1;
 }
 
+.fin-kpi-card small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .fin-kpi-positive {
   color: var(--mint) !important;
 }
@@ -1848,14 +1957,70 @@ textarea {
 .heatmap-table th,
 .heatmap-table td {
   text-align: center;
-  min-width: 82px;
+  min-width: 38px;
+  padding: 6px 5px;
 }
 
 .heatmap-cell {
-  border-radius: 8px;
+  height: 32px;
+  border: 2px solid #fff;
+  border-radius: 6px;
   color: var(--ink);
   font-size: 0.78rem;
   line-height: 1.2;
+}
+
+.traffic-visual-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(420px, 1.25fr);
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.traffic-visual-grid h3 {
+  margin: 0 0 10px;
+}
+
+.traffic-heatmap-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.traffic-heatmap-panel h3 small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.traffic-heatmap-scroll {
+  overflow-x: auto;
+}
+
+.traffic-heatmap-panel .fin-table {
+  min-width: 0;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 1050px) {
+  .fin-kpi-grid,
+  .fin-resumen-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .traffic-visual-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .fin-kpi-grid,
+  .fin-resumen-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 .heatmap-cell strong,
@@ -1882,6 +2047,18 @@ textarea {
 /* ── Resumen KPIs ── */
 .fin-resumen-kpi-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 1050px) {
+  .fin-resumen-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .fin-resumen-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 .fin-resumen-current {
@@ -2375,3 +2552,267 @@ textarea {
 .contratos-input:focus { outline: 2px solid #22c55e; outline-offset: 1px; }
 .horas-over  { color: #dc2626; font-weight: 700; }
 .horas-under { color: #9ca3af; }
+.horas-fichadas {
+  color: var(--muted);
+  background: #f7f9fa;
+}
+
+/* Personal: altas y bajas efectivas */
+.personnel-group {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.personnel-group > h4 {
+  margin: 0;
+  color: var(--blue-dark);
+}
+.personnel-former {
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.personnel-former .team-member-item {
+  opacity: .78;
+  background: #f7f8f9;
+}
+.team-end-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.team-end-date input {
+  min-height: 34px;
+  padding: 4px 8px;
+}
+
+/* Dato privado de nómina en ficha administrativa */
+.payroll-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  grid-column: 1 / -1;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fbfc;
+  cursor: pointer;
+}
+.payroll-toggle > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+.payroll-toggle small {
+  color: var(--muted);
+  font-weight: 500;
+}
+.payroll-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.payroll-toggle-ui {
+  position: relative;
+  width: 78px;
+  height: 34px;
+  flex: 0 0 78px;
+  border-radius: 999px;
+  background: #d9e1e5;
+  transition: background .2s ease;
+}
+.payroll-toggle-ui::before {
+  content: attr(data-off);
+  position: absolute;
+  inset: 0 8px 0 34px;
+  display: grid;
+  place-items: center;
+  color: #596a72;
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.payroll-toggle-ui::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(24, 38, 54, .18);
+  transition: transform .2s ease;
+}
+.payroll-toggle input:checked + .payroll-toggle-ui {
+  background: #1f9d7a;
+}
+.payroll-toggle input:checked + .payroll-toggle-ui::before {
+  content: attr(data-on);
+  inset: 0 34px 0 8px;
+  color: #fff;
+}
+.payroll-toggle input:checked + .payroll-toggle-ui::after {
+  transform: translateX(44px);
+}
+.payroll-status {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef4f6;
+  color: var(--blue-dark);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+/* Liquidación estimada */
+.settlement-panel {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.settlement-panel .fin-table-header {
+  margin-bottom: 14px;
+}
+.settlement-input {
+  width: 112px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: right;
+  font-weight: 750;
+  background: #fffdf6;
+}
+
+/* Finanzas: análisis flexible */
+.analysis-heading {
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.analysis-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fbfc;
+}
+.analysis-filters label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+.analysis-filters input,
+.analysis-filters select {
+  width: 100%;
+  min-height: 40px;
+}
+.analysis-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 18px 0;
+  padding: 0;
+  border: 0;
+}
+.analysis-chart {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.analysis-chart h4 {
+  margin: 0 0 16px;
+}
+.analysis-bar-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.2fr) minmax(180px, 4fr) minmax(70px, auto);
+  align-items: center;
+  gap: 10px;
+  margin: 9px 0;
+  font-size: .8rem;
+}
+.analysis-bar-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2f4;
+}
+.analysis-bar-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--blue), #2aa889);
+}
+.analysis-bar-row strong {
+  text-align: right;
+  color: var(--blue-dark);
+}
+.analysis-table-wrap {
+  margin-top: 18px;
+  overflow-x: auto;
+}
+.analysis-source-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: .75rem;
+}
+
+@media (max-width: 900px) {
+  .analysis-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .analysis-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .analysis-filters,
+  .analysis-kpis {
+    grid-template-columns: 1fr;
+  }
+  .analysis-bar-row {
+    grid-template-columns: 90px minmax(100px, 1fr) 62px;
+  }
+}
+
+@media print {
+  body.print-analysis .sidebar,
+  body.print-analysis .topbar,
+  body.print-analysis .fin-subnav,
+  body.print-analysis .fin-sync-bar,
+  body.print-analysis .fin-month-nav,
+  body.print-analysis .fin-panel:not([data-fin-panel="analysis"]),
+  body.print-analysis .analysis-filters,
+  body.print-analysis #analysisPrint {
+    display: none !important;
+  }
+  body.print-analysis .main-content,
+  body.print-analysis .workspace,
+  body.print-analysis .panel,
+  body.print-analysis .fin-panel,
+  body.print-analysis #finAnalysisContent {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  body.print-analysis .analysis-kpis {
+    display: grid !important;
+  }
+  body.print-analysis .analysis-report {
+    color: #111;
+  }
+}

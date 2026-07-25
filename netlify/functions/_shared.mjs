@@ -195,15 +195,23 @@ export function isActiveEmployee(fullState, employeeId) {
     { id: "perla", active: true, canLogin: true, locationId: "madrid" },
     { id: "guillermo", active: true, canLogin: true, locationId: "madrid" },
   ];
-  return employees.some((employee) =>
-    employee.id === employeeId && employee.active !== false && employee.canLogin !== false
-  );
+  const today = new Date().toISOString().slice(0, 10);
+  return employees.some((employee) => {
+    if (employee.id !== employeeId || employee.canLogin === false) return false;
+    if (employee.activeFrom && employee.activeFrom > today) return false;
+    if (employee.active === false && (!employee.inactiveFrom || employee.inactiveFrom <= today)) return false;
+    return true;
+  });
 }
 
 export function employeeState(fullState, employeeId) {
   if (!fullState) return null;
   const profile = fullState.profiles?.[employeeId] || null;
-  const { adminNotes: _adminNotes, ...employeeProfile } = profile || {};
+  const {
+    adminNotes: _adminNotes,
+    payrollRegistered: _payrollRegistered,
+    ...employeeProfile
+  } = profile || {};
   const contract = fullState.contracts?.[employeeId] || null;
   const { adminPin: _adminPin, adminEmail: _adminEmail, ...employeeSettings } = fullState.settings || {};
   return {
@@ -344,7 +352,7 @@ function extractBistroSaleItems(sale = {}) {
       ).trim();
       const qty = Number(item.qty ?? item.quantity ?? item.units ?? item.count ?? item.cant ?? 1);
       const price = Number(item.price ?? item.unitPrice ?? item.pvp ?? item.amount ?? 0);
-      const total = Number(item.total ?? item.lineTotal ?? item.subtotal ?? 0);
+      const total = Number(item.total ?? item.lineTotal ?? item.totalAmount ?? item.subtotal ?? 0);
       if (!name) return null;
       return {
         name,
@@ -354,6 +362,75 @@ function extractBistroSaleItems(sale = {}) {
       };
     })
     .filter(Boolean);
+}
+
+function extractBistroDetailItems(payload = {}) {
+  const roots = [
+    payload,
+    payload.data,
+    payload.result,
+    payload.sale,
+    payload.modalInfo,
+  ].filter((value) => value && typeof value === "object");
+  const detailLines = [
+    ...roots.flatMap((root) => Array.isArray(root.details) ? root.details : []),
+    ...roots.flatMap((root) => Array.isArray(root.saleDetails) ? root.saleDetails : []),
+    ...roots.flatMap((root) => Array.isArray(root.items) ? root.items : []),
+    ...roots.flatMap((root) => Array.isArray(root.products) ? root.products : []),
+  ];
+  const comboLines = [
+    ...roots.flatMap((root) => Array.isArray(root.comboDetails) ? root.comboDetails : []),
+    ...roots.flatMap((root) => Array.isArray(root.combos) ? root.combos : []),
+  ];
+  comboLines.forEach((combo) => {
+    detailLines.push({
+      productName: combo.comboName || combo.productName || combo.name,
+      quantity: combo.quantity,
+      totalAmount: combo.totalAmount,
+    });
+    if (Array.isArray(combo.products)) detailLines.push(...combo.products);
+  });
+  return extractBistroSaleItems({ details: detailLines });
+}
+
+async function enrichBistroSaleItems(sales, cookies, locationId) {
+  if (!sales.length) return sales;
+  const { state } = await readStateEntry();
+  const existingItems = new Map(
+    (state?.sales || [])
+      .filter((sale) => normalizeLocationId(sale.locationId) === locationId && Array.isArray(sale.items) && sale.items.length)
+      .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
+  );
+  const pending = [];
+
+  sales.forEach((sale) => {
+    const saved = existingItems.get(String(sale.bistroId || sale.id));
+    if (saved?.length) sale.items = saved;
+    else pending.push(sale);
+  });
+
+  const workerCount = Math.min(8, pending.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (cursor < pending.length) {
+      const sale = pending[cursor++];
+      const query = new URLSearchParams({
+        SaleId: sale.rawSaleId,
+        ShopCode: sale.shopCode,
+        Timestamp: `${sale.rawDate} ${sale.time}`,
+        RelatedDeviceId: sale.relatedDeviceId,
+        UUID: sale.uuid,
+      });
+      try {
+        const detail = await bistroRequest(`/api/consolidatedV2/saleDetails/?${query}`, {}, cookies);
+        const detailItems = extractBistroDetailItems(detail.data);
+        if (detailItems.length) sale.items = detailItems;
+      } catch (_) {
+        sale.items = sale.items || [];
+      }
+    }
+  }));
+  return sales;
 }
 
 export async function getBistroSales(from, until, authenticatedCookies = "", locationId = DEFAULT_LOCATION_ID) {
@@ -389,15 +466,30 @@ export async function getBistroSales(from, until, authenticatedCookies = "", loc
         count: 1,
         items: extractBistroSaleItems(sale),
         paymentMethod: paymentMethod(sale),
+        barista: String(sale.waiterName || sale.employeeName || sale.userName || sale.sellerName || sale.cashierName || "").trim(),
         movementType: sale.movementType,
         status: sale.status,
         shopCode: String(sale.shopCode || ""),
+        rawSaleId: String(sale.id || ""),
+        rawDate: String(sale.date || ""),
+        relatedDeviceId: String(sale.relatedDeviceId || ""),
+        uuid: String(sale.uuid || ""),
         _source: "bistrosoft",
         _isBistrosoft: true,
       });
     }
     page += 1;
   } while (sales.length < totalCount);
+
+  const rangeDays = Math.ceil((new Date(`${until}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000);
+  if (rangeDays <= 1) await enrichBistroSaleItems(sales, cookies, id);
+
+  sales.forEach((sale) => {
+    delete sale.rawSaleId;
+    delete sale.rawDate;
+    delete sale.relatedDeviceId;
+    delete sale.uuid;
+  });
 
   const fetchedAt = new Date().toISOString();
   await stateStore().setJSON(bistroStatusKey(id), {
@@ -610,6 +702,16 @@ export async function mergeBistroSales(sales, from, until, locationId = DEFAULT_
       ...(id === DEFAULT_LOCATION_ID ? current?.bistroSalesSyncedMonths || [] : []),
       ...months,
     ])].sort();
+    const previousItems = new Map(
+      (current?.sales || [])
+        .filter((sale) => normalizeLocationId(sale.locationId) === id && Array.isArray(sale.items) && sale.items.length)
+        .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
+    );
+    const mergedSales = sales.map((sale) => ({
+      ...sale,
+      locationId: id,
+      items: sale.items?.length ? sale.items : (previousItems.get(String(sale.bistroId || sale.id)) || []),
+    }));
     return {
       ...(current || {}),
       sales: [
@@ -619,7 +721,7 @@ export async function mergeBistroSales(sales, from, until, locationId = DEFAULT_
             && sale.date >= from
             && sale.date < until)
         ),
-        ...sales.map((sale) => ({ ...sale, locationId: id })),
+        ...mergedSales,
       ],
       bistroSyncedMonthsByLocation: {
         ...allLocationSync,

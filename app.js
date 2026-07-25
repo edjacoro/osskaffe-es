@@ -248,6 +248,7 @@ const DEFAULT_STATE = {
   contracts: {},
   baseSchedules: DEFAULT_BASE_SCHEDULES,
   budgets: {},
+  payrollSettlements: {},
   locations: LOCATIONS,
   locationSettings: DEFAULT_LOCATION_SETTINGS,
   settings: DEFAULT_SETTINGS,
@@ -287,7 +288,6 @@ const els = {
   employeeLegend: document.querySelector("#employeeLegend"),
   scheduleTable: document.querySelector("#scheduleTable"),
   plannedHours: document.querySelector("#plannedHours"),
-  realHours: document.querySelector("#realHours"),
   pendingCount: document.querySelector("#pendingCount"),
   suggestionCount: document.querySelector("#suggestionCount"),
   punchForm: document.querySelector("#punchForm"),
@@ -362,6 +362,7 @@ function init() {
   // Migrate state: ensure new keys exist for older stored data
   if (!state.contracts) state.contracts = {};
   if (!state.budgets) state.budgets = {};
+  if (!state.payrollSettlements) state.payrollSettlements = {};
   if (!state.locationBudgets) state.locationBudgets = { [DEFAULT_LOCATION_ID]: state.budgets };
   if (!state.locationSettings) state.locationSettings = structuredClone(DEFAULT_LOCATION_SETTINGS);
   if (!Array.isArray(state.employees)) state.employees = structuredClone(DEFAULT_EMPLOYEES);
@@ -474,6 +475,8 @@ function setTodayDefaults() {
   document.querySelector('#finExpDate').value = today;
   const manualSaleDate = document.querySelector('#finManualSaleDate');
   if (manualSaleDate) manualSaleDate.value = today;
+  const teamActiveFrom = document.querySelector('#teamMemberActiveFrom');
+  if (teamActiveFrom) teamActiveFrom.value = today;
 }
 
 function setActiveTab(tab) {
@@ -589,12 +592,10 @@ function renderMetrics() {
   const planned = days.reduce((sum, dateKey) => {
     return sum + getShiftsForDate(dateKey).reduce((daySum, shift) => daySum + shift.end - shift.start, 0);
   }, 0);
-  const real = getRealHoursForMonth(activeMonth);
   const pending = getLocationChanges().filter((change) => change.status === "pending").length;
   const suggestions = getSuggestions();
 
   els.plannedHours.textContent = formatHours(planned);
-  els.realHours.textContent = formatHours(real);
   els.pendingCount.textContent = String(pending);
   els.suggestionCount.textContent = String(suggestions.length);
 }
@@ -1380,14 +1381,14 @@ function getEmployees(includeInactive = false) {
     ? state.employees
     : DEFAULT_EMPLOYEES;
   const filtered = employees.filter((employee) => normalizeLocationId(employee.locationId) === activeLocationId);
-  return includeInactive ? filtered : filtered.filter((employee) => employee.active !== false);
+  return includeInactive ? filtered : filtered.filter((employee) => isEmployeeActiveOnDate(employee));
 }
 
 function getAllEmployees(includeInactive = false) {
   const employees = Array.isArray(state?.employees) && state.employees.length
     ? state.employees
     : DEFAULT_EMPLOYEES;
-  return includeInactive ? employees : employees.filter((employee) => employee.active !== false);
+  return includeInactive ? employees : employees.filter((employee) => isEmployeeActiveOnDate(employee));
 }
 
 function isEmployeeActiveOnDate(employee, dateKey = toDateInput(new Date())) {
@@ -2296,7 +2297,8 @@ function initRoleScreen() {
     if (button) beginEmployeeAccess(button.dataset.empId);
   });
 
-  document.querySelector("#chooseEmployee").addEventListener("click", () => {
+  document.querySelector("#chooseEmployee").addEventListener("click", async () => {
+    await refreshTeamDirectory();
     renderEmployeeChoiceButtons();
     showRoleStep("roleStepEmployee");
   });
@@ -3084,12 +3086,13 @@ function teamMemberId(name) {
   return id;
 }
 
-function handleTeamMemberForm(event) {
+async function handleTeamMemberForm(event) {
   event.preventDefault();
   const label = document.querySelector('#teamMemberName').value.trim();
   const role = document.querySelector('#teamMemberRole').value.trim();
   const area = document.querySelector('#teamMemberArea').value;
   const locationId = normalizeLocationId(document.querySelector('#teamMemberLocation')?.value || activeLocationId);
+  const activeFrom = document.querySelector('#teamMemberActiveFrom')?.value || toDateInput(new Date());
   const color = document.querySelector('#teamMemberColor').value || '#416877';
   if (!label || !role) return;
 
@@ -3102,15 +3105,17 @@ function handleTeamMemberForm(event) {
     locationId,
     active: true,
     canLogin: true,
-    activeFrom: toDateInput(new Date()),
+    activeFrom,
   });
   state.profiles[id] = { ...(state.profiles[id] || {}), area, locationId };
   if (!state.baseSchedules) state.baseSchedules = {};
   state.baseSchedules[id] = createBlankBaseSchedule();
   document.querySelector('#teamMemberForm').reset();
   document.querySelector('#teamMemberLocation').value = activeLocationId;
+  document.querySelector('#teamMemberActiveFrom').value = toDateInput(new Date());
   document.querySelector('#teamMemberColor').value = '#416877';
   saveState();
+  await flushSharedState();
   populateSelectors();
   renderEmployeeChoiceButtons();
   render();
@@ -3119,18 +3124,33 @@ function handleTeamMemberForm(event) {
 function renderPersonnelPanel() {
   const container = document.querySelector('#teamMemberList');
   if (!container) return;
+  const today = toDateInput(new Date());
   const employees = getAllEmployees(true).filter((employee) => !employee.system);
-  container.innerHTML = employees.map((employee) => {
-    const active = employee.active !== false;
+  const currentEmployees = employees.filter((employee) => isEmployeeActiveOnDate(employee, today));
+  const upcomingEmployees = employees.filter((employee) => employee.active !== false && employee.activeFrom && employee.activeFrom > today);
+  const formerEmployees = employees.filter((employee) =>
+    employee.active === false && (!employee.inactiveFrom || employee.inactiveFrom <= today)
+  );
+
+  const renderEmployeeCard = (employee, group) => {
+    const upcoming = group === 'upcoming';
+    const former = group === 'former';
+    const scheduledEnd = !former && employee.active === false && employee.inactiveFrom > today;
     const profile = getProfile(employee.id);
     const color = /^#[0-9a-f]{6}$/i.test(employee.color || '') ? employee.color : '#416877';
     return `
-      <article class="event-item team-member-item${active ? '' : ' is-inactive'}">
+      <article class="event-item team-member-item${former ? ' is-inactive' : ''}">
         <div class="event-topline">
           <span><span class="legend-swatch" style="background:${color}"></span>${escapeHtml(employee.label)}</span>
-          <span class="status-pill ${active ? 'status-approved' : 'status-rejected'}">${active ? 'Activo' : 'Baja'}</span>
+          <span class="status-pill ${former ? 'status-rejected' : upcoming ? 'status-pending' : 'status-approved'}">
+            ${former ? 'Baja' : upcoming ? 'Alta futura' : scheduledEnd ? 'Baja programada' : 'Activo'}
+          </span>
         </div>
-        <div class="event-meta">${escapeHtml(employee.role)} · ${escapeHtml(profile.area || 'Sin área')}${employee.inactiveFrom ? ` · baja ${formatHumanDate(employee.inactiveFrom)}` : ''}</div>
+        <div class="event-meta">
+          ${escapeHtml(employee.role)} · ${escapeHtml(profile.area || 'Sin área')}
+          ${employee.activeFrom ? ` · alta ${formatHumanDate(employee.activeFrom)}` : ''}
+          ${employee.inactiveFrom ? ` · baja ${formatHumanDate(employee.inactiveFrom)}` : ''}
+        </div>
         <div class="team-member-edit-grid">
           <label>
             Rol
@@ -3153,12 +3173,34 @@ function renderPersonnelPanel() {
         </div>
         <div class="event-actions">
           <button class="mini-button" type="button" data-save-team="${employee.id}">Guardar rol y color</button>
-          <button class="mini-button ${active ? 'danger' : ''}" type="button" data-toggle-team="${employee.id}">
-            ${active ? 'Dar de baja' : 'Reactivar'}
-          </button>
+          ${former ? `
+            <button class="mini-button" type="button" data-reactivate-team="${employee.id}">Reactivar desde hoy</button>
+          ` : `
+            <label class="team-end-date">Baja desde
+              <input type="date" data-team-end-date="${employee.id}" value="${escapeHtml(employee.inactiveFrom || today)}" min="${escapeHtml(employee.activeFrom || '')}" />
+            </label>
+            <button class="mini-button danger" type="button" data-terminate-team="${employee.id}">
+              ${scheduledEnd ? 'Actualizar baja' : 'Programar baja'}
+            </button>
+          `}
         </div>
       </article>`;
-  }).join('');
+  };
+
+  container.innerHTML = `
+    <section class="personnel-group">
+      <h4>Personal activo</h4>
+      ${currentEmployees.length ? currentEmployees.map((employee) => renderEmployeeCard(employee, 'current')).join('') : '<div class="empty-state">Sin empleados activos.</div>'}
+    </section>
+    ${upcomingEmployees.length ? `
+      <section class="personnel-group">
+        <h4>Próximas altas</h4>
+        ${upcomingEmployees.map((employee) => renderEmployeeCard(employee, 'upcoming')).join('')}
+      </section>` : ''}
+    <section class="personnel-group personnel-former">
+      <h4>Empleados dados de baja</h4>
+      ${formerEmployees.length ? formerEmployees.map((employee) => renderEmployeeCard(employee, 'former')).join('') : '<div class="empty-state">Todavía no hay empleados dados de baja.</div>'}
+    </section>`;
 
   container.querySelectorAll('[data-team-color]').forEach((input) => {
     input.addEventListener('input', () => {
@@ -3194,30 +3236,45 @@ function renderPersonnelPanel() {
     });
   });
 
-  container.querySelectorAll('[data-toggle-team]').forEach((button) => {
+  container.querySelectorAll('[data-terminate-team]').forEach((button) => {
     button.addEventListener('click', () => {
-      const employee = state.employees.find((item) => item.id === button.dataset.toggleTeam);
+      const employee = state.employees.find((item) => item.id === button.dataset.terminateTeam);
       if (!employee) return;
-      if (employee.active !== false) {
-        if (!confirm(`¿Dar de baja a ${employee.label}? Sus datos históricos se conservarán.`)) return;
-        employee.active = false;
-        employee.inactiveFrom = toDateInput(new Date());
-      } else {
-        employee.active = true;
-        employee.activeFrom = toDateInput(new Date());
-        employee.inactiveFrom = null;
+      const inactiveFrom = container.querySelector(`[data-team-end-date="${employee.id}"]`)?.value;
+      if (!inactiveFrom) return alert('Elegí la fecha desde la cual se dará de baja.');
+      if (employee.activeFrom && inactiveFrom < employee.activeFrom) {
+        return alert('La baja no puede ser anterior a la fecha de alta.');
       }
+      if (!confirm(`¿Programar la baja de ${employee.label} desde ${formatHumanDate(inactiveFrom)}? Su historial se conservará.`)) return;
+      employee.active = false;
+      employee.inactiveFrom = inactiveFrom;
       saveState();
       populateSelectors();
       renderEmployeeChoiceButtons();
       render();
     });
   });
+
+  container.querySelectorAll('[data-reactivate-team]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const employee = state.employees.find((item) => item.id === button.dataset.reactivateTeam);
+      if (!employee) return;
+      if (confirm(`¿Reactivar a ${employee.label} desde hoy?`)) {
+        employee.active = true;
+        employee.activeFrom = toDateInput(new Date());
+        employee.inactiveFrom = null;
+        saveState();
+        populateSelectors();
+        renderEmployeeChoiceButtons();
+        render();
+      }
+    });
+  });
 }
 
 function getEmployeeHoursForMonth(employeeId, monthDate) {
   const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
-  const punches = state.punches
+  const punches = getLocationPunches()
     .filter((p) => p.employeeId === employeeId && p.date.startsWith(monthKey))
     .slice()
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -3234,11 +3291,21 @@ function getEmployeeHoursForMonth(employeeId, monthDate) {
   return total;
 }
 
+function getEmployeeScheduledHoursForMonth(employeeId, monthDate, allowedDates = null) {
+  return getMonthDays(monthDate).reduce((total, date) => {
+    const dateKey = toDateInput(date);
+    if (allowedDates && !allowedDates.has(dateKey)) return total;
+    return total + getShiftsForDate(dateKey)
+      .filter((shift) => shift.employeeId === employeeId)
+      .reduce((dayTotal, shift) => dayTotal + Math.max(0, shift.end - shift.start), 0);
+  }, 0);
+}
+
 function getEmployeeHolidayHoursForMonth(employeeId, monthDate, holidayDates) {
   // holidayDates: Set of 'YYYY-MM-DD' strings
   if (!holidayDates || !holidayDates.size) return 0;
   const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
-  const punches = state.punches
+  const punches = getLocationPunches()
     .filter((p) => p.employeeId === employeeId && p.date.startsWith(monthKey) && holidayDates.has(p.date))
     .slice()
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -3315,6 +3382,28 @@ function renderContratosPanelLegacy() {
     </tr>`;
   }).join('');
 
+  const liquidationRows = liquidationData.map(({ employee, total }) => {
+    const settlement = monthSettlements[employee.id] || {};
+    const payroll = Number(settlement.payroll || 0);
+    const advance = Number(settlement.advance || 0);
+    const payable = total - payroll - advance;
+    return `<tr>
+      <td class="contratos-name"><span class="contratos-dot" style="background:${employee.color}"></span>${escapeHtml(employee.label)}</td>
+      <td class="fin-cell-num"><strong>${formatEur(total)}</strong></td>
+      <td class="fin-cell-num"><input class="settlement-input" type="number" min="0" step="0.01" value="${payroll || ''}" placeholder="0,00" data-settlement="${employee.id}" data-settlement-field="payroll" /></td>
+      <td class="fin-cell-num"><input class="settlement-input" type="number" min="0" step="0.01" value="${advance || ''}" placeholder="0,00" data-settlement="${employee.id}" data-settlement-field="advance" /></td>
+      <td class="fin-cell-num ${payable < 0 ? 'fin-cell-negative' : 'fin-cell-positive'}"><strong>${formatEur(payable)}</strong></td>
+    </tr>`;
+  }).join('');
+  const liquidationTotals = liquidationData.reduce((totals, { employee, total }) => {
+    const settlement = monthSettlements[employee.id] || {};
+    totals.estimated += total;
+    totals.payroll += Number(settlement.payroll || 0);
+    totals.advance += Number(settlement.advance || 0);
+    return totals;
+  }, { estimated: 0, payroll: 0, advance: 0 });
+  const totalPayable = liquidationTotals.estimated - liquidationTotals.payroll - liquidationTotals.advance;
+
   container.innerHTML = `
     <div class="contratos-header">
       <h3>Horas &amp; Contratos · ${MONTH_NAMES[month]} ${year}</h3>
@@ -3370,22 +3459,36 @@ function renderContratosPanel() {
   const holidayDates = new Set(
     (state.settings.holidays || []).filter((holiday) => holiday.date.startsWith(monthKey)).map((holiday) => holiday.date)
   );
+  const monthStart = `${monthKey}-01`;
+  const monthEnd = toDateInput(new Date(year, month + 1, 0));
+  const contractEmployees = getAllEmployees(true).filter((employee) =>
+    !employee.system
+    && normalizeLocationId(employee.locationId) === activeLocationId
+    && (!employee.activeFrom || employee.activeFrom <= monthEnd)
+    && (!employee.inactiveFrom || employee.inactiveFrom > monthStart)
+  );
+  if (!state.payrollSettlements[activeLocationId]) state.payrollSettlements[activeLocationId] = {};
+  if (!state.payrollSettlements[activeLocationId][monthKey]) state.payrollSettlements[activeLocationId][monthKey] = {};
+  const monthSettlements = state.payrollSettlements[activeLocationId][monthKey];
+  const liquidationData = [];
 
-  const rows = getEmployees().map((employee) => {
+  const rows = contractEmployees.map((employee) => {
     const contract = state.contracts[employee.id] || {};
     const hoursPerWeek = contract.hoursPerWeek ?? 40;
     const regularRate = contract.hourlyRate ?? 0;
     const overtimeRate = contract.overtimeRate ?? (regularRate * (contract.overtimeMultiplier ?? 1.25));
     const holidayRate = contract.holidayRate ?? 0;
     const contracted = hoursPerWeek * monthFactor;
-    const worked = getEmployeeHoursForMonth(employee.id, finActiveMonth);
+    const worked = getEmployeeScheduledHoursForMonth(employee.id, finActiveMonth);
+    const punched = getEmployeeHoursForMonth(employee.id, finActiveMonth);
     const difference = worked - contracted;
     const overtimeHours = Math.max(0, difference);
-    const holidayHours = getEmployeeHolidayHoursForMonth(employee.id, finActiveMonth, holidayDates);
+    const holidayHours = getEmployeeScheduledHoursForMonth(employee.id, finActiveMonth, holidayDates);
     const overtimeCost = overtimeHours * overtimeRate;
     const holidayCost = holidayHours * holidayRate;
     const regularCost = Math.min(worked, contracted) * regularRate;
     const total = regularCost + overtimeCost + holidayCost;
+    liquidationData.push({ employee, total });
     const differenceClass = difference > 0.05 ? 'horas-over' : difference < -0.05 ? 'horas-under' : '';
 
     return `<tr>
@@ -3396,6 +3499,7 @@ function renderContratosPanel() {
       <td><input class="contratos-input" type="number" min="0" step="0.01" value="${holidayRate}" data-contract="${employee.id}" data-field="holidayRate" /></td>
       <td class="fin-cell-num">${contracted.toFixed(1)} h</td>
       <td class="fin-cell-num">${worked > 0 ? worked.toFixed(1) + ' h' : '—'}</td>
+      <td class="fin-cell-num horas-fichadas">${punched > 0 ? punched.toFixed(1) + ' h' : '—'}</td>
       <td class="fin-cell-num">${worked > 0 && regularRate > 0 ? formatEur(regularCost) : '—'}</td>
       <td class="fin-cell-num ${differenceClass}">${worked > 0 ? `${difference >= 0 ? '+' : ''}${difference.toFixed(1)} h` : '—'}</td>
       <td class="fin-cell-num">${overtimeHours > 0.05 ? overtimeHours.toFixed(1) + ' h' : '—'}</td>
@@ -3406,10 +3510,29 @@ function renderContratosPanel() {
     </tr>`;
   }).join('');
 
+  const liquidationTotals = { estimated: 0, payroll: 0, advance: 0 };
+  const liquidationRows = liquidationData.map(({ employee, total }) => {
+    const settlement = monthSettlements[employee.id] || {};
+    const payroll = Math.max(0, Number(settlement.payroll || 0));
+    const advance = Math.max(0, Number(settlement.advance || 0));
+    const payable = total - payroll - advance;
+    liquidationTotals.estimated += total;
+    liquidationTotals.payroll += payroll;
+    liquidationTotals.advance += advance;
+    return `<tr>
+      <td class="contratos-name"><span class="contratos-dot" style="background:${employee.color}"></span>${escapeHtml(employee.label)}</td>
+      <td class="fin-cell-num"><strong>${formatEur(total)}</strong></td>
+      <td class="fin-cell-num"><input class="settlement-input" type="number" min="0" step="0.01" value="${payroll}" data-settlement="${employee.id}" data-settlement-field="payroll" aria-label="Nómina de ${escapeHtml(employee.label)}" /></td>
+      <td class="fin-cell-num"><input class="settlement-input" type="number" min="0" step="0.01" value="${advance}" data-settlement="${employee.id}" data-settlement-field="advance" aria-label="Adelanto de ${escapeHtml(employee.label)}" /></td>
+      <td class="fin-cell-num ${payable < 0 ? 'fin-cell-negative' : 'fin-cell-positive'}"><strong>${formatEur(payable)}</strong></td>
+    </tr>`;
+  }).join('');
+  const totalPayable = liquidationTotals.estimated - liquidationTotals.payroll - liquidationTotals.advance;
+
   container.innerHTML = `
     <div class="contratos-header">
       <h3>Horas &amp; Contratos · ${MONTH_NAMES[month]} ${year}</h3>
-      <p class="form-note">Editá las columnas verdes directamente. Las horas reales y feriados vienen del módulo de fichaje.</p>
+      <p class="form-note">Editá las columnas verdes directamente. La liquidación usa las horas cargadas en la grilla; las horas fichadas son solo informativas.</p>
     </div>
     <div class="fin-table-wrap" style="overflow-x:auto">
       <table class="fin-table contratos-table">
@@ -3417,7 +3540,7 @@ function renderContratosPanel() {
           <th>Empleado</th><th class="contratos-editable">Hs / semana</th>
           <th class="contratos-editable">€/h regular</th><th class="contratos-editable">€/h extra</th>
           <th class="contratos-editable">€/h feriado</th><th class="fin-cell-num">Contratadas</th>
-          <th class="fin-cell-num">Hs reales</th><th class="fin-cell-num">Costo regular</th><th class="fin-cell-num">Diferencia</th>
+          <th class="fin-cell-num">Hs grilla</th><th class="fin-cell-num">Hs fichadas</th><th class="fin-cell-num">Costo regular</th><th class="fin-cell-num">Diferencia</th>
           <th class="fin-cell-num">Hs extras</th><th class="fin-cell-num">Costo extras</th>
           <th class="fin-cell-num">Hs feriados</th><th class="fin-cell-num">Costo feriados</th>
           <th class="fin-cell-num">Liquidación est.</th>
@@ -3425,13 +3548,48 @@ function renderContratosPanel() {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p class="form-note" style="margin-top:12px">La liquidación estimada suma horas regulares, extras y feriados según sus tarifas directas.</p>`;
+    <p class="form-note" style="margin-top:12px">La liquidación estimada suma las horas planificadas en la grilla, sus extras y los feriados. Las horas fichadas no modifican ningún importe.</p>
+    <section class="settlement-panel">
+      <div class="contratos-header">
+        <h3>Pagos a realizar · ${MONTH_NAMES[month]} ${year}</h3>
+        <p class="form-note">ABONAR = LIQUIDACIÓN ESTIMADA − NÓMINA − ADELANTO.</p>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="fin-table settlement-table">
+          <thead><tr>
+            <th>Empleado</th>
+            <th class="fin-cell-num">Liquidación estimada</th>
+            <th class="fin-cell-num contratos-editable">Nómina</th>
+            <th class="fin-cell-num contratos-editable">Adelanto</th>
+            <th class="fin-cell-num">Abonar</th>
+          </tr></thead>
+          <tbody>${liquidationRows}</tbody>
+          <tfoot><tr class="fin-total-row">
+            <td>Total</td>
+            <td class="fin-cell-num">${formatEur(liquidationTotals.estimated)}</td>
+            <td class="fin-cell-num">${formatEur(liquidationTotals.payroll)}</td>
+            <td class="fin-cell-num">${formatEur(liquidationTotals.advance)}</td>
+            <td class="fin-cell-num ${totalPayable < 0 ? 'fin-cell-negative' : 'fin-cell-positive'}">${formatEur(totalPayable)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </section>`;
 
   container.querySelectorAll('.contratos-input').forEach((input) => {
     input.addEventListener('change', () => {
       const id = input.dataset.contract;
       if (!state.contracts[id]) state.contracts[id] = {};
       state.contracts[id][input.dataset.field] = parseFloat(input.value) || 0;
+      saveState();
+      renderContratosPanel();
+    });
+  });
+  container.querySelectorAll('.settlement-input').forEach((input) => {
+    input.addEventListener('change', () => {
+      const employeeId = input.dataset.settlement;
+      const field = input.dataset.settlementField;
+      if (!monthSettlements[employeeId]) monthSettlements[employeeId] = {};
+      monthSettlements[employeeId][field] = Math.max(0, parseFloat(input.value) || 0);
       saveState();
       renderContratosPanel();
     });
@@ -3502,6 +3660,14 @@ function renderAdminFichas() {
           </div>
         </div>
         <form class="ficha-edit-form" data-ficha-form="${emp.id}"${isEditing ? '' : ' hidden'}>
+          <label class="payroll-toggle">
+            <span>
+              <strong>Nómina</strong>
+              <small>Dato interno: alta en Hacienda</small>
+            </span>
+            <input name="payrollRegistered" type="checkbox"${formProfile.payrollRegistered === true || formProfile.payrollRegistered === 'true' ? ' checked' : ''} />
+            <span class="payroll-toggle-ui" data-on="Sí" data-off="No"></span>
+          </label>
           <div class="ficha-edit-grid">
             <label>Nombre completo
               <input name="fullName" type="text" value="${escapeHtml(formProfile.fullName || '')}" />
@@ -3566,6 +3732,7 @@ function renderAdminFichas() {
           </div>
         </form>
         <div class="ficha-admin-notes" data-ficha-notes="${emp.id}"${isEditing ? ' hidden' : ''}>
+          <div class="payroll-status ${profile.payrollRegistered ? 'is-yes' : 'is-no'}">Nómina: ${profile.payrollRegistered ? 'Sí' : 'No'}</div>
           <label style="display:block;font-size:0.8rem;font-weight:800;color:var(--muted)">Nota interna (solo admin)</label>
           <p>${profile.adminNotes ? escapeHtml(profile.adminNotes) : 'Sin observaciones.'}</p>
         </div>
@@ -3754,6 +3921,7 @@ function readFichaForm(form) {
   new FormData(form).forEach((value, key) => {
     data[key] = String(value).trim();
   });
+  data.payrollRegistered = !!form.querySelector('[name="payrollRegistered"]')?.checked;
   return data;
 }
 
@@ -3854,8 +4022,9 @@ let finActiveMonth = firstDayOfMonth(new Date()); // mes propio de Finanzas (ind
 let finPnlYear = new Date().getFullYear();
 let finPendingFile = null;   // archivo xlsx/csv seleccionado pendiente de importar
 let finEditingExpenseId = null; // id del gasto en edición (null = modo creación)
+let finAnalysisFilters = null;
 const BISTROSOFT_SYNC_INTERVAL_MS = 30000;
-const BISTROSOFT_RECENT_DAYS = 7;
+const BISTROSOFT_RECENT_DAYS = 0;
 let finBistroSync = {
   available: null,
   backendAvailable: null,
@@ -3987,6 +4156,7 @@ async function initBistrosoftSync() {
     if (!finBistroSync.available) return;
     await syncBistrosoftMonth(true);
     await syncBistrosoftHistory(true, true);
+    await syncBistrosoftRecent();
 
     if (!finBistroSync.timer) {
       finBistroSync.timer = setInterval(() => syncBistrosoftRecent(), BISTROSOFT_SYNC_INTERVAL_MS);
@@ -4208,6 +4378,38 @@ function setActiveFinTab(tab) {
     panel.classList.toggle('is-visible', panel.dataset.finPanel === tab);
   });
   renderFinanzas();
+  if (tab === 'audit') syncBistrosoftAuditToday();
+}
+
+async function syncBistrosoftAuditToday() {
+  if (!finBistroSync.available) return;
+  const today = toDateInput(new Date());
+  const until = toDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1));
+  try {
+    const payloads = await Promise.all(['barcelona', 'madrid'].map(async (locationId) => {
+      const query = new URLSearchParams({ from: today, until, location: locationId });
+      const response = await fetch(`/api/bistrosoft/sales?${query}`, { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok || !Array.isArray(payload.sales)) throw new Error(payload.error || 'Bistrosoft no respondio correctamente');
+      return { locationId, payload };
+    }));
+
+    payloads.forEach(({ locationId, payload }) => {
+      const imported = payload.sales.map((sale) => ({ ...sale, locationId }));
+      state.sales = [
+        ...state.sales.filter((sale) => !(normalizeLocationId(sale.locationId) === locationId && sale._source === 'bistrosoft' && sale.date === today)),
+        ...imported,
+      ];
+      const importedExpenses = (payload.expenses || []).map((expense) => applyExpenseCategoryOverride({ ...expense, locationId }));
+      state.expenses = [
+        ...state.expenses.filter((expense) => !(normalizeLocationId(expense.locationId) === locationId && expense._source === 'bistrosoft' && expense.date === today)),
+        ...importedExpenses,
+      ];
+    });
+    if (activeFinTab === 'audit') renderFinAudit();
+  } catch (_) {
+    // La auditoria conserva los ultimos datos disponibles si una sucursal no responde.
+  }
 }
 
 function renderFinMonthNav() {
@@ -4237,6 +4439,7 @@ function renderFinanzas() {
   else if (activeFinTab === 'pnl') renderFinPnl();
   else if (activeFinTab === 'presupuesto') renderFinPresupuesto();
   else if (activeFinTab === 'audit') renderFinAudit();
+  else if (activeFinTab === 'analysis') renderFinAnalysis();
 }
 
 // -------- HOY --------
@@ -4290,11 +4493,6 @@ function renderFinHoy() {
     <div class="fin-kpi-card">
       <span>Ticket promedio</span>
       <strong>${m.ticketCount ? formatEur(m.avgTicket) : '—'}</strong>
-    </div>
-    <div class="fin-kpi-card">
-      <span>Cross-selling</span>
-      <strong>${formatCrossSelling(m.crossSelling)}</strong>
-      <small>Café + alimento</small>
     </div>
     <div class="fin-kpi-card">
       <span>Gastos hoy</span>
@@ -5431,6 +5629,15 @@ function renderFinPresupuesto() {
   const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
 
   const locationBudgets = getLocationBudgets();
+  if (!Object.prototype.hasOwnProperty.call(locationBudgets, monthKey)) {
+    const previousMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() - 1, 1);
+    const previousKey = monthInputValue(previousMonth);
+    locationBudgets[monthKey] = locationBudgets[previousKey]
+      ? structuredClone(locationBudgets[previousKey])
+      : {};
+    if (activeLocationId === DEFAULT_LOCATION_ID) state.budgets = locationBudgets;
+    saveState();
+  }
   const budget = locationBudgets[monthKey] || {};
 
   // Gastos reales del mes por categoría
@@ -5757,9 +5964,10 @@ function summarizeSalesForLocation(locationId, monthKey) {
   getLocationSales(locationId)
     .filter((sale) => sale.date.startsWith(monthKey))
     .forEach((sale) => {
-      const current = map.get(sale.date) || { sales: 0, tickets: 0 };
+      const current = map.get(sale.date) || { sales: 0, tickets: 0, saleRows: [] };
       current.sales += Number(sale.total || 0);
       current.tickets += Number(sale.count || 1);
+      current.saleRows.push(sale);
       map.set(sale.date, current);
     });
   return map;
@@ -5779,8 +5987,10 @@ function renderFinAudit() {
 
   const rowsData = days.map((date) => {
     const dateKey = toDateInput(date);
-    const barcelona = branchMaps.barcelona.get(dateKey) || { sales: 0, tickets: 0 };
-    const madrid = branchMaps.madrid.get(dateKey) || { sales: 0, tickets: 0 };
+    const barcelona = branchMaps.barcelona.get(dateKey) || { sales: 0, tickets: 0, saleRows: [] };
+    const madrid = branchMaps.madrid.get(dateKey) || { sales: 0, tickets: 0, saleRows: [] };
+    barcelona.crossSelling = calculateCrossSelling(barcelona.saleRows);
+    madrid.crossSelling = calculateCrossSelling(madrid.saleRows);
     return {
       dateKey,
       barcelona,
@@ -5834,6 +6044,10 @@ function renderFinAudit() {
 
   const totalDiff = totals.barcelonaSales - totals.madridSales;
   const totalDiffClass = totalDiff >= 0 ? 'fin-cell-positive' : 'fin-cell-negative';
+  const todayKey = toDateInput(new Date());
+  const auditCrossDate = todayKey.startsWith(monthKey) ? todayKey : '';
+  const barcelonaCross = calculateCrossSelling(getLocationSales('barcelona').filter((sale) => sale.date === auditCrossDate));
+  const madridCross = calculateCrossSelling(getLocationSales('madrid').filter((sale) => sale.date === auditCrossDate));
   el.innerHTML = `
     <div class="fin-table-header" style="margin-bottom:16px">
       <div>
@@ -5845,6 +6059,8 @@ function renderFinAudit() {
     <div class="fin-kpi-grid fin-resumen-kpi-grid" style="margin-bottom:18px">
       <div class="fin-kpi-card"><span>Barcelona</span><strong>${formatEur(totals.barcelonaSales)}</strong><small>${totals.barcelonaTickets} tickets</small></div>
       <div class="fin-kpi-card"><span>Madrid</span><strong>${formatEur(totals.madridSales)}</strong><small>${totals.madridTickets} tickets</small></div>
+      <div class="fin-kpi-card"><span>Cross-selling hoy Barcelona</span><strong>${formatCrossSelling(barcelonaCross)}</strong><small>Café + alimento</small></div>
+      <div class="fin-kpi-card"><span>Cross-selling hoy Madrid</span><strong>${formatCrossSelling(madridCross)}</strong><small>Café + alimento</small></div>
       <div class="fin-kpi-card"><span>Total dos locales</span><strong>${formatEur(totals.totalSales)}</strong></div>
       <div class="fin-kpi-card"><span>Diferencia BCN - MAD</span><strong class="${totalDiffClass}">${(totalDiff >= 0 ? '+' : '') + formatEur(totalDiff)}</strong></div>
     </div>
@@ -5873,11 +6089,180 @@ function renderFinAudit() {
     </div>`;
 }
 
+// -------- ANALISIS --------
+
+function analysisDate(value) {
+  return new Date(`${value}T12:00:00`);
+}
+
+function scheduledBaristasForSale(sale) {
+  const hour = parseSaleHour(sale.time);
+  if (hour === null || !sale.date) return [];
+  return getShiftsForDate(sale.date)
+    .filter((shift) => shift.start <= hour && shift.end > hour)
+    .map((shift) => getAllEmployees(true).find((employee) => employee.id === shift.employeeId)?.label)
+    .filter(Boolean);
+}
+
+function saleBaristaLabels(sale) {
+  const direct = String(sale.barista || '').trim();
+  return direct ? [direct] : scheduledBaristasForSale(sale);
+}
+
+function buildAnalysisGroups(sales, type) {
+  const groups = new Map();
+  const add = (key, label, sale, quantity = 0, amount = Number(sale.total || 0)) => {
+    const current = groups.get(key) || { key, label, sales: 0, tickets: new Set(), quantity: 0 };
+    current.sales += amount;
+    current.quantity += quantity;
+    current.tickets.add(sale.id || sale.ticketNumber || `${sale.date}-${sale.time}-${groups.size}`);
+    groups.set(key, current);
+  };
+
+  sales.forEach((sale) => {
+    const date = analysisDate(sale.date);
+    const hour = parseSaleHour(sale.time);
+    if (type === 'hour') {
+      const key = hour === null ? 'sin-hora' : String(hour).padStart(2, '0');
+      add(key, hour === null ? 'Sin hora' : `${key}:00–${key}:59`, sale);
+    } else if (type === 'day') {
+      add(sale.date, formatHumanDate(sale.date), sale);
+    } else if (type === 'weekday') {
+      const day = date.getDay();
+      add(String(day), DAY_NAMES[day], sale);
+    } else if (type === 'barista') {
+      const names = saleBaristaLabels(sale);
+      (names.length ? names : ['Sin asignar']).forEach((name) => add(name, name, sale));
+    } else if (type === 'product') {
+      const items = Array.isArray(sale.items) ? sale.items : [];
+      if (!items.length) add('sin-detalle', 'Sin detalle de producto', sale);
+      items.forEach((item) => {
+        const name = itemName(item) || 'Producto sin nombre';
+        add(name.toLocaleLowerCase(), name, sale, itemQuantity(item), itemAmount(item));
+      });
+    }
+  });
+
+  return [...groups.values()].map((group) => ({
+    ...group,
+    tickets: group.tickets.size,
+  }));
+}
+
+function printFinAnalysis() {
+  document.body.classList.add('print-analysis');
+  window.addEventListener('afterprint', () => document.body.classList.remove('print-analysis'), { once: true });
+  window.print();
+}
+
+function renderFinAnalysis() {
+  const el = document.querySelector('#finAnalysisContent');
+  if (!el) return;
+  const now = new Date();
+  const monthStart = toDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
+  const today = toDateInput(now);
+  finAnalysisFilters ||= {
+    type: 'hour',
+    dateFrom: monthStart,
+    dateTo: today,
+    weekday: 'all',
+    hourFrom: '0',
+    hourTo: '23',
+    barista: 'all',
+    metric: 'sales',
+  };
+  const filters = finAnalysisFilters;
+  const allLocationSales = getLocationSales();
+  const baristas = [...new Set(allLocationSales.flatMap(saleBaristaLabels))].sort((a, b) => a.localeCompare(b));
+  const selectedSales = allLocationSales.filter((sale) => {
+    if (!sale.date || sale.date < filters.dateFrom || sale.date > filters.dateTo) return false;
+    const day = analysisDate(sale.date).getDay();
+    if (filters.weekday !== 'all' && day !== Number(filters.weekday)) return false;
+    const hour = parseSaleHour(sale.time);
+    if (hour !== null && (hour < Number(filters.hourFrom) || hour > Number(filters.hourTo))) return false;
+    if (filters.barista !== 'all' && !saleBaristaLabels(sale).includes(filters.barista)) return false;
+    return true;
+  });
+  const totalSales = selectedSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+  const totalTickets = selectedSales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const totalProducts = selectedSales.reduce((sum, sale) => sum + (sale.items || []).reduce((itemSum, item) => itemSum + itemQuantity(item), 0), 0);
+  const metricKey = filters.metric;
+  const metricValue = (row) => metricKey === 'tickets' ? row.tickets : metricKey === 'quantity' ? row.quantity : row.sales;
+  const metricLabel = metricKey === 'tickets' ? 'Pedidos' : metricKey === 'quantity' ? 'Unidades' : 'Venta';
+  const groups = buildAnalysisGroups(selectedSales, filters.type)
+    .sort((a, b) => metricValue(b) - metricValue(a));
+  const maxValue = Math.max(1, ...groups.map(metricValue));
+  const rows = groups.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.label)}</td>
+      <td class="fin-cell-num">${formatEur(row.sales)}</td>
+      <td class="fin-cell-num">${row.tickets}</td>
+      <td class="fin-cell-num">${row.quantity || '—'}</td>
+      <td class="fin-cell-num">${row.tickets ? formatEur(row.sales / row.tickets) : '—'}</td>
+    </tr>`).join('');
+  const chart = groups.slice(0, 20).map((row) => {
+    const value = metricValue(row);
+    const shown = metricKey === 'sales' ? formatEur(value) : String(value);
+    return `<div class="analysis-bar-row">
+      <span>${escapeHtml(row.label)}</span>
+      <div class="analysis-bar-track"><i style="width:${Math.max(2, value / maxValue * 100)}%"></i></div>
+      <strong>${shown}</strong>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <section class="analysis-report" id="analysisPrintable">
+      <div class="fin-table-header analysis-heading">
+        <div><h3>Análisis de ventas · ${getLocation().label}</h3><p class="form-note">Filtrá la información de Bistrosoft y la grilla para auditar ventas, pedidos, productos y cobertura.</p></div>
+        <button type="button" class="ghost-button" id="analysisPrint">Exportar PDF</button>
+      </div>
+      <form class="analysis-filters" id="analysisFilters">
+        <label>Informe<select name="type">
+          <option value="hour"${filters.type === 'hour' ? ' selected' : ''}>Por horario</option>
+          <option value="day"${filters.type === 'day' ? ' selected' : ''}>Por día</option>
+          <option value="weekday"${filters.type === 'weekday' ? ' selected' : ''}>Por día de la semana</option>
+          <option value="product"${filters.type === 'product' ? ' selected' : ''}>Por producto</option>
+          <option value="barista"${filters.type === 'barista' ? ' selected' : ''}>Por barista</option>
+        </select></label>
+        <label>Desde<input name="dateFrom" type="date" value="${filters.dateFrom}"></label>
+        <label>Hasta<input name="dateTo" type="date" value="${filters.dateTo}"></label>
+        <label>Día<select name="weekday"><option value="all">Todos</option>${DAY_NAMES.map((day, index) => `<option value="${index}"${filters.weekday === String(index) ? ' selected' : ''}>${day}</option>`).join('')}</select></label>
+        <label>Hora desde<input name="hourFrom" type="number" min="0" max="23" value="${filters.hourFrom}"></label>
+        <label>Hora hasta<input name="hourTo" type="number" min="0" max="23" value="${filters.hourTo}"></label>
+        <label>Barista<select name="barista"><option value="all">Todos</option>${baristas.map((name) => `<option value="${escapeHtml(name)}"${filters.barista === name ? ' selected' : ''}>${escapeHtml(name)}</option>`).join('')}</select></label>
+        <label>Medida del gráfico<select name="metric">
+          <option value="sales"${filters.metric === 'sales' ? ' selected' : ''}>Dinero</option>
+          <option value="tickets"${filters.metric === 'tickets' ? ' selected' : ''}>Pedidos</option>
+          <option value="quantity"${filters.metric === 'quantity' ? ' selected' : ''}>Unidades</option>
+        </select></label>
+      </form>
+      <div class="fin-kpi-grid analysis-kpis">
+        <div class="fin-kpi-card"><span>Venta filtrada</span><strong>${formatEur(totalSales)}</strong></div>
+        <div class="fin-kpi-card"><span>Pedidos</span><strong>${totalTickets}</strong></div>
+        <div class="fin-kpi-card"><span>Ticket promedio</span><strong>${totalTickets ? formatEur(totalSales / totalTickets) : '—'}</strong></div>
+        <div class="fin-kpi-card"><span>Unidades registradas</span><strong>${totalProducts}</strong></div>
+      </div>
+      <section class="analysis-chart"><h4>${metricLabel} por segmento</h4>${chart || '<p class="empty-state">No hay datos para los filtros elegidos.</p>'}</section>
+      <div class="analysis-table-wrap"><table class="fin-table">
+        <thead><tr><th>Segmento</th><th class="fin-cell-num">Venta</th><th class="fin-cell-num">Pedidos</th><th class="fin-cell-num">Unidades</th><th class="fin-cell-num">Ticket prom.</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" class="empty-state">Sin resultados.</td></tr>'}</tbody>
+      </table></div>
+      <p class="analysis-source-note">Barista: se usa el dato de Bistrosoft cuando está disponible; si falta, se atribuye según quién figuraba trabajando en la grilla durante esa hora.</p>
+    </section>`;
+
+  document.querySelector('#analysisFilters')?.addEventListener('change', (event) => {
+    const form = new FormData(event.currentTarget);
+    finAnalysisFilters = Object.fromEntries(form.entries());
+    renderFinAnalysis();
+  });
+  document.querySelector('#analysisPrint')?.addEventListener('click', printFinAnalysis);
+}
+
 // -------- METRICS --------
 
-const COFFEE_ITEM_PATTERN = /\b(caf[eé]|coffee|espresso|ristretto|americano|cortado|macchiato|capuccino|cappuccino|latte|flat\s*white|mocca|mocha)\b/i;
-const NON_FOOD_ITEM_PATTERN = /\b(agua|water|refresco|soda|cola|fanta|sprite|zumo|jugo|juice|cerveza|beer|vino|wine|te|té|matcha|chai|leche|milk|bebida|drink)\b/i;
-const FOOD_ITEM_PATTERN = /\b(croissant|medialuna|tostad[ao]|toast|sandwich|sándwich|bocadillo|bagel|cookie|galleta|brownie|muffin|cake|tarta|pastel|bizcocho|boll|pan|bread|empanada|quiche|ensalada|salad|yogur|granola|avocado|aguacate|jamon|jamón|queso|cheese|comida|food|brunch|desayuno|breakfast)\b/i;
+const COFFEE_ITEM_PATTERN = /\b(cafe|coffee|espresso|ristretto|americano|cortado|macchiato|capuccino|cappuccino|latte|flat\s*white|mocca|mocha|cold\s*brew|nitro|frappe|frappuccino|affogato|v60|chemex|aeropress|batch\s*brew|filter\s*coffee|cafe\s*filtrado)\b/i;
+const NON_FOOD_ITEM_PATTERN = /\b(agua|water|refresco|soda|cola|fanta|sprite|zumo|jugo|juice|cerveza|beer|vino|wine|te|matcha|chai|leche|milk|bebida|drink|kombucha|limonada)\b/i;
+const FOOD_ITEM_PATTERN = /\b(croissant|cruasan|medialuna|tostad[ao]|toast|sandwich|bocadillo|bagel|cookie|galleta|brownie|muffin|cake|tarta|pastel|bizcocho|boll|roll|rollo|pan|bread|empanada|quiche|ensalada|salad|yogur|yogurt|granola|avocado|aguacate|jamon|queso|cheese|comida|food|brunch|desayuno|breakfast|pasteleria|bakery|dulce|salado|focaccia|pizza|tortilla|huevo|egg|waffle|gofre|pancake|crepe|donut|dona|alfajor|barrita|snack|fruta|fruit|banana|platano)\b/i;
 
 function normalizeItemText(item) {
   return itemName(item).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -5917,7 +6302,9 @@ function calculateCrossSelling(sales) {
 }
 
 function formatCrossSelling(metric) {
-  if (!metric?.ticketsWithDetail || !metric.pairedFoodQty) return '—';
+  if (!metric?.ticketsWithDetail) return '—';
+  if (!metric.coffeeQty) return '0 cafés';
+  if (!metric.pairedFoodQty) return '0 alimentos';
   const ratio = metric.coffeesPerFood;
   const value = ratio >= 10 ? ratio.toFixed(0) : ratio.toFixed(1).replace('.', ',');
   return `1 cada ${value} cafés`;

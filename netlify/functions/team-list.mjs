@@ -24,10 +24,15 @@ export default async () => {
     });
   });
   const employees = [...byId.values()];
+  const today = new Date().toISOString().slice(0, 10);
   return response({
     ok: true,
     employees: employees
-      .filter((employee) => employee.active !== false)
+      .filter((employee) => {
+        if (employee.canLogin === false) return false;
+        if (employee.activeFrom && employee.activeFrom > today) return false;
+        return employee.active !== false || (employee.inactiveFrom && employee.inactiveFrom > today);
+      })
       .map((employee) => ({
         id: employee.id,
         label: employee.label,
