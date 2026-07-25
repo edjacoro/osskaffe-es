@@ -1,167 +1,846 @@
-# OSS Kaffe
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ÖSS Kaffe | Grilla del Team</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=18" />
+    <!-- SheetJS para leer archivos Excel (.xlsx) -->
+    <script src="xlsx.full.min.js"></script>
+  </head>
+  <body>
 
-Aplicacion web para grilla del equipo y Finanzas, con sincronizacion de Bistrosoft.
+    <!-- ===== PANTALLA DE ROL ===== -->
+    <div id="role-screen">
+      <div class="role-card">
+        <div class="role-brand-mark">
+          <svg class="oss-isotipo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 52" aria-hidden="true">
+            <path fill="currentColor" d="M0,7 Q0,0 7,0 L75,0 Q82,0 82,7 L82,17 Q82,22 75,22 L64,22 L56,46 Q54,52 50,52 L16,52 Q12,52 10,46 L0,7 Z"/>
+          </svg>
+        </div>
+        <h2 class="role-title">ÖSS Kaffe</h2>
 
-## Uso local
+        <div id="roleStep1">
+          <p class="role-subtitle">¿Cómo entrás?</p>
+          <div class="role-btn-group">
+            <button class="role-btn" id="chooseEmployee" type="button">Soy del Team</button>
+            <button class="role-btn role-btn-muted" id="chooseAdmin" type="button">Administrador</button>
+            <button class="role-link role-visit-link" id="chooseVisit" type="button">Visita</button>
+          </div>
+        </div>
 
-1. Ejecutar `ABRIR APLICACION.cmd`.
-2. Ingresar el usuario y la contrasena de Bistrosoft.
-3. Mantener abierta la ventana de PowerShell mientras se usa la aplicacion.
+        <div id="roleStepEmployee" hidden>
+          <p class="role-subtitle">¿Quién sos?</p>
+          <div class="role-btn-group" id="empChoiceButtons"></div>
+          <button class="role-link" id="backToStep1a" type="button">← Volver</button>
+        </div>
 
-No abrir `index.html` directamente: la interfaz abre, pero no puede sincronizar.
+        <div id="roleStepAdmin" hidden>
+          <p class="role-subtitle">PIN de administrador</p>
+          <input id="adminPinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" />
+          <p id="pinError" class="pin-error" hidden>PIN incorrecto. Intentá de nuevo.</p>
+          <button class="role-btn" id="submitPin" type="button">Entrar como admin</button>
+          <button class="role-link" id="backToStep1b" type="button">← Volver</button>
+        </div>
 
-## Publicar en la web
+        <div id="roleStepEmployeeLogin" hidden>
+          <p class="role-subtitle" id="employeeLoginTitle">Acceso del empleado</p>
+          <input class="role-password-input" id="employeePasswordInput" type="password" minlength="4" placeholder="Contraseña" autocomplete="current-password" />
+          <p id="employeeLoginError" class="pin-error" hidden></p>
+          <button class="role-btn" id="submitEmployeeLogin" type="button">Entrar</button>
+          <button class="role-link" id="backFromEmployeeLogin" type="button">Volver</button>
+        </div>
 
-El proyecto incluye un backend Node sin dependencias externas:
+        <div id="roleStepEmployeeSetup" class="role-setup-step" hidden>
+          <p class="role-subtitle" id="employeeSetupTitle">Configura tu acceso</p>
+          <div class="role-setup-grid">
+            <label>Nombre completo<input id="setupFullName" type="text" required /></label>
+            <label>Teléfono<input id="setupPhone" type="tel" required /></label>
+            <label>Email<input id="setupEmail" type="email" required /></label>
+            <label>DNI / NIE<input id="setupDni" type="text" required /></label>
+            <label>Área<select id="setupArea"><option value="Barista">Barista</option><option value="Pasteleria">Pastelería</option></select></label>
+            <label>Contraseña<input id="setupPassword" type="password" minlength="4" required /></label>
+            <label>Confirmar contraseña<input id="setupPasswordConfirm" type="password" minlength="4" required /></label>
+          </div>
+          <p id="employeeSetupError" class="pin-error" hidden></p>
+          <button class="role-btn" id="submitEmployeeSetup" type="button">Guardar y entrar</button>
+          <button class="role-link" id="backFromEmployeeSetup" type="button">Volver</button>
+        </div>
 
-- Protege las credenciales de Bistrosoft en variables secretas del hosting.
-- Valida el PIN administrativo en el servidor.
-- Comparte el estado entre dispositivos.
-- Actualiza el estado compartido cada 15 segundos mientras la app esta abierta.
-- Sirve el frontend y la API desde el mismo dominio.
+        <div id="roleStepVisit" hidden>
+          <p class="role-subtitle">Acceso de visita</p>
+          <input class="role-password-input" id="visitPasswordInput" type="password" minlength="4" placeholder="Contraseña" autocomplete="current-password" />
+          <p id="visitLoginError" class="pin-error" hidden></p>
+          <button class="role-btn role-btn-muted" id="submitVisitLogin" type="button">Entrar como visita</button>
+          <button class="role-link" id="backFromVisit" type="button">Volver</button>
+        </div>
 
-### Variables obligatorias
+        <div id="roleStepLocation" hidden>
+          <p class="role-subtitle">Elegí sucursal</p>
+          <div class="role-btn-group">
+            <button class="role-btn" data-location-choice="barcelona" type="button">Barcelona</button>
+            <button class="role-btn role-btn-muted" data-location-choice="madrid" type="button">Madrid</button>
+          </div>
+          <button class="role-link" id="backFromLocation" type="button">Volver</button>
+        </div>
+      </div>
+    </div>
 
-Configurar en el hosting:
+    <!-- ===== APP EMPLEADO ===== -->
+    <div id="employee-app" hidden>
+      <header class="emp-header">
+        <div class="emp-brand">
+          <div class="emp-brand-mark">
+            <svg class="oss-isotipo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 84" aria-hidden="true">
+              <path fill="currentColor" d="M0,6 Q0,0 6,0 L84,0 Q90,0 90,6 L90,14 Q90,20 84,20 L72,20 L63,76 Q61,82 55,82 L21,82 Q15,82 13,76 L0,6 Z"/>
+            </svg>
+          </div>
+          <div>
+            <strong id="empGreeting">Hola</strong>
+            <span>ÖSS Kaffe</span>
+          </div>
+        </div>
+        <button class="emp-exit-btn" id="empExit" type="button">Salir</button>
+      </header>
 
-```text
-NODE_ENV=production
-ADMIN_PIN=un PIN administrativo de 4 digitos
-BISTROSOFT_USERNAME=usuario de Bistrosoft
-BISTROSOFT_PASSWORD=contrasena de Bistrosoft
-BISTROSOFT_USERNAME_MADRID=usuario de Bistrosoft Madrid
-BISTROSOFT_PASSWORD_MADRID=contrasena de Bistrosoft Madrid
-DATA_FILE=/ruta/persistente/state.json
-```
+      <nav class="emp-tabs" aria-label="Secciones">
+        <button class="emp-tab is-active" data-emp-tab="today" type="button">Hoy</button>
+        <button class="emp-tab" data-emp-tab="punch" type="button">Fichar</button>
+        <button class="emp-tab" data-emp-tab="schedule" type="button">Mis turnos</button>
+        <button class="emp-tab" data-emp-tab="hours" type="button">Mis horas</button>
+        <button class="emp-tab" data-emp-tab="changes" type="button">Cambios</button>
+        <button class="emp-tab" data-emp-tab="profile" type="button">Perfil</button>
+      </nav>
 
-No subir un archivo `.env` con valores reales.
+      <main class="emp-main">
+        <section class="emp-panel is-visible" data-emp-panel="today">
+          <div id="empTodayCard"></div>
+          <div id="empTeamCard"></div>
+        </section>
 
-### Render
+        <section class="emp-panel" data-emp-panel="punch">
+          <div class="emp-punch-card">
+            <p class="emp-punch-who" id="empPunchWho"></p>
+            <div class="emp-punch-btns">
+              <button class="emp-punch-btn emp-punch-in" id="empPunchIn" type="button">Entrada</button>
+              <button class="emp-punch-btn emp-punch-out" id="empPunchOut" type="button">Salida</button>
+            </div>
+            <p class="emp-geo-note" id="empGeoNote">La ubicación se valida al fichar.</p>
+          </div>
+          <div class="list-surface" style="margin-top:16px">
+            <div class="list-heading"><h3>Mis fichajes recientes</h3></div>
+            <div id="empPunchList" class="event-list"></div>
+          </div>
+        </section>
 
-1. Subir esta carpeta a un repositorio privado de GitHub.
-2. En Render, crear un Blueprint desde el repositorio.
-3. Render detectara `render.yaml`.
-4. Completar `ADMIN_PIN`, `BISTROSOFT_USERNAME` y `BISTROSOFT_PASSWORD`.
-5. Finalizado el despliegue, abrir la URL `onrender.com` asignada.
+        <section class="emp-panel" data-emp-panel="schedule">
+          <div class="emp-month-nav">
+            <button class="icon-button" id="empPrevMonth" type="button">&#8249;</button>
+            <strong id="empMonthLabel"></strong>
+            <button class="icon-button" id="empNextMonth" type="button">&#8250;</button>
+          </div>
+          <div id="empScheduleList"></div>
+        </section>
 
-El archivo `render.yaml` usa una instancia Starter y un disco persistente de 1 GB.
-Debe mantenerse una sola instancia, porque el estado compartido se guarda en ese disco.
+        <section class="emp-panel" data-emp-panel="hours">
+          <div class="emp-month-nav">
+            <button class="icon-button" id="empHoursPrevMonth" type="button">&#8249;</button>
+            <strong id="empHoursMonthLabel"></strong>
+            <button class="icon-button" id="empHoursNextMonth" type="button">&#8250;</button>
+          </div>
+          <div id="empHoursContent"></div>
+        </section>
 
-### Netlify
+        <section class="emp-panel" data-emp-panel="changes">
+          <div class="form-surface">
+            <h3>Solicitar cambio</h3>
+            <form id="empChangeForm">
+              <div class="form-grid">
+                <label>Fecha<input id="empChangeDate" type="date" required /></label>
+                <label>Motivo
+                  <select id="empChangeReason">
+                    <option>Franco</option>
+                    <option>Enfermedad</option>
+                    <option>Cambio de turno</option>
+                    <option>Vacaciones</option>
+                  </select>
+                </label>
+                <label>Desde<input id="empChangeStart" type="time" value="08:00" required /></label>
+                <label>Hasta<input id="empChangeEnd" type="time" value="14:00" required /></label>
+              </div>
+              <label>Nota<textarea id="empChangeNote" rows="2" placeholder="Detalle breve (opcional)"></textarea></label>
+              <button class="primary-button" type="submit">Enviar solicitud</button>
+            </form>
+          </div>
+          <div class="list-surface" style="margin-top:16px">
+            <div class="list-heading"><h3>Mis solicitudes</h3></div>
+            <div id="empChangeList" class="event-list"></div>
+          </div>
+        </section>
 
-Netlify esta configurado mediante `netlify.toml` y `netlify/functions/`.
+        <section class="emp-panel" data-emp-panel="profile">
+          <div class="form-surface">
+            <h3>Mi ficha personal</h3>
+            <p class="form-note" style="margin-top:0;margin-bottom:16px">Solo el administrador puede ver tu ficha.</p>
+            <form id="empProfileForm">
+              <div class="form-grid">
+                <label>Nombre completo<input id="profFullName" type="text" placeholder="María García López" /></label>
+                <label>Teléfono<input id="profPhone" type="tel" placeholder="+34 600 000 000" /></label>
+                <label>Email<input id="profEmail" type="email" placeholder="maria@email.com" /></label>
+                <label>DNI / NIE<input id="profDni" type="text" placeholder="12345678A" /></label>
+                <label>Área
+                  <select id="profArea">
+                    <option value="Barista">Barista</option>
+                    <option value="Pasteleria">Pastelería</option>
+                  </select>
+                </label>
+                <label>N° Seg. Social<input id="profSsNumber" type="text" placeholder="28/12345678/00" /></label>
+                <label>IBAN<input id="profIban" type="text" placeholder="ES00 0000 0000 0000 0000 0000" /></label>
+                <label>Tipo de contrato
+                  <select id="profContractType">
+                    <option>Indefinido</option>
+                    <option>Temporal</option>
+                    <option>Prácticas</option>
+                    <option>Autónomo</option>
+                  </select>
+                </label>
+                <label>Fecha de inicio<input id="profStartDate" type="date" /></label>
+              </div>
+              <label>Dirección<input id="profAddress" type="text" placeholder="Calle Mayor 1, 08001 Barcelona" /></label>
+              <div class="form-grid">
+                <label>Contacto urgencia — nombre<input id="profEmergencyName" type="text" placeholder="Juan García" /></label>
+                <label>Contacto urgencia — tel<input id="profEmergencyPhone" type="tel" placeholder="+34 600 000 000" /></label>
+              </div>
+              <button class="primary-button" type="submit">Guardar ficha</button>
+              <p class="form-note" id="profSaveNote"></p>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
 
-1. Subir el proyecto a un repositorio privado y conectarlo a Netlify.
-2. Netlify ejecutara `npm run build:netlify` y publicara solamente la carpeta `dist`.
-3. En **Project configuration > Environment variables**, crear:
+    <div class="waste-modal" id="wasteModal" hidden>
+      <div class="waste-dialog" role="dialog" aria-modal="true" aria-labelledby="wasteModalTitle">
+        <div class="waste-dialog-header">
+          <div>
+            <p class="eyebrow">Cierre de tienda</p>
+            <h3 id="wasteModalTitle">Registrar mermas</h3>
+          </div>
+          <button class="role-link" id="cancelWaste" type="button">Cancelar</button>
+        </div>
+        <p class="form-note">Indicá la cantidad desechada. Si no hubo merma, dejá las cantidades en cero.</p>
+        <div class="waste-entry-table">
+          <div class="waste-entry-head"><span>Producto</span><span>Cantidad</span></div>
+          <label><span>Medialunas</span><input class="waste-quantity" data-waste-product="Medialunas" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Pan de Queso</span><input class="waste-quantity" data-waste-product="Pan de Queso" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Budín Limón</span><input class="waste-quantity" data-waste-product="Budín Limón" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Budín Banana</span><input class="waste-quantity" data-waste-product="Budín Banana" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Budín Carrot</span><input class="waste-quantity" data-waste-product="Budín Carrot" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Cookies</span><input class="waste-quantity" data-waste-product="Cookies" type="number" min="0" step="1" value="0" /></label>
+          <label class="waste-custom-row">
+            <input id="wasteCustomProduct" type="text" placeholder="Otro producto" />
+            <input id="wasteCustomQuantity" type="number" min="0" step="1" value="0" />
+          </label>
+        </div>
+        <button class="primary-button waste-confirm-button" id="confirmWaste" type="button">OK y fichar salida</button>
+      </div>
+    </div>
 
-```text
-ADMIN_PIN=un PIN administrativo de 4 digitos
-SESSION_SECRET=una cadena aleatoria de al menos 32 caracteres
-BISTROSOFT_USERNAME=usuario de Bistrosoft
-BISTROSOFT_PASSWORD=contrasena de Bistrosoft
-BISTROSOFT_USERNAME_MADRID=usuario de Bistrosoft Madrid
-BISTROSOFT_PASSWORD_MADRID=contrasena de Bistrosoft Madrid
-```
+    <!-- ===== APP ADMIN ===== -->
+    <div class="app-shell" hidden>
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">
+            <svg class="oss-isotipo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 52" aria-hidden="true">
+              <path fill="currentColor" d="M0,7 Q0,0 7,0 L75,0 Q82,0 82,7 L82,17 Q82,22 75,22 L64,22 L56,46 Q54,52 50,52 L16,52 Q12,52 10,46 L0,7 Z"/>
+            </svg>
+          </div>
+          <div>
+            <strong>ÖSS Kaffe</strong>
+          </div>
+        </div>
 
-4. Hacer un nuevo deploy de produccion despues de guardar las variables.
+        <nav class="nav-list" aria-label="Secciones">
+          <button class="nav-item is-active" data-tab="schedule" type="button">Grilla</button>
+          <button class="nav-item" data-tab="punch" type="button">Fichaje</button>
+          <button class="nav-item" data-tab="changes" type="button">Cambios</button>
+          <button class="nav-item" data-tab="fichas" type="button">Fichas</button>
+          <button class="nav-item" data-tab="traffic" type="button">Carga por hora</button>
+          <button class="nav-item" data-tab="finanzas" type="button">Finanzas</button>
+          <button class="nav-item" data-tab="settings" type="button">Ajustes</button>
+        </nav>
 
-`ADMIN_PIN` puede configurarse como `0000`. Si no se define, el backend usa `0000`
-como valor inicial. `SESSION_SECRET` es recomendado; si falta, se deriva internamente
-de los otros secretos configurados.
+        <div class="sidebar-footer">
+          <span class="status-dot"></span>
+          <span>Datos locales guardados</span>
+          <button class="admin-exit-btn" id="adminExit" type="button">Salir</button>
+        </div>
+      </aside>
 
-En el formulario de Netlify, el campo **Key** debe ser `ADMIN_PIN` y el campo
-**Value** debe ser solamente `0000`, sin comillas. El backend tambien tolera comillas
-o el formato `ADMIN_PIN=0000`, pero se recomienda guardar solo el valor.
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Planificacion mensual</p>
+            <h1 id="monthTitle">Grilla mensual</h1>
+          </div>
 
-Para Barcelona se pueden seguir usando `BISTROSOFT_USERNAME` y
-`BISTROSOFT_PASSWORD`. Si se prefiere dejar todo nombrado por sucursal, tambien
-se aceptan `BISTROSOFT_USERNAME_BARCELONA` y `BISTROSOFT_PASSWORD_BARCELONA`.
-Madrid queda inactivo hasta cargar `BISTROSOFT_USERNAME_MADRID` y
-`BISTROSOFT_PASSWORD_MADRID`.
+          <div class="month-controls" aria-label="Control de mes">
+            <button class="icon-button" id="prevMonth" type="button" title="Mes anterior" aria-label="Mes anterior">&#8249;</button>
+            <input id="monthPicker" type="month" />
+            <button class="icon-button" id="nextMonth" type="button" title="Mes siguiente" aria-label="Mes siguiente">&#8250;</button>
+          </div>
 
-No usar el despliegue manual por arrastrar una carpeta o solamente `index.html`: ese
-metodo publica el frontend pero no construye ni activa las Functions.
+          <div class="topbar-actions">
+            <button class="ghost-button" id="exportCsv" type="button">Exportar CSV</button>
+            <button class="primary-button" id="printPdf" type="button">PDF</button>
+          </div>
+        </header>
 
-Netlify Functions atiende `/api/*`, Netlify Blobs guarda el estado compartido y la
-funcion programada `sync-bistro` actualiza los ultimos 14 dias cada 30 minutos aunque
-nadie tenga la web abierta. Cuando un administrador abre Finanzas, la lectura visible
-continua actualizandose cada 30 segundos.
+        <section class="metrics-grid" aria-label="Resumen">
+          <article class="metric-card">
+            <span>Horas planificadas</span>
+            <strong id="plannedHours">0 h</strong>
+          </article>
+          <article class="metric-card">
+            <span>Pendientes</span>
+            <strong id="pendingCount">0</strong>
+          </article>
+          <article class="metric-card">
+            <span>Horas criticas</span>
+            <strong id="suggestionCount">0</strong>
+          </article>
+        </section>
 
-Al abrir Finanzas como administrador, la aplicacion consulta todos los meses disponibles
-en Bistrosoft e importa automaticamente los meses historicos que todavia falten. El boton
-**Sincronizar historial** vuelve a leer todos los meses disponibles, incluso si ya estaban
-importados. El historial queda guardado en Netlify Blobs; la copia local del navegador
-omite los tickets de Bistrosoft para evitar superar su limite de almacenamiento.
+        <section class="panel tab-panel is-visible" id="schedulePanel" data-panel="schedule">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Turnos base + cambios aprobados</p>
+              <h2>Grilla principal</h2>
+            </div>
+            <div class="legend" id="employeeLegend"></div>
+          </div>
+          <div class="schedule-table" id="scheduleTable" aria-live="polite"></div>
+        </section>
 
-### Sucursales
+        <section class="panel tab-panel" id="punchPanel" data-panel="punch">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Entrada y salida</p>
+              <h2>Fichaje con ubicacion</h2>
+            </div>
+            <button class="ghost-button" id="emailLateReport" type="button">Reporte a Pablo</button>
+          </div>
 
-La app trabaja con dos sucursales: Barcelona y Madrid. Administrador y Visita
-eligen sucursal despues de iniciar sesion; cada empleado entra directo a la
-sucursal definida en su ficha. Finanzas, gastos, mermas, presupuestos, afluencia
-y fichajes se guardan separados por `locationId`.
+          <div class="two-column">
+            <form class="form-surface" id="punchForm">
+              <label>
+                Team
+                <select id="punchEmployee"></select>
+              </label>
+              <label>
+                Tipo
+                <select id="punchType">
+                  <option value="in">Entrada</option>
+                  <option value="out">Salida</option>
+                </select>
+              </label>
+              <div class="button-row">
+                <button class="primary-button" type="submit">Fichar ahora</button>
+                <button class="ghost-button" id="mockOnTime" type="button">Simular horario</button>
+              </div>
+              <p class="form-note" id="geoStatus">La ubicacion se valida contra el radio configurado.</p>
+            </form>
 
-La pestana **Finanzas > Auditoria** compara ventas diarias de Barcelona y Madrid
-mes a mes. Sirve como control rapido para ver cada dia, tickets, totales y
-diferencia entre locales.
+            <div class="list-surface">
+              <div class="list-heading">
+                <h3>Ultimos fichajes</h3>
+              </div>
+              <div id="punchList" class="event-list"></div>
+            </div>
+          </div>
+        </section>
 
-La seccion **Carga por hora** usa directamente las ventas sincronizadas desde
-Bistrosoft para cruzar tickets/ventas por hora contra las personas planificadas
-en la grilla. Permite detectar horas criticas y sugerir refuerzos por sucursal
-sin bajar ni subir reportes manuales.
-Tambien muestra un mapa de calor por dia/hora y rankings de articulos: productos
-vendidos en horas pico, venta mensual por cantidad y top 5 anualizado. Estos
-rankings aparecen cuando la venta sincronizada/importada incluye detalle de
-articulos.
+        <section class="panel tab-panel" id="changesPanel" data-panel="changes">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Aprobacion administrativa</p>
+              <h2>Cambios, ausencias y cobertura</h2>
+            </div>
+            <span class="admin-pill">Editor: Pablo</span>
+          </div>
 
-La grilla base de Madrid se cargo con la direccion `Calle de Manuel Cortina, 1,
-Chamberi, 28010 Madrid` y coordenadas `40.43073, -3.69918`. Los festivos 2026
-incluyen nacionales, Comunidad de Madrid y municipio de Madrid, todos con
-apertura normal.
+          <div class="two-column">
+            <form class="form-surface" id="changeForm">
+              <div class="form-grid">
+                <label>
+                  Fecha
+                  <input id="changeDate" type="date" required />
+                </label>
+                <label>
+                  Team
+                  <select id="changeEmployee"></select>
+                </label>
+                <label>
+                  Motivo
+                  <select id="changeReason">
+                    <option>Franco</option>
+                    <option>Enfermedad</option>
+                    <option>Cambio de turno</option>
+                    <option>Vacaciones</option>
+                    <option>Reemplazo</option>
+                    <option>Extra</option>
+                    <option>Otro</option>
+                  </select>
+                </label>
+                <label>
+                  Accion
+                  <select id="changeAction">
+                    <option value="absence">Quitar turno</option>
+                    <option value="replace">Reemplazar</option>
+                    <option value="extra">Agregar extra</option>
+                    <option value="owner">Cobertura Pablo</option>
+                  </select>
+                </label>
+                <label>
+                  Desde
+                  <input id="changeStart" type="time" value="08:00" required />
+                </label>
+                <label>
+                  Hasta
+                  <input id="changeEnd" type="time" value="14:00" required />
+                </label>
+                <label>
+                  Reemplaza
+                  <select id="replacementEmployee"></select>
+                </label>
+              </div>
+              <label>
+                Nota
+                <textarea id="changeNote" rows="3" placeholder="Detalle breve"></textarea>
+              </label>
+              <button class="primary-button" type="submit">Enviar a aprobar</button>
+            </form>
 
-Para integrar datos reales de "Horas punta" de Google no alcanza una API key
-simple de Maps. Hace falta acceso al perfil del negocio en Google Business
-Profile y OAuth para consultar metricas propias cuando Google lo permita. La
-app conserva la importacion CSV de afluencia por sucursal, por lo que se puede
-empezar a registrar desde ahora con datos importados y mantener historial.
+            <div class="list-surface">
+              <div class="list-heading">
+                <h3>Solicitudes</h3>
+                <span id="approvalSummary">0 pendientes</span>
+              </div>
+              <div id="changeList" class="event-list"></div>
+            </div>
+          </div>
+        </section>
 
-### Accesos y perfiles
+        <section class="panel tab-panel" id="fichasPanel" data-panel="fichas">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Recursos humanos</p>
+              <h2>Fichas del Team</h2>
+            </div>
+          </div>
+          <nav class="fin-subnav" aria-label="Secciones de fichas">
+            <button class="fichas-tab is-active" data-fichas-tab="fichas" type="button">Fichas</button>
+            <button class="fichas-tab" data-fichas-tab="contratos" type="button">Horas &amp; Contratos</button>
+            <button class="fichas-tab" data-fichas-tab="personal" type="button">Personal</button>
+          </nav>
+          <div class="fichas-sub-panel is-visible" data-fichas-panel="fichas">
+            <div class="fichas-grid" id="fichasGrid"></div>
+          </div>
+          <div class="fichas-sub-panel" data-fichas-panel="contratos">
+            <div style="padding:20px" id="contratosPanel"></div>
+          </div>
+          <div class="fichas-sub-panel" data-fichas-panel="personal">
+            <div class="team-admin-layout">
+              <form class="form-surface" id="teamMemberForm">
+                <h3>Agregar personal</h3>
+                <p class="form-note">El empleado completará su ficha y contraseña en el primer acceso.</p>
+                <label>Nombre visible<input id="teamMemberName" type="text" placeholder="Nombre" required /></label>
+                <div class="form-grid">
+                  <label>Rol<input id="teamMemberRole" type="text" placeholder="Barista" required /></label>
+                  <label>Área
+                    <select id="teamMemberArea">
+                      <option value="Barista">Barista</option>
+                      <option value="Pasteleria">Pastelería</option>
+                    </select>
+                  </label>
+                  <label>Sucursal
+                    <select id="teamMemberLocation">
+                      <option value="barcelona">Barcelona</option>
+                      <option value="madrid">Madrid</option>
+                    </select>
+                  </label>
+                  <label>Alta desde
+                    <input id="teamMemberActiveFrom" type="date" required />
+                  </label>
+                  <label>Color<input id="teamMemberColor" type="color" value="#416877" /></label>
+                </div>
+                <button class="primary-button" type="submit">Agregar al Team</button>
+              </form>
+              <div class="list-surface">
+                <div class="list-heading"><h3>Personal del Team</h3></div>
+                <div id="teamMemberList" class="event-list"></div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-- Cada empleado configura sus datos obligatorios y una contrasena propia en el primer acceso.
-- Las contrasenas se guardan protegidas mediante hash de forma separada en Netlify Blobs y no forman parte
-  del estado compartido que recibe el navegador.
-- El perfil **Visita** usa la clave `ossbcn` y solamente consulta Grilla y Finanzas.
-- La vista del empleado incluye **Mis horas**, cierre automatico de fichajes olvidados y
-  avisos del navegador cinco minutos antes del turno mientras la aplicacion permanece abierta.
-- El administrador puede agregar, dar de baja y reactivar personal desde **Fichas > Personal**.
-- Al fichar una salida, el empleado debe confirmar las mermas del dia. Finanzas incluye una
-  pestaña mensual para consultar esas cantidades.
-- La sincronizacion de Bistrosoft incorpora tambien los movimientos de caja tipo Retiro como
-  gastos en categoria **Otros**, conservando la leyenda original como descripcion.
-- En Finanzas > Gastos, el administrador puede reclasificar esos movimientos. La app guarda
-  la categoria local asociada a las claves equivalentes del movimiento de Bistrosoft, por lo
-  que las siguientes sincronizaciones no duplican el gasto ni pierden la clasificacion elegida.
-- En Finanzas > Importar ventas, el administrador puede cargar ventas sueltas que no llegaron
-  desde Bistrosoft indicando fecha, cantidad de tickets y total. Esas ventas se suman al P&L
-  de la sucursal activa y no se eliminan con la sincronizacion automatica.
-- En Ajustes > Respaldos entre Netlify, el administrador puede exportar el estado completo de
-  un sitio e importarlo en otro. Esto sirve para copiar datos entre una web firme y una web de
-  pruebas. El respaldo incluye grilla, finanzas, reclasificaciones de Bistrosoft, personal,
-  fichas, mermas, presupuestos y ajustes. No incluye las contrasenas de empleados, que quedan
-  guardadas como hashes separados en cada sitio Netlify.
+        <section class="panel tab-panel" id="trafficPanel" data-panel="traffic">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Bistrosoft + grilla</p>
+              <h2>Carga por hora y refuerzos</h2>
+            </div>
+            <div class="fin-month-nav">
+              <button class="icon-button" id="trafficPrevMonth" type="button">&#8249;</button>
+              <strong id="trafficMonthDisplay">Mes</strong>
+              <button class="icon-button" id="trafficNextMonth" type="button">&#8250;</button>
+              <button class="ghost-button" id="loadTrafficSample" type="button">Sincronizar ventas</button>
+            </div>
+          </div>
 
-### Otros hostings
+          <div class="two-column">
+            <form class="form-surface" id="trafficForm">
+              <h3>Parametros de sobrecarga</h3>
+              <p class="form-note">Usa las ventas tomadas automaticamente desde Bistrosoft. Las ventas manuales sin hora se suman a Finanzas, pero no entran en este analisis horario.</p>
+              <div class="form-grid">
+                <label>
+                  Tickets por persona / hora
+                  <input id="visitorThreshold" type="number" min="4" max="80" step="1" value="18" />
+                </label>
+                <label>
+                  Minimo de tickets para alertar
+                  <input id="minimumVisitors" type="number" min="1" max="120" step="1" value="10" />
+                </label>
+              </div>
+              <button class="primary-button" type="submit">Actualizar analisis</button>
+            </form>
 
-Se puede desplegar con `npm start` o mediante el `Dockerfile`. El hosting debe:
+            <div class="list-surface">
+              <div class="list-heading">
+                <h3>Horas criticas</h3>
+                <span id="trafficSummary">Sin datos</span>
+              </div>
+              <div id="suggestionList" class="event-list"></div>
+            </div>
+          </div>
+        </section>
 
-- Ejecutar Node 20 o superior.
-- Proporcionar HTTPS.
-- Mantener una sola instancia.
-- Montar almacenamiento persistente y configurar `DATA_FILE`.
+        <section class="panel tab-panel" id="financiasPanel" data-panel="finanzas">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Ventas · Gastos · P&amp;L</p>
+              <h2>Finanzas</h2>
+            </div>
+            <div class="fin-today-projection" id="finTodayProjection" hidden></div>
+            <div class="fin-month-nav" id="finMonthNav">
+              <button id="finPrevMonth" class="icon-button" type="button" title="Mes anterior">&#8249;</button>
+              <span id="finMonthDisplay"></span>
+              <button id="finNextMonth" class="icon-button" type="button" title="Mes siguiente">&#8250;</button>
+            </div>
+            <nav class="fin-subnav" aria-label="Secciones de finanzas">
+              <button class="fin-tab is-active" data-fin-tab="hoy" type="button">Hoy</button>
+              <button class="fin-tab" data-fin-tab="resumen" type="button">Resumen</button>
+              <button class="fin-tab" data-fin-tab="import" type="button">Importar ventas</button>
+              <button class="fin-tab" data-fin-tab="expenses" type="button">Gastos</button>
+              <button class="fin-tab" data-fin-tab="waste" type="button">Mermas</button>
+              <button class="fin-tab" data-fin-tab="diferidos" type="button">Pagos Diferidos</button>
+              <button class="fin-tab" data-fin-tab="monthly" type="button">Mensual</button>
+              <button class="fin-tab" data-fin-tab="pnl" type="button">P&amp;L anual</button>
+              <button class="fin-tab" data-fin-tab="presupuesto" type="button">Presupuesto</button>
+              <button class="fin-tab" data-fin-tab="audit" type="button">Auditoría</button>
+              <button class="fin-tab" data-fin-tab="analysis" type="button">Análisis</button>
+            </nav>
+            <div class="fin-sync-bar" id="finBistroSync" aria-live="polite">
+              <span class="fin-sync-dot" id="finSyncDot" aria-hidden="true"></span>
+              <div class="fin-sync-copy">
+                <strong id="finSyncTitle">Comprobando Bistrosoft...</strong>
+                <span id="finSyncDetail">La sincronizacion automatica se inicia al abrir la aplicacion.</span>
+              </div>
+              <button class="ghost-button" id="finSyncHistory" type="button">Sincronizar historial</button>
+              <button class="ghost-button" id="finSyncNow" type="button">Sincronizar ahora</button>
+            </div>
+          </div>
 
-## Seguridad
+          <!-- RESUMEN KPIs -->
+          <div class="fin-panel" data-fin-panel="resumen">
+            <div id="finResumenContent" style="padding:20px"></div>
+          </div>
 
-Finanzas solo se consulta después de iniciar como administrador. Las credenciales de
-Bistrosoft nunca se envian al navegador. Los empleados conservan el modelo actual de
-acceso por nombre; antes de una apertura publica amplia conviene agregar PIN individual
-para cada empleado.
+          <!-- HOY -->
+          <div class="fin-panel is-visible" data-fin-panel="hoy">
+            <div id="finKpiGrid" class="fin-kpi-grid"></div>
+            <div class="fin-insights">
+              <div class="list-surface">
+                <div class="list-heading"><h3>Top productos hoy</h3></div>
+                <div id="finTopProducts"></div>
+              </div>
+              <div class="list-surface">
+                <div class="list-heading"><h3>Cross-selling hoy</h3></div>
+                <div id="finCrossSelling"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- IMPORTAR -->
+          <div class="fin-panel" data-fin-panel="import">
+            <div class="two-column" style="padding:20px">
+              <form class="form-surface" id="finImportForm">
+                <h3>Importar ventas manualmente</h3>
+
+                <!-- Zona de selección de archivo -->
+                <label class="file-drop-zone" for="finFileInput">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4M12 3v12m-4-4 4 4 4-4"/></svg>
+                  <span class="file-drop-label">Seleccionar archivo</span>
+                  <span class="file-drop-hint">Excel (.xlsx) o CSV · Desde Descargas o donde lo hayas guardado</span>
+                  <input type="file" id="finFileInput" accept=".xlsx,.xls,.csv" style="display:none" />
+                </label>
+
+                <!-- Nombre del archivo seleccionado -->
+                <div id="finFileInfo" class="fin-file-info" style="display:none">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <span id="finFileName">—</span>
+                  <button type="button" id="finFileClear" class="fin-file-clear">✕</button>
+                </div>
+
+                <p class="form-note" style="margin-top:8px">Respaldo manual: Bistrosoft → Informes → Ventas o Artículos → Exportar. Al importar reemplaza los días incluidos en el archivo.</p>
+                <div class="button-row" style="margin-top:14px">
+                  <button class="primary-button" type="submit">Importar</button>
+                  <button class="ghost-button" id="finClearSales" type="button">Borrar todo</button>
+                </div>
+              </form>
+              <form class="form-surface" id="finManualSaleForm">
+                <h3>Cargar venta suelta</h3>
+                <p class="form-note">Para tickets que no entraron por Bistrosoft. Se suman al P&amp;L de la sucursal activa y no se borran con la sincronizacion.</p>
+                <div class="form-grid">
+                  <label>Fecha
+                    <input id="finManualSaleDate" type="date" required />
+                  </label>
+                  <label>Cantidad de tickets
+                    <input id="finManualSaleCount" type="number" min="1" step="1" required />
+                  </label>
+                  <label>Total vendido
+                    <input id="finManualSaleTotal" type="number" min="0" step="0.01" required />
+                  </label>
+                </div>
+                <div class="button-row" style="margin-top:14px">
+                  <button class="primary-button" type="submit">Agregar venta</button>
+                </div>
+              </form>
+              <div class="list-surface">
+                <div class="list-heading"><h3>Días importados</h3><span id="finSalesSummary">0 tickets</span></div>
+                <div id="finSalesList" class="event-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- GASTOS -->
+          <div class="fin-panel" data-fin-panel="expenses">
+            <div class="two-column" style="padding:20px">
+              <form class="form-surface" id="finExpenseForm">
+                <h3 id="finExpFormTitle">Registrar gasto</h3>
+                <p class="form-note fin-bistro-edit-note" id="finExpEditNote" hidden>
+                  Este movimiento sigue vinculado a Bistrosoft. Solo se guarda la categoría elegida en esta app; no se duplica ni se modifica el original.
+                </p>
+                <input type="hidden" id="finExpEditId" value="" />
+                <div class="form-grid">
+                  <label>Fecha<input id="finExpDate" type="date" required /></label>
+                  <label>Importe (€)<input id="finExpAmount" type="number" step="0.01" min="0.01" placeholder="0,00" required /></label>
+                  <label>Categoría
+                    <select id="finExpCategory">
+                      <option value="materia_prima">Materia prima</option>
+                      <option value="nominas">Nóminas</option>
+                      <option value="seguridad_social">Seg. Social / TGSS</option>
+                      <option value="alquiler">Alquiler</option>
+                      <option value="suministros">Suministros</option>
+                      <option value="mantenimiento">Mantenimiento</option>
+                      <option value="comisiones_tpv">Comisiones TPV</option>
+                      <option value="impuestos">Impuestos</option>
+                      <option value="gestoria">Gestoría / Admin</option>
+                      <option value="inversiones">Inversiones</option>
+                      <option value="marketing">Marketing</option>
+                      <option value="otros">Otros</option>
+                    </select>
+                  </label>
+                  <label>Proveedor<input id="finExpSupplier" type="text" placeholder="Nombre" /></label>
+                </div>
+                <label>Descripción<input id="finExpDesc" type="text" placeholder="Detalle breve (opcional)" /></label>
+                <!-- Pago diferido TC -->
+                <label class="fin-defer-toggle">
+                  <input type="checkbox" id="finExpDiferido" />
+                  <span>Pago diferido (Tarjeta de crédito)</span>
+                </label>
+                <div id="finExpDueDateRow" class="fin-duedaterow" style="display:none">
+                  <label>Fecha de vencimiento TC<input id="finExpDueDate" type="date" /></label>
+                  <p class="form-note">El gasto se reflejará en el P&L del mes de vencimiento.</p>
+                </div>
+                <div class="button-row" style="margin-top:14px">
+                  <button class="primary-button" type="submit" id="finExpSubmitBtn">Guardar gasto</button>
+                  <button class="ghost-button" type="button" id="finExpCancelEdit" style="display:none">Cancelar</button>
+                </div>
+              </form>
+              <div class="list-surface">
+                <div class="list-heading"><h3 id="finExpListTitle">Gastos del mes</h3><span id="finExpSummary"></span></div>
+                <div id="finExpenseList" class="event-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MERMAS -->
+          <div class="fin-panel" data-fin-panel="waste">
+            <div style="padding:20px">
+              <div class="fin-table-header">
+                <strong id="finWasteMonthLabel">Mermas</strong>
+                <span class="form-note">Registro enviado al fichar la salida</span>
+              </div>
+              <div id="finWasteTable" style="overflow-x:auto"></div>
+            </div>
+          </div>
+
+          <!-- DIFERIDOS TC -->
+          <div class="fin-panel" data-fin-panel="diferidos">
+            <div style="padding:20px">
+              <div class="fin-table-header">
+                <strong>Pagos Diferidos</strong>
+                <span id="finDiferidosSummary" class="form-note"></span>
+              </div>
+              <div id="finDiferidosList"></div>
+            </div>
+          </div>
+
+          <!-- MENSUAL -->
+          <div class="fin-panel" data-fin-panel="monthly">
+            <div style="padding:20px">
+              <div class="fin-table-header">
+                <strong id="finMonthLabel"></strong>
+                <button class="ghost-button" id="finExportMonthly" type="button">Exportar CSV</button>
+              </div>
+              <div id="finMonthlyTable" style="overflow-x:auto"></div>
+              <div id="finMonthlyCatBreakdown" style="margin-top:28px"></div>
+            </div>
+          </div>
+
+          <!-- PRESUPUESTO -->
+          <div class="fin-panel" data-fin-panel="presupuesto">
+            <div id="finPresupuestoContent" style="padding:20px"></div>
+          </div>
+
+          <!-- AUDITORÍA -->
+          <div class="fin-panel" data-fin-panel="audit">
+            <div id="finAuditContent" style="padding:20px"></div>
+          </div>
+
+          <!-- ANÁLISIS -->
+          <div class="fin-panel" data-fin-panel="analysis">
+            <div id="finAnalysisContent" style="padding:20px"></div>
+          </div>
+
+          <!-- P&L -->
+          <div class="fin-panel" data-fin-panel="pnl">
+            <div style="padding:20px">
+              <div class="fin-table-header">
+                <div class="fin-year-nav">
+                  <button class="icon-button" id="finPnlPrev" type="button">&#8249;</button>
+                  <strong id="finPnlYear"></strong>
+                  <button class="icon-button" id="finPnlNext" type="button">&#8250;</button>
+                </div>
+                <button class="ghost-button" id="finExportPnl" type="button">Exportar CSV</button>
+              </div>
+              <div id="finPnlTable" style="overflow-x:auto"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel tab-panel" id="settingsPanel" data-panel="settings">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Operacion</p>
+              <h2>Ajustes del local</h2>
+            </div>
+            <button class="primary-button" id="saveSettings" type="button">Guardar</button>
+          </div>
+
+          <div class="settings-grid">
+            <div class="form-surface">
+              <h3>Local y reportes</h3>
+              <label>
+                Email de Pablo
+                <input id="adminEmail" type="email" placeholder="pablo@ossbarcelona.com" />
+              </label>
+              <div class="form-grid">
+                <label>
+                  Latitud
+                  <input id="storeLat" type="number" step="0.000001" placeholder="41.3874" />
+                </label>
+                <label>
+                  Longitud
+                  <input id="storeLng" type="number" step="0.000001" placeholder="2.1686" />
+                </label>
+                <label>
+                  Radio metros
+                  <input id="geoRadius" type="number" min="20" max="1000" step="10" value="120" />
+                </label>
+                <label>
+                  Tolerancia minutos
+                  <input id="lateTolerance" type="number" min="0" max="60" step="1" value="5" />
+                </label>
+              </div>
+            </div>
+
+            <div class="form-surface">
+              <h3>Feriados y excepciones</h3>
+              <div class="form-grid">
+                <label>
+                  Nombre
+                  <input id="holidayName" type="text" placeholder="Sant Joan" />
+                </label>
+                <label>
+                  Fecha
+                  <input id="holidayDate" type="date" />
+                </label>
+                <label>
+                  Apertura
+                  <input id="holidayOpen" type="time" value="10:00" />
+                </label>
+                <label>
+                  Cierre
+                  <input id="holidayClose" type="time" value="19:00" />
+                </label>
+              </div>
+              <button class="ghost-button" id="addHoliday" type="button">Agregar feriado</button>
+              <div id="holidayList" class="event-list compact-list"></div>
+            </div>
+
+            <div class="form-surface">
+              <h3>Acceso visita</h3>
+              <p class="form-note">Acceso de supervisión activo para Grilla y Finanzas, siempre en modo lectura.</p>
+              <p class="visit-access-fixed">Clave activa: <strong>ossbcn</strong></p>
+            </div>
+
+            <div class="form-surface">
+              <h3>Respaldos entre Netlify</h3>
+              <p class="form-note" style="margin-top:0">
+                Usalo para copiar los datos del sitio que esta correcto hacia otro sitio Netlify.
+                La importacion reemplaza el estado del sitio donde la ejecutes.
+              </p>
+              <div class="backup-actions">
+                <button class="ghost-button" id="backupExport" type="button">Exportar respaldo</button>
+                <button class="primary-button" id="backupImportButton" type="button">Importar respaldo</button>
+                <input id="backupImportFile" type="file" accept="application/json" hidden />
+              </div>
+              <p class="form-note" id="backupStatus">Incluye finanzas, grilla, fichas, personal, mermas y ajustes. No incluye contrasenas de empleados.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="emptyTemplate">
+      <div class="empty-state">Sin registros por ahora.</div>
+    </template>
+
+    <script src="app.js?v=29"></script>
+  </body>
+</html>

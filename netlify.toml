@@ -1,57 +1,11 @@
-[build]
-  command = "npm run build:netlify"
-  publish = "dist"
-  functions = "netlify/functions"
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-[[redirects]]
-  from = "/api/auth/admin"
-  to = "/.netlify/functions/auth-admin"
-  status = 200
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const output = path.join(root, "dist");
+const files = ["index.html", "app.js", "styles.css", "xlsx.full.min.js"];
 
-[[redirects]]
-  from = "/api/auth/employee"
-  to = "/.netlify/functions/auth-employee"
-  status = 200
-
-[[redirects]]
-  from = "/api/auth/visit"
-  to = "/.netlify/functions/auth-visit"
-  status = 200
-
-[[redirects]]
-  from = "/api/auth/logout"
-  to = "/.netlify/functions/auth-logout"
-  status = 200
-
-[[redirects]]
-  from = "/api/state"
-  to = "/.netlify/functions/state"
-  status = 200
-
-[[redirects]]
-  from = "/api/state/import"
-  to = "/.netlify/functions/state-import"
-  status = 200
-
-[[redirects]]
-  from = "/api/team"
-  to = "/.netlify/functions/team-list"
-  status = 200
-
-[[redirects]]
-  from = "/api/bistrosoft/status"
-  to = "/.netlify/functions/bistro-status"
-  status = 200
-
-[[redirects]]
-  from = "/api/bistrosoft/sales"
-  to = "/.netlify/functions/bistro-sales"
-  status = 200
-
-[[redirects]]
-  from = "/api/bistrosoft/months"
-  to = "/.netlify/functions/bistro-months"
-  status = 200
-
-[functions]
-  node_bundler = "esbuild"
+await fs.rm(output, { recursive: true, force: true });
+await fs.mkdir(output, { recursive: true });
+await Promise.all(files.map((file) => fs.copyFile(path.join(root, file), path.join(output, file))));
