@@ -404,7 +404,7 @@ function extractBistroDetailItems(payload = {}) {
   return extractBistroSaleItems({ details: detailLines });
 }
 
-async function enrichBistroSaleItems(sales, cookies, locationId) {
+async function restoreBistroSaleItems(sales, locationId) {
   if (!sales.length) return sales;
   const { state } = await readStateEntry();
   const existingItems = new Map(
@@ -412,14 +412,16 @@ async function enrichBistroSaleItems(sales, cookies, locationId) {
       .filter((sale) => normalizeLocationId(sale.locationId) === locationId && Array.isArray(sale.items) && sale.items.length)
       .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
   );
-  const pending = [];
-
   sales.forEach((sale) => {
     const saved = existingItems.get(String(sale.bistroId || sale.id));
     if (saved?.length) sale.items = saved;
-    else pending.push(sale);
   });
+  return sales;
+}
 
+async function enrichBistroSaleItems(sales, cookies, locationId) {
+  await restoreBistroSaleItems(sales, locationId);
+  const pending = sales.filter((sale) => !Array.isArray(sale.items) || sale.items.length === 0);
   const workerCount = Math.min(8, pending.length);
   let cursor = 0;
   await Promise.all(Array.from({ length: workerCount }, async () => {
@@ -494,6 +496,7 @@ export async function getBistroSales(from, until, authenticatedCookies = "", loc
 
   const rangeDays = Math.ceil((new Date(`${until}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000);
   if (rangeDays <= 1) await enrichBistroSaleItems(sales, cookies, id);
+  else await restoreBistroSaleItems(sales, id);
 
   sales.forEach((sale) => {
     delete sale.rawSaleId;

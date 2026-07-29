@@ -4478,9 +4478,20 @@ async function fetchBistrosoftRange(from, until) {
     throw new Error(payload.error || 'Bistrosoft no respondio correctamente');
   }
 
+  const previousItems = new Map(
+    getLocationSales()
+      .filter((sale) => Array.isArray(sale.items) && sale.items.length)
+      .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
+  );
   const imported = payload.sales.filter((sale) =>
     sale && typeof sale.date === 'string' && Number.isFinite(Number(sale.total))
-  ).map((sale) => ({ ...sale, locationId: activeLocationId }));
+  ).map((sale) => ({
+    ...sale,
+    locationId: activeLocationId,
+    items: sale.items?.length
+      ? sale.items
+      : (previousItems.get(String(sale.bistroId || sale.id)) || []),
+  }));
   const importedExpenses = (payload.expenses || [])
     .filter((expense) =>
       expense && typeof expense.date === 'string' && Number.isFinite(Number(expense.amount))
@@ -4569,11 +4580,15 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
         for (let dayIndex = 0; dayIndex < detailDates.length; dayIndex++) {
           finBistroSync.historyProgress = `Completando artículos ${formatHumanDate(detailDates[dayIndex])} (${dayIndex + 1}/${detailDates.length})...`;
           renderFinSyncStatus();
+          const detailDate = parseDateKey(detailDates[dayIndex]);
+          const detailUntil = new Date(
+            detailDate.getFullYear(),
+            detailDate.getMonth(),
+            detailDate.getDate() + 1,
+          );
           const detailResult = await fetchBistrosoftRange(
             detailDates[dayIndex],
-            toDateInput(new Date(`${detailDates[dayIndex]}T12:00:00`).setDate(
-              new Date(`${detailDates[dayIndex]}T12:00:00`).getDate() + 1,
-            )),
+            toDateInput(detailUntil),
           );
           allPersisted = allPersisted && detailResult.persisted;
         }
