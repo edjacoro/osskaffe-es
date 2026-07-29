@@ -345,12 +345,16 @@ function extractBistroSaleItems(sale = {}) {
         item.name
         || item.productName
         || item.articleName
+        || item.saleProductName
+        || item.productDescription
         || item.description
         || item.itemName
         || item.product
+        || item.article
+        || item.title
         || "",
       ).trim();
-      const qty = Number(item.qty ?? item.quantity ?? item.units ?? item.count ?? item.cant ?? 1);
+      const qty = Number(item.qty ?? item.quantity ?? item.quantitySold ?? item.units ?? item.count ?? item.cant ?? 1);
       const price = Number(item.price ?? item.unitPrice ?? item.pvp ?? item.amount ?? 0);
       const total = Number(item.total ?? item.lineTotal ?? item.totalAmount ?? item.subtotal ?? 0);
       if (!name) return null;
@@ -364,6 +368,28 @@ function extractBistroSaleItems(sale = {}) {
     .filter(Boolean);
 }
 
+function collectBistroItemLines(value, output = [], seen = new Set(), depth = 0) {
+  if (!value || typeof value !== "object" || depth > 8 || seen.has(value)) return output;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectBistroItemLines(entry, output, seen, depth + 1));
+    return output;
+  }
+  const hasItemName = [
+    "name", "productName", "articleName", "saleProductName", "productDescription",
+    "description", "itemName", "product", "article", "title",
+  ].some((key) => typeof value[key] === "string" && value[key].trim());
+  const hasItemMeasure = [
+    "qty", "quantity", "quantitySold", "units", "count", "cant", "price",
+    "unitPrice", "pvp", "lineTotal", "totalAmount", "subtotal",
+  ].some((key) => value[key] !== undefined && value[key] !== null);
+  if (hasItemName && hasItemMeasure) output.push(value);
+  Object.values(value).forEach((entry) => {
+    if (entry && typeof entry === "object") collectBistroItemLines(entry, output, seen, depth + 1);
+  });
+  return output;
+}
+
 function extractBistroDetailItems(payload = {}) {
   const roots = [
     payload,
@@ -372,24 +398,9 @@ function extractBistroDetailItems(payload = {}) {
     payload.sale,
     payload.modalInfo,
   ].filter((value) => value && typeof value === "object");
-  const detailLines = [
-    ...roots.flatMap((root) => Array.isArray(root.details) ? root.details : []),
-    ...roots.flatMap((root) => Array.isArray(root.saleDetails) ? root.saleDetails : []),
-    ...roots.flatMap((root) => Array.isArray(root.items) ? root.items : []),
-    ...roots.flatMap((root) => Array.isArray(root.products) ? root.products : []),
-  ];
-  const comboLines = [
-    ...roots.flatMap((root) => Array.isArray(root.comboDetails) ? root.comboDetails : []),
-    ...roots.flatMap((root) => Array.isArray(root.combos) ? root.combos : []),
-  ];
-  comboLines.forEach((combo) => {
-    detailLines.push({
-      productName: combo.comboName || combo.productName || combo.name,
-      quantity: combo.quantity,
-      totalAmount: combo.totalAmount,
-    });
-    if (Array.isArray(combo.products)) detailLines.push(...combo.products);
-  });
+  const detailLines = [];
+  const seen = new Set();
+  roots.forEach((root) => collectBistroItemLines(root, detailLines, seen));
   return extractBistroSaleItems({ details: detailLines });
 }
 
@@ -498,7 +509,17 @@ export async function getBistroSales(from, until, authenticatedCookies = "", loc
     lastError: null,
     locationId: id,
   });
-  return { ok: true, source: "bistrosoft", from, until, fetchedAt, totalCount: sales.length, locationId: id, sales };
+  return {
+    ok: true,
+    source: "bistrosoft",
+    from,
+    until,
+    fetchedAt,
+    totalCount: sales.length,
+    itemDetailCount: sales.filter((sale) => Array.isArray(sale.items) && sale.items.length).length,
+    locationId: id,
+    sales,
+  };
 }
 
 export async function getBistroExpenses(from, until, authenticatedCookies = "", locationId = DEFAULT_LOCATION_ID) {

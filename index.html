@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=19" />
+    <link rel="stylesheet" href="styles.css?v=21" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -555,7 +555,10 @@
               <button id="finNextMonth" class="icon-button" type="button" title="Mes siguiente">&#8250;</button>
             </div>
             <nav class="fin-subnav" aria-label="Secciones de finanzas">
-              <button class="fin-tab is-active" data-fin-tab="hoy" type="button">Hoy</button>
+              <button class="fin-tab is-active" id="finTodayTab" data-fin-tab="hoy" type="button">
+                <span id="finTodayTabLabel">Hoy</span>
+              </button>
+              <input class="fin-today-date-input" id="finTodayDate" type="date" aria-label="Elegir fecha para Finanzas Hoy" />
               <button class="fin-tab" data-fin-tab="resumen" type="button">Resumen</button>
               <button class="fin-tab" data-fin-tab="import" type="button">Importar ventas</button>
               <button class="fin-tab" data-fin-tab="expenses" type="button">Gastos</button>
@@ -588,11 +591,11 @@
             <div id="finKpiGrid" class="fin-kpi-grid"></div>
             <div class="fin-insights">
               <div class="list-surface">
-                <div class="list-heading"><h3>Top productos hoy</h3></div>
+                <div class="list-heading"><h3 id="finTopProductsTitle">Top productos hoy</h3></div>
                 <div id="finTopProducts"></div>
               </div>
               <div class="list-surface">
-                <div class="list-heading"><h3>Cross-selling hoy</h3></div>
+                <div class="list-heading"><h3 id="finCrossSellingTitle">Cross-selling hoy</h3></div>
                 <div id="finCrossSelling"></div>
               </div>
             </div>
@@ -855,6 +858,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=30"></script>
+    <script src="app.js?v=32"></script>
   </body>
 </html>

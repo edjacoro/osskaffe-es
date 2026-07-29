@@ -514,6 +514,7 @@ function setTodayDefaults() {
 }
 
 function setActiveTab(tab) {
+  if (tab === "finanzas") resetFinTodayView();
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tab === tab);
   });
@@ -528,6 +529,7 @@ function setActiveTab(tab) {
   if (metricsGrid) metricsGrid.style.display = isSchedule ? "" : "none";
   const topbar = document.querySelector(".topbar");
   if (topbar) topbar.style.display = isSchedule ? "" : "none";
+  if (tab === "finanzas") renderFinanzas();
 }
 
 function render() {
@@ -3208,13 +3210,23 @@ function getProfile(employeeId) {
   return state.profiles[employeeId] || {};
 }
 
+function getEmployeeDisplayName(fullName, fallback = "") {
+  const normalizedName = String(fullName || "").trim().replace(/\s+/g, " ");
+  return normalizedName ? normalizedName.split(" ")[0] : fallback;
+}
+
 function saveProfileData(employeeId, data) {
   const normalizedLocation = data.locationId ? normalizeLocationId(data.locationId) : getEmployeeLocationId(employeeId);
   const employee = (state.employees || []).find((item) => item.id === employeeId);
-  if (employee) employee.locationId = normalizedLocation;
+  if (employee) {
+    employee.locationId = normalizedLocation;
+    employee.label = getEmployeeDisplayName(data.fullName, employee.label);
+  }
   state.profiles[employeeId] = { ...getProfile(employeeId), ...data, locationId: normalizedLocation };
   if (!state.baseSchedules?.[employeeId]) saveEmployeeBaseSchedule(employeeId, createBlankBaseSchedule());
   saveState();
+  populateSelectors();
+  renderEmployeeChoiceButtons();
 }
 
 function renderEmpProfile() {
@@ -4238,6 +4250,7 @@ function applyExpenseCategoryOverride(expense, overrides = state?.expenseCategor
 
 let activeFinTab = 'hoy';
 let finActiveMonth = firstDayOfMonth(new Date()); // mes propio de Finanzas (independiente de la grilla)
+let finTodayDate = toDateInput(new Date());
 let finPnlYear = new Date().getFullYear();
 let finPendingFile = null;   // archivo xlsx/csv seleccionado pendiente de importar
 let finEditingExpenseId = null; // id del gasto en edición (null = modo creación)
@@ -4252,6 +4265,7 @@ let finBistroSync = {
   lastSyncAt: null,
   lastRange: null,
   lastCount: 0,
+  lastItemDetailCount: 0,
   error: null,
   historyProgress: null,
   timer: null,
@@ -4259,8 +4273,23 @@ let finBistroSync = {
 
 function initFinanzas() {
   document.querySelectorAll('.fin-tab').forEach((btn) => {
-    btn.addEventListener('click', () => setActiveFinTab(btn.dataset.finTab));
+    btn.addEventListener('click', () => {
+      setActiveFinTab(btn.dataset.finTab);
+      if (btn.dataset.finTab === 'hoy') openFinTodayDatePicker();
+    });
   });
+
+  const todayDateInput = document.querySelector('#finTodayDate');
+  if (todayDateInput) {
+    todayDateInput.value = finTodayDate;
+    todayDateInput.addEventListener('change', async (event) => {
+      if (!event.target.value) return;
+      finTodayDate = event.target.value;
+      finActiveMonth = firstDayOfMonth(new Date(`${finTodayDate}T12:00:00`));
+      renderFinanzas();
+      await syncBistrosoftDay(finTodayDate, true);
+    });
+  }
 
   document.querySelector('#finPrevMonth').addEventListener('click', () => {
     finActiveMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() - 1, 1);
@@ -4356,6 +4385,7 @@ async function initBistrosoftSync() {
   finBistroSync.lastSyncAt = null;
   finBistroSync.lastRange = null;
   finBistroSync.lastCount = 0;
+  finBistroSync.lastItemDetailCount = 0;
   finBistroSync.error = null;
   finBistroSync.historyProgress = null;
   renderFinSyncStatus();
@@ -4409,6 +4439,13 @@ function syncBistrosoftRecent() {
   const fromDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - BISTROSOFT_RECENT_DAYS);
   const untilDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
   return syncBistrosoftRange(toDateInput(fromDate), toDateInput(untilDate), true);
+}
+
+function syncBistrosoftDay(date, silent = true) {
+  if (!finBistroSync.available || !date) return Promise.resolve();
+  const current = new Date(`${date}T12:00:00`);
+  const until = toDateInput(new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1));
+  return syncBistrosoftRange(date, until, silent);
 }
 
 async function syncBistrosoftRange(from, until, silent = true) {
@@ -4466,6 +4503,7 @@ async function fetchBistrosoftRange(from, until) {
   finBistroSync.lastSyncAt = payload.fetchedAt || new Date().toISOString();
   finBistroSync.lastRange = { from, until };
   finBistroSync.lastCount = imported.length;
+  finBistroSync.lastItemDetailCount = Number(payload.itemDetailCount || imported.filter((sale) => sale.items?.length).length);
   finBistroSync.error = null;
   return {
     count: imported.length,
@@ -4517,6 +4555,29 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
       totalImported += result.count;
       totalExpensesImported += result.expenseCount || 0;
       allPersisted = allPersisted && result.persisted;
+
+      if (!silent) {
+        const detailDates = [...new Set(
+          getLocationSales()
+            .filter((sale) =>
+              sale._source === 'bistrosoft'
+              && sale.date.startsWith(months[index])
+              && (!Array.isArray(sale.items) || sale.items.length === 0)
+            )
+            .map((sale) => sale.date),
+        )].sort();
+        for (let dayIndex = 0; dayIndex < detailDates.length; dayIndex++) {
+          finBistroSync.historyProgress = `Completando artículos ${formatHumanDate(detailDates[dayIndex])} (${dayIndex + 1}/${detailDates.length})...`;
+          renderFinSyncStatus();
+          const detailResult = await fetchBistrosoftRange(
+            detailDates[dayIndex],
+            toDateInput(new Date(`${detailDates[dayIndex]}T12:00:00`).setDate(
+              new Date(`${detailDates[dayIndex]}T12:00:00`).getDate() + 1,
+            )),
+          );
+          allPersisted = allPersisted && detailResult.persisted;
+        }
+      }
     }
 
     finBistroSync.historyProgress = null;
@@ -4580,7 +4641,7 @@ function renderFinSyncStatus() {
       ? new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(finBistroSync.lastSyncAt))
       : 'pendiente';
     title.textContent = `Bistrosoft ${getLocation().label} conectado`;
-    detail.textContent = `Ultima lectura: ${syncDate}${finBistroSync.lastCount ? ` · ${finBistroSync.lastCount} ventas` : ''}`;
+    detail.textContent = `Ultima lectura: ${syncDate}${finBistroSync.lastCount ? ` · ${finBistroSync.lastCount} ventas · ${finBistroSync.lastItemDetailCount} con artículos` : ''}`;
     return;
   }
 
@@ -4589,6 +4650,7 @@ function renderFinSyncStatus() {
 }
 
 function setActiveFinTab(tab) {
+  if (tab === 'hoy' && activeFinTab !== 'hoy') finTodayDate = toDateInput(new Date());
   activeFinTab = tab;
   document.querySelectorAll('.fin-tab').forEach((btn) => {
     btn.classList.toggle('is-active', btn.dataset.finTab === tab);
@@ -4598,6 +4660,26 @@ function setActiveFinTab(tab) {
   });
   renderFinanzas();
   if (tab === 'audit') syncBistrosoftAuditToday();
+}
+
+function resetFinTodayView() {
+  finTodayDate = toDateInput(new Date());
+  finActiveMonth = firstDayOfMonth(new Date());
+  activeFinTab = 'hoy';
+  document.querySelectorAll('.fin-tab').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.finTab === 'hoy');
+  });
+  document.querySelectorAll('.fin-panel').forEach((panel) => {
+    panel.classList.toggle('is-visible', panel.dataset.finPanel === 'hoy');
+  });
+}
+
+function openFinTodayDatePicker() {
+  const input = document.querySelector('#finTodayDate');
+  if (!input) return;
+  input.value = finTodayDate;
+  if (typeof input.showPicker === 'function') input.showPicker();
+  else input.click();
 }
 
 async function syncBistrosoftAuditToday() {
@@ -4639,6 +4721,16 @@ function renderFinMonthNav() {
   if (projection) {
     projection.hidden = !isTodayTab;
     if (isTodayTab) renderFinTodayProjection();
+  }
+  const dateInput = document.querySelector('#finTodayDate');
+  const dateLabel = document.querySelector('#finTodayTabLabel');
+  if (dateInput) {
+    dateInput.hidden = !isTodayTab;
+    dateInput.value = finTodayDate;
+  }
+  if (dateLabel) {
+    const today = toDateInput(new Date());
+    dateLabel.textContent = finTodayDate === today ? 'Hoy' : formatHumanDate(finTodayDate);
   }
   const el = document.querySelector('#finMonthDisplay');
   if (el) el.textContent = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
@@ -4685,7 +4777,7 @@ function getMonthSalesProjection(referenceDate = new Date()) {
 function renderFinTodayProjection() {
   const container = document.querySelector('#finTodayProjection');
   if (!container) return;
-  const projection = getMonthSalesProjection(new Date());
+  const projection = getMonthSalesProjection(new Date(`${finTodayDate}T12:00:00`));
   container.innerHTML = `
     <span>Proyección venta mes</span>
     <strong>${projection.projected > 0 ? formatEur(projection.projected) : '—'}</strong>
@@ -4695,14 +4787,17 @@ function renderFinTodayProjection() {
 
 function renderFinHoy() {
   const today = toDateInput(new Date());
-  const m = calcDayMetrics(today);
+  const selectedDate = finTodayDate || today;
+  const isToday = selectedDate === today;
+  const dayText = isToday ? 'hoy' : formatHumanDate(selectedDate);
+  const m = calcDayMetrics(selectedDate);
   const hasData = m.totalSales > 0 || m.totalExpenses > 0;
   const resultClass = m.result >= 0 ? 'fin-kpi-positive' : 'fin-kpi-negative';
   const resultStr = hasData ? (m.result >= 0 ? '+' : '') + formatEur(m.result) : '—';
 
   document.querySelector('#finKpiGrid').innerHTML = `
     <div class="fin-kpi-card">
-      <span>Ventas hoy</span>
+      <span>Ventas ${dayText}</span>
       <strong>${m.totalSales > 0 ? formatEur(m.totalSales) : '—'}</strong>
     </div>
     <div class="fin-kpi-card">
@@ -4714,18 +4809,30 @@ function renderFinHoy() {
       <strong>${m.ticketCount ? formatEur(m.avgTicket) : '—'}</strong>
     </div>
     <div class="fin-kpi-card">
-      <span>Gastos hoy</span>
+      <span>Artículos por ticket</span>
+      <strong>${formatArticlesPerTicket(m.itemMetrics)}</strong>
+      <small>${formatItemCoverage(m.itemMetrics)}</small>
+    </div>
+    <div class="fin-kpi-card">
+      <span>Cross-selling</span>
+      <strong>${formatCrossSelling(m.crossSelling)}</strong>
+      <small>Café + alimento en el mismo ticket</small>
+    </div>
+    <div class="fin-kpi-card">
+      <span>Gastos ${dayText}</span>
       <strong class="fin-kpi-negative">${m.totalExpenses > 0 ? formatEur(m.totalExpenses) : '—'}</strong>
     </div>
     <div class="fin-kpi-card">
-      <span>Resultado hoy</span>
+      <span>Resultado ${dayText}</span>
       <strong class="${resultClass}">${resultStr}</strong>
     </div>
   `;
 
   const topProductsEl = document.querySelector('#finTopProducts');
+  document.querySelector('#finTopProductsTitle').textContent = `Top productos ${dayText}`;
+  document.querySelector('#finCrossSellingTitle').textContent = `Cross-selling ${dayText}`;
   if (!m.topItems.length) {
-    topProductsEl.innerHTML = '<div class="empty-state">Sin datos de artículos hoy. Importar CSV con detalle de productos.</div>';
+    topProductsEl.innerHTML = '<div class="empty-state">Sin detalle de artículos para esta fecha. Sincronizá el día desde Bistrosoft.</div>';
   } else {
     const max = m.topItems[0][1];
     topProductsEl.innerHTML = m.topItems.map(([name, qty]) => `
@@ -4738,17 +4845,16 @@ function renderFinHoy() {
   }
 
   const crossEl = document.querySelector('#finCrossSelling');
-  if (!m.topPairs.length) {
-    crossEl.innerHTML = '<div class="empty-state">Sin pares detectados. Se necesita CSV con artículos por ticket.</div>';
+  if (!m.crossSelling.ticketsWithDetail) {
+    crossEl.innerHTML = '<div class="empty-state">Sin detalle de artículos por ticket para esta fecha. Bistrosoft debe entregar las líneas de cada venta.</div>';
   } else {
-    const maxPair = m.topPairs[0][1];
-    crossEl.innerHTML = m.topPairs.map(([pair, count]) => `
-      <div class="fin-bar-item">
-        <div class="fin-bar-label" style="font-size:0.8rem">${escapeHtml(pair)}</div>
-        <div class="fin-bar-track"><div class="fin-bar-fill" style="width:${Math.round((count / maxPair) * 100)}%;background:var(--coffee)"></div></div>
-        <div class="fin-bar-value">${count}x</div>
+    crossEl.innerHTML = `
+      <div class="fin-cross-result">
+        <strong>${formatCrossSelling(m.crossSelling)}</strong>
+        <span>${formatQuantity(m.crossSelling.coffeeQty)} cafés · ${formatQuantity(m.crossSelling.pairedFoodQty)} alimentos vendidos junto con café</span>
+        <small>${m.crossSelling.ticketsWithDetail} de ${m.ticketCount} tickets con detalle de artículos</small>
       </div>
-    `).join('');
+    `;
   }
 }
 
@@ -6049,7 +6155,8 @@ function renderFinResumen() {
     const ticketsPerDay = daysWithSales > 0 ? totalTickets / daysWithSales : 0;
     const salesPerDay   = daysWithSales > 0 ? totalSales   / daysWithSales : 0;
     const crossSelling  = calculateCrossSelling(sales);
-    return { ym, year: y, month: m - 1, totalSales, totalTickets, totalExpenses, resultado, margen, avgTicket, daysWithSales, ticketsPerDay, salesPerDay, crossSelling };
+    const itemMetrics   = calculateItemMetrics(sales);
+    return { ym, year: y, month: m - 1, totalSales, totalTickets, totalExpenses, resultado, margen, avgTicket, daysWithSales, ticketsPerDay, salesPerDay, crossSelling, itemMetrics };
   });
 
   const currentYM  = monthInputValue(finActiveMonth);
@@ -6124,6 +6231,7 @@ function renderFinResumen() {
         <td class="fin-cell-num">${d.salesPerDay > 0 ? formatEur(d.salesPerDay) : '—'}</td>
         <td class="fin-cell-num">${d.ticketsPerDay > 0 ? Math.round(d.ticketsPerDay) : '—'}</td>
         <td class="fin-cell-num">${formatCrossSelling(d.crossSelling)}</td>
+        <td class="fin-cell-num" title="${escapeHtml(formatItemCoverage(d.itemMetrics))}">${formatArticlesPerTicket(d.itemMetrics)}</td>
         <td class="fin-cell-num">
           ${d.totalExpenses > 0 ? formatEur(d.totalExpenses) : '—'}
           ${d.totalExpenses > 0 ? `<div class="fin-mini-bar-wrap"><div class="fin-mini-bar fin-mini-bar-exp" style="width:${expPct}%"></div></div>` : ''}
@@ -6141,6 +6249,7 @@ function renderFinResumen() {
   const allDays    = data.reduce((s, d) => s + d.daysWithSales, 0);
   const allMargen  = allSales > 0 ? (allRes / allSales) * 100 : 0;
   const allCrossSelling = calculateCrossSelling(locationSales);
+  const allItemMetrics = calculateItemMetrics(locationSales);
   const allResClass = allRes >= 0 ? 'fin-cell-positive' : 'fin-cell-negative';
 
   el.innerHTML = `
@@ -6155,6 +6264,7 @@ function renderFinResumen() {
           <th class="fin-cell-num">Venta/día (€)</th>
           <th class="fin-cell-num">Tickets/día</th>
           <th class="fin-cell-num">Cross-selling</th>
+          <th class="fin-cell-num">Artículos/ticket</th>
           <th class="fin-cell-num">Gastos</th>
           <th class="fin-cell-num">Resultado</th>
           <th class="fin-cell-num">Margen %</th>
@@ -6168,6 +6278,7 @@ function renderFinResumen() {
           <td class="fin-cell-num">${allDays > 0 ? formatEur(allSales / allDays) : '—'}</td>
           <td class="fin-cell-num">${allDays > 0 ? Math.round(allTickets / allDays) : '—'}</td>
           <td class="fin-cell-num">${formatCrossSelling(allCrossSelling)}</td>
+          <td class="fin-cell-num" title="${escapeHtml(formatItemCoverage(allItemMetrics))}">${formatArticlesPerTicket(allItemMetrics)}</td>
           <td class="fin-cell-num">${formatEur(allExp)}</td>
           <td class="fin-cell-num ${allResClass}">${(allRes >= 0 ? '+' : '') + formatEur(allRes)}</td>
           <td class="fin-cell-num ${allResClass}">${allMargen.toFixed(1)}%</td>
@@ -6210,6 +6321,8 @@ function renderFinAudit() {
     const madrid = branchMaps.madrid.get(dateKey) || { sales: 0, tickets: 0, saleRows: [] };
     barcelona.crossSelling = calculateCrossSelling(barcelona.saleRows);
     madrid.crossSelling = calculateCrossSelling(madrid.saleRows);
+    barcelona.itemMetrics = calculateItemMetrics(barcelona.saleRows);
+    madrid.itemMetrics = calculateItemMetrics(madrid.saleRows);
     return {
       dateKey,
       barcelona,
@@ -6251,11 +6364,15 @@ function renderFinAudit() {
           ${row.barcelona.sales > 0 ? `<div class="fin-mini-bar-wrap"><div class="fin-mini-bar fin-mini-bar-sales" style="width:${bPct}%"></div></div>` : ''}
         </td>
         <td class="fin-cell-num">${row.barcelona.tickets || '&mdash;'}</td>
+        <td class="fin-cell-num">${formatCrossSelling(row.barcelona.crossSelling)}</td>
+        <td class="fin-cell-num" title="${escapeHtml(formatItemCoverage(row.barcelona.itemMetrics))}">${formatArticlesPerTicket(row.barcelona.itemMetrics)}</td>
         <td class="fin-cell-num">
           ${row.madrid.sales > 0 ? formatEur(row.madrid.sales) : '&mdash;'}
           ${row.madrid.sales > 0 ? `<div class="fin-mini-bar-wrap"><div class="fin-mini-bar" style="width:${mPct}%;background:var(--coffee)"></div></div>` : ''}
         </td>
         <td class="fin-cell-num">${row.madrid.tickets || '&mdash;'}</td>
+        <td class="fin-cell-num">${formatCrossSelling(row.madrid.crossSelling)}</td>
+        <td class="fin-cell-num" title="${escapeHtml(formatItemCoverage(row.madrid.itemMetrics))}">${formatArticlesPerTicket(row.madrid.itemMetrics)}</td>
         <td class="fin-cell-num">${row.total > 0 ? formatEur(row.total) : '&mdash;'}</td>
         <td class="fin-cell-num ${diffClass}">${hasData ? (row.diff >= 0 ? '+' : '') + formatEur(row.diff) : '&mdash;'}</td>
       </tr>`;
@@ -6263,10 +6380,12 @@ function renderFinAudit() {
 
   const totalDiff = totals.barcelonaSales - totals.madridSales;
   const totalDiffClass = totalDiff >= 0 ? 'fin-cell-positive' : 'fin-cell-negative';
-  const todayKey = toDateInput(new Date());
-  const auditCrossDate = todayKey.startsWith(monthKey) ? todayKey : '';
-  const barcelonaCross = calculateCrossSelling(getLocationSales('barcelona').filter((sale) => sale.date === auditCrossDate));
-  const madridCross = calculateCrossSelling(getLocationSales('madrid').filter((sale) => sale.date === auditCrossDate));
+  const barcelonaMonthSales = getLocationSales('barcelona').filter((sale) => sale.date.startsWith(monthKey));
+  const madridMonthSales = getLocationSales('madrid').filter((sale) => sale.date.startsWith(monthKey));
+  const barcelonaCross = calculateCrossSelling(barcelonaMonthSales);
+  const madridCross = calculateCrossSelling(madridMonthSales);
+  const barcelonaItems = calculateItemMetrics(barcelonaMonthSales);
+  const madridItems = calculateItemMetrics(madridMonthSales);
   el.innerHTML = `
     <div class="fin-table-header" style="margin-bottom:16px">
       <div>
@@ -6278,8 +6397,10 @@ function renderFinAudit() {
     <div class="fin-kpi-grid fin-resumen-kpi-grid" style="margin-bottom:18px">
       <div class="fin-kpi-card"><span>Barcelona</span><strong>${formatEur(totals.barcelonaSales)}</strong><small>${totals.barcelonaTickets} tickets</small></div>
       <div class="fin-kpi-card"><span>Madrid</span><strong>${formatEur(totals.madridSales)}</strong><small>${totals.madridTickets} tickets</small></div>
-      <div class="fin-kpi-card"><span>Cross-selling hoy Barcelona</span><strong>${formatCrossSelling(barcelonaCross)}</strong><small>Café + alimento</small></div>
-      <div class="fin-kpi-card"><span>Cross-selling hoy Madrid</span><strong>${formatCrossSelling(madridCross)}</strong><small>Café + alimento</small></div>
+      <div class="fin-kpi-card"><span>Cross-selling Barcelona</span><strong>${formatCrossSelling(barcelonaCross)}</strong><small>${monthLabel}</small></div>
+      <div class="fin-kpi-card"><span>Artículos/ticket Barcelona</span><strong>${formatArticlesPerTicket(barcelonaItems)}</strong><small>${formatItemCoverage(barcelonaItems)}</small></div>
+      <div class="fin-kpi-card"><span>Cross-selling Madrid</span><strong>${formatCrossSelling(madridCross)}</strong><small>${monthLabel}</small></div>
+      <div class="fin-kpi-card"><span>Artículos/ticket Madrid</span><strong>${formatArticlesPerTicket(madridItems)}</strong><small>${formatItemCoverage(madridItems)}</small></div>
       <div class="fin-kpi-card"><span>Total dos locales</span><strong>${formatEur(totals.totalSales)}</strong></div>
       <div class="fin-kpi-card"><span>Diferencia BCN - MAD</span><strong class="${totalDiffClass}">${(totalDiff >= 0 ? '+' : '') + formatEur(totalDiff)}</strong></div>
     </div>
@@ -6289,8 +6410,12 @@ function renderFinAudit() {
           <th>Fecha</th>
           <th class="fin-cell-num">Barcelona</th>
           <th class="fin-cell-num">Tickets BCN</th>
+          <th class="fin-cell-num">Cross BCN</th>
+          <th class="fin-cell-num">Art./ticket BCN</th>
           <th class="fin-cell-num">Madrid</th>
           <th class="fin-cell-num">Tickets MAD</th>
+          <th class="fin-cell-num">Cross MAD</th>
+          <th class="fin-cell-num">Art./ticket MAD</th>
           <th class="fin-cell-num">Total</th>
           <th class="fin-cell-num">Dif. BCN-MAD</th>
         </tr></thead>
@@ -6299,8 +6424,12 @@ function renderFinAudit() {
           <td>Total ${monthLabel}</td>
           <td class="fin-cell-num">${formatEur(totals.barcelonaSales)}</td>
           <td class="fin-cell-num">${totals.barcelonaTickets}</td>
+          <td class="fin-cell-num">${formatCrossSelling(barcelonaCross)}</td>
+          <td class="fin-cell-num">${formatArticlesPerTicket(barcelonaItems)}</td>
           <td class="fin-cell-num">${formatEur(totals.madridSales)}</td>
           <td class="fin-cell-num">${totals.madridTickets}</td>
+          <td class="fin-cell-num">${formatCrossSelling(madridCross)}</td>
+          <td class="fin-cell-num">${formatArticlesPerTicket(madridItems)}</td>
           <td class="fin-cell-num">${formatEur(totals.totalSales)}</td>
           <td class="fin-cell-num ${totalDiffClass}">${(totalDiff >= 0 ? '+' : '') + formatEur(totalDiff)}</td>
         </tr></tfoot>
@@ -6479,9 +6608,9 @@ function renderFinAnalysis() {
 
 // -------- METRICS --------
 
-const COFFEE_ITEM_PATTERN = /\b(cafe|coffee|espresso|ristretto|americano|cortado|macchiato|capuccino|cappuccino|latte|flat\s*white|mocca|mocha|cold\s*brew|nitro|frappe|frappuccino|affogato|v60|chemex|aeropress|batch\s*brew|filter\s*coffee|cafe\s*filtrado)\b/i;
+const COFFEE_ITEM_PATTERN = /\b(cafe|coffee|espresso|ristretto|americano|cortado|macchiato|capuccino|cappuccino|latte|flat\s*white|mocca|mocha|cold\s*brew|nitro|frappe|frappuccino|affogato|v60|chemex|aeropress|batch\s*brew|filter\s*coffee|cafe\s*filtrado|cafe\s*con\s*hielo|iced\s*(coffee|latte|americano|mocha|cappuccino)|freddo)\b/i;
 const NON_FOOD_ITEM_PATTERN = /\b(agua|water|refresco|soda|cola|fanta|sprite|zumo|jugo|juice|cerveza|beer|vino|wine|te|matcha|chai|leche|milk|bebida|drink|kombucha|limonada)\b/i;
-const FOOD_ITEM_PATTERN = /\b(croissant|cruasan|medialuna|tostad[ao]|toast|sandwich|bocadillo|bagel|cookie|galleta|brownie|muffin|cake|tarta|pastel|bizcocho|boll|roll|rollo|pan|bread|empanada|quiche|ensalada|salad|yogur|yogurt|granola|avocado|aguacate|jamon|queso|cheese|comida|food|brunch|desayuno|breakfast|pasteleria|bakery|dulce|salado|focaccia|pizza|tortilla|huevo|egg|waffle|gofre|pancake|crepe|donut|dona|alfajor|barrita|snack|fruta|fruit|banana|platano)\b/i;
+const FOOD_ITEM_PATTERN = /\b(croissant|cruasan|medialuna|tostad[ao]|toast|sandwich|bocadillo|bagel|cookie|galleta|brownie|muffin|cake|tarta|pastel|bizcocho|boll|roll|rollo|pan|bread|empanada|quiche|ensalada|salad|yogur|yogurt|granola|avocado|aguacate|jamon|queso|cheese|comida|food|brunch|desayuno|breakfast|pasteleria|bakery|dulce|salado|focaccia|pizza|tortilla|huevo|egg|waffle|gofre|pancake|crepe|donut|dona|alfajor|barrita|snack|fruta|fruit|banana|platano|palmera|napolitana|scone|babka|chipa|cheesecake|tiramis|carrot|zanahoria|canela|cinnamon|pain\s*au\s*chocolat)\b/i;
 
 function normalizeItemText(item) {
   return itemName(item).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -6518,6 +6647,42 @@ function calculateCrossSelling(sales) {
     ticketsWithDetail,
     coffeesPerFood: pairedFoodQty > 0 ? coffeeQty / pairedFoodQty : 0,
   };
+}
+
+function calculateItemMetrics(sales) {
+  let itemQty = 0;
+  let ticketsWithDetail = 0;
+  const ticketCount = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  sales.forEach((sale) => {
+    const items = Array.isArray(sale.items) ? sale.items : [];
+    if (!items.length) return;
+    ticketsWithDetail += Number(sale.count || 1);
+    itemQty += items.reduce((sum, item) => sum + itemQuantity(item), 0);
+  });
+  return {
+    itemQty,
+    ticketCount,
+    ticketsWithDetail,
+    articlesPerTicket: ticketsWithDetail > 0 ? itemQty / ticketsWithDetail : 0,
+  };
+}
+
+function formatQuantity(value) {
+  return Number(value || 0).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+}
+
+function formatArticlesPerTicket(metric) {
+  if (!metric?.ticketsWithDetail) return '—';
+  return metric.articlesPerTicket.toLocaleString('es-ES', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatItemCoverage(metric) {
+  if (!metric?.ticketsWithDetail) return 'Sin detalle de artículos';
+  if (metric.ticketsWithDetail >= metric.ticketCount) return `${metric.ticketsWithDetail} tickets analizados`;
+  return `${metric.ticketsWithDetail} de ${metric.ticketCount} tickets con detalle`;
 }
 
 function formatCrossSelling(metric) {
@@ -6558,7 +6723,8 @@ function calcDayMetrics(date) {
   const topPairs = Object.entries(pairCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   const crossSelling = calculateCrossSelling(sales);
-  return { totalSales, ticketCount, avgTicket, totalExpenses, result: totalSales - totalExpenses, topItems, topPairs, crossSelling };
+  const itemMetrics = calculateItemMetrics(sales);
+  return { totalSales, ticketCount, avgTicket, totalExpenses, result: totalSales - totalExpenses, topItems, topPairs, crossSelling, itemMetrics };
 }
 
 function groupSalesByDate() {
