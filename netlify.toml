@@ -1,61 +1,7 @@
 [build]
   command = "npm run build:netlify"
   publish = "dist"
-  functions = "netlify/functions"
-
-[build.environment]
-  NODE_VERSION = "20"
-  NPM_VERSION = "10"
-
-[[redirects]]
-  from = "/api/auth/admin"
-  to = "/.netlify/functions/auth-admin"
-  status = 200
-
-[[redirects]]
-  from = "/api/auth/employee"
-  to = "/.netlify/functions/auth-employee"
-  status = 200
-
-[[redirects]]
-  from = "/api/auth/visit"
-  to = "/.netlify/functions/auth-visit"
-  status = 200
-
-[[redirects]]
-  from = "/api/auth/logout"
-  to = "/.netlify/functions/auth-logout"
-  status = 200
-
-[[redirects]]
-  from = "/api/state"
-  to = "/.netlify/functions/state"
-  status = 200
-
-[[redirects]]
-  from = "/api/state/import"
-  to = "/.netlify/functions/state-import"
-  status = 200
-
-[[redirects]]
-  from = "/api/team"
-  to = "/.netlify/functions/team-list"
-  status = 200
-
-[[redirects]]
-  from = "/api/bistrosoft/status"
-  to = "/.netlify/functions/bistro-status"
-  status = 200
-
-[[redirects]]
-  from = "/api/bistrosoft/sales"
-  to = "/.netlify/functions/bistro-sales"
-  status = 200
-
-[[redirects]]
-  from = "/api/bistrosoft/months"
-  to = "/.netlify/functions/bistro-months"
-  status = 200
 
 [functions]
+  directory = "netlify/functions"
   node_bundler = "esbuild"

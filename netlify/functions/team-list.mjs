@@ -4,7 +4,6 @@ const DEFAULT_TEAM = [
   { id: "chelo", label: "Chelo", role: "Encargado", color: "#416877", active: true, canLogin: true, locationId: "barcelona" },
   { id: "sebastian", label: "Sebastian", role: "Barista", color: "#2d4f5c", active: true, canLogin: true, locationId: "barcelona" },
   { id: "third", label: "Paloma", role: "Barista", color: "#c46d47", active: true, canLogin: true, locationId: "barcelona" },
-  { id: "pablo", label: "Pablo", role: "Cobertura dueno", color: "#8a4a2f", active: true, canLogin: false, system: true, locationId: "barcelona" },
   { id: "bonnie", label: "Bonnie", role: "Barista", color: "#6f7f46", active: true, canLogin: true, locationId: "madrid" },
   { id: "micaela", label: "Micaela", role: "Encargada", color: "#8d5a73", active: true, canLogin: true, locationId: "madrid" },
   { id: "perla", label: "Perla", role: "Barista", color: "#547f87", active: true, canLogin: true, locationId: "madrid" },

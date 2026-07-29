@@ -61,16 +61,6 @@ const DEFAULT_EMPLOYEES = [
     locationId: "barcelona",
   },
   {
-    id: "pablo",
-    label: "Pablo",
-    role: "Cobertura dueno",
-    color: "#8a4a2f",
-    active: true,
-    canLogin: false,
-    system: true,
-    locationId: "barcelona",
-  },
-  {
     id: "bonnie",
     label: "Bonnie",
     role: "Barista",
@@ -151,7 +141,6 @@ const DEFAULT_BASE_SCHEDULES = {
     6: ["12:00", "20:00"],
     0: ["12:00", "20:00"],
   }),
-  pablo: baseSchedule({}),
   micaela: baseSchedule({
     1: ["08:30", "14:00"],
     2: ["08:30", "14:00"],
@@ -222,6 +211,7 @@ const DEFAULT_SETTINGS = {
   palomaLeaveDate: "2026-07-01",
   holidaySeedVersion: HOLIDAY_SEED_VERSION,
   holidays: DEFAULT_HOLIDAYS_2026,
+  monthlyOpeningHours: {},
 };
 
 const DEFAULT_LOCATION_SETTINGS = {
@@ -256,6 +246,8 @@ const DEFAULT_STATE = {
 
 let state = loadState();
 let activeMonth = firstDayOfMonth(new Date());
+let storeHoursActiveMonth = firstDayOfMonth(new Date());
+const hiddenGridEmployees = new Map();
 let trafficActiveMonth = firstDayOfMonth(new Date());
 let appRole = null;
 let activeEmployeeId = null;
@@ -286,6 +278,11 @@ const els = {
   exportCsv: document.querySelector("#exportCsv"),
   printPdf: document.querySelector("#printPdf"),
   employeeLegend: document.querySelector("#employeeLegend"),
+  storeHoursEditor: document.querySelector("#storeHoursEditor"),
+  storeHoursMonth: document.querySelector("#storeHoursMonth"),
+  storeHoursPrevMonth: document.querySelector("#storeHoursPrevMonth"),
+  storeHoursNextMonth: document.querySelector("#storeHoursNextMonth"),
+  storeHoursDays: document.querySelector("#storeHoursDays"),
   scheduleTable: document.querySelector("#scheduleTable"),
   plannedHours: document.querySelector("#plannedHours"),
   pendingCount: document.querySelector("#pendingCount"),
@@ -349,7 +346,13 @@ async function refreshTeamDirectory() {
     if (!response.ok) return;
     const payload = await response.json();
     if (!payload.ok || !Array.isArray(payload.employees)) return;
-    state.employees = payload.employees;
+    const serverIds = new Set(payload.employees.map((employee) => employee.id));
+    const localCustomEmployees = (state.employees || []).filter((employee) =>
+      employee.id !== "pablo"
+      && !serverIds.has(employee.id)
+      && !DEFAULT_EMPLOYEES.some((defaultEmployee) => defaultEmployee.id === employee.id)
+    );
+    state.employees = [...payload.employees, ...localCustomEmployees];
     state.baseSchedules = mergeBaseSchedules(DEFAULT_BASE_SCHEDULES, state.baseSchedules, state.employees);
     addDefaultProfilesForNewEmployees(state);
     renderEmployeeChoiceButtons();
@@ -368,6 +371,7 @@ function init() {
   if (!Array.isArray(state.employees)) state.employees = structuredClone(DEFAULT_EMPLOYEES);
   if (!Array.isArray(state.wasteRecords)) state.wasteRecords = [];
   state.employees = mergeDefaultEmployees(state.employees);
+  removePabloFromState(state);
   state.baseSchedules = mergeBaseSchedules(DEFAULT_BASE_SCHEDULES, state.baseSchedules, state.employees);
   addDefaultProfilesForNewEmployees(state);
   tagLegacyRecordsWithLocation(state);
@@ -414,11 +418,13 @@ function bindEvents() {
 
   els.prevMonth.addEventListener("click", () => {
     activeMonth = addMonths(activeMonth, -1);
+    storeHoursActiveMonth = firstDayOfMonth(activeMonth);
     render();
   });
 
   els.nextMonth.addEventListener("click", () => {
     activeMonth = addMonths(activeMonth, 1);
+    storeHoursActiveMonth = firstDayOfMonth(activeMonth);
     render();
   });
 
@@ -426,7 +432,35 @@ function bindEvents() {
     if (!event.target.value) return;
     const [year, month] = event.target.value.split("-").map(Number);
     activeMonth = new Date(year, month - 1, 1);
+    storeHoursActiveMonth = firstDayOfMonth(activeMonth);
     render();
+  });
+
+  els.employeeLegend.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-grid-employee]");
+    if (!button) return;
+    const hidden = getHiddenGridEmployees();
+    const employeeId = button.dataset.gridEmployee;
+    if (hidden.has(employeeId)) hidden.delete(employeeId);
+    else hidden.add(employeeId);
+    renderLegend();
+    renderSchedule();
+    renderMetrics();
+  });
+
+  els.storeHoursPrevMonth.addEventListener("click", () => {
+    storeHoursActiveMonth = addMonths(storeHoursActiveMonth, -1);
+    renderStoreHoursEditor();
+  });
+  els.storeHoursNextMonth.addEventListener("click", () => {
+    storeHoursActiveMonth = addMonths(storeHoursActiveMonth, 1);
+    renderStoreHoursEditor();
+  });
+  els.storeHoursMonth.addEventListener("change", (event) => {
+    if (!event.target.value) return;
+    const [year, month] = event.target.value.split("-").map(Number);
+    storeHoursActiveMonth = new Date(year, month - 1, 1);
+    renderStoreHoursEditor();
   });
 
   els.exportCsv.addEventListener("click", exportCsv);
@@ -504,6 +538,7 @@ function render() {
 
   renderLegend();
   renderSchedule();
+  renderStoreHoursEditor();
   renderMetrics();
   renderPunches();
   renderChanges();
@@ -517,14 +552,37 @@ function render() {
 }
 
 function renderLegend() {
+  const hidden = getHiddenGridEmployees();
+  const monthDays = getMonthDays(activeMonth).map(toDateInput);
   els.employeeLegend.innerHTML = getEmployees().map((employee) => {
+    const monthlyHours = monthDays.reduce((total, dateKey) =>
+      total + getShiftsForDate(dateKey)
+        .filter((shift) => shift.employeeId === employee.id)
+        .reduce((dayTotal, shift) => dayTotal + shift.end - shift.start, 0), 0);
+    const isHidden = hidden.has(employee.id);
     return `
-      <span class="legend-item">
+      <button class="legend-item legend-toggle${isHidden ? " is-off" : ""}" type="button"
+        data-grid-employee="${employee.id}" aria-pressed="${isHidden ? "false" : "true"}"
+        title="${isHidden ? "Mostrar" : "Ocultar"} a ${escapeHtml(employee.label)} en esta grilla">
         <span class="legend-swatch" style="background:${employee.color}"></span>
-        ${employee.label}
-      </span>
+        <span class="legend-copy">
+          <strong>${escapeHtml(employee.label)}</strong>
+          <small>${formatHours(monthlyHours)} este mes</small>
+        </span>
+      </button>
     `;
   }).join("");
+}
+
+function getHiddenGridEmployees() {
+  const key = `${activeLocationId}:${monthInputValue(activeMonth)}`;
+  if (!hiddenGridEmployees.has(key)) hiddenGridEmployees.set(key, new Set());
+  return hiddenGridEmployees.get(key);
+}
+
+function getVisibleShiftsForDate(dateKey) {
+  const hidden = getHiddenGridEmployees();
+  return getShiftsForDate(dateKey).filter((shift) => !hidden.has(shift.employeeId));
 }
 
 function renderSchedule() {
@@ -546,7 +604,7 @@ function renderSchedule() {
 function renderDayRow(date) {
   const dateKey = toDateInput(date);
   const day = date.getDay();
-  const shifts = getShiftsForDate(dateKey);
+  const shifts = getVisibleShiftsForDate(dateKey);
   const dayHours = shifts.reduce((sum, shift) => sum + shift.end - shift.start, 0);
   const lanes = layoutShifts(shifts);
   const height = Math.max(94, 18 + lanes.length * 33);
@@ -560,10 +618,10 @@ function renderDayRow(date) {
     .join(" ");
 
   return `
-    <div class="${rowClasses}" style="min-height:${height}px">
+    <div class="${rowClasses}" data-schedule-date="${dateKey}" style="min-height:${height}px">
       <div class="day-info">
         <span class="day-name">${DAY_NAMES[day]} ${date.getDate()}</span>
-        <span class="day-meta">${holiday ? `${holiday.name || "Feriado"} ${holiday.open}-${holiday.close}` : getOpenLabel(day)}</span>
+        <span class="day-meta">${escapeHtml(getOpenLabelForDate(dateKey))}</span>
       </div>
       <div class="timeline" style="min-height:${height}px">
         ${lanes
@@ -590,7 +648,7 @@ function renderDayRow(date) {
 function renderMetrics() {
   const days = getMonthDays(activeMonth).map(toDateInput);
   const planned = days.reduce((sum, dateKey) => {
-    return sum + getShiftsForDate(dateKey).reduce((daySum, shift) => daySum + shift.end - shift.start, 0);
+    return sum + getVisibleShiftsForDate(dateKey).reduce((daySum, shift) => daySum + shift.end - shift.start, 0);
   }, 0);
   const pending = getLocationChanges().filter((change) => change.status === "pending").length;
   const suggestions = getSuggestions();
@@ -899,7 +957,7 @@ function handleChangeRequest(event) {
     id: createId(),
     locationId: activeLocationId,
     date: els.changeDate.value,
-    employeeId: els.changeAction.value === "owner" ? "pablo" : els.changeEmployee.value,
+    employeeId: els.changeEmployee.value,
     replacementEmployeeId: els.replacementEmployee.value,
     reason: els.changeReason.value,
     action: els.changeAction.value,
@@ -916,7 +974,7 @@ function handleChangeRequest(event) {
 
 function updateChangeStatus(id, status) {
   state.changes = state.changes.map((change) => {
-    return change.id === id ? { ...change, status, reviewedAt: new Date().toISOString(), reviewedBy: "Pablo" } : change;
+    return change.id === id ? { ...change, status, reviewedAt: new Date().toISOString(), reviewedBy: "Administrador" } : change;
   });
   render();
 }
@@ -1256,11 +1314,6 @@ function getShiftsForDate(dateKey) {
       shifts.push(makeShift(change.employeeId, start, end, "extra"));
     }
 
-    if (change.action === "owner") {
-      if (activeLocationId === DEFAULT_LOCATION_ID) {
-        shifts.push(makeShift("pablo", start, end, "cobertura"));
-      }
-    }
   });
 
   return shifts
@@ -1273,6 +1326,115 @@ function getOpenLabel(day) {
   return getRegularOpeningPeriods(day)
     .map((hours) => `${formatHour(hours.open)}-${formatHour(hours.close)}`)
     .join(" / ") + " local";
+}
+
+function getOpeningOverride(dateKey, locationId = activeLocationId) {
+  return getLocationSettings(locationId).monthlyOpeningHours?.[dateKey] || null;
+}
+
+function getDefaultOpeningForDate(dateKey) {
+  const holiday = getHoliday(dateKey);
+  if (holiday) return { open: holiday.open || "10:00", close: holiday.close || "19:00" };
+  const day = new Date(`${dateKey}T12:00:00`).getDay();
+  const periods = getRegularOpeningPeriods(day);
+  return {
+    open: formatHour(periods[0].open),
+    close: formatHour(periods[periods.length - 1].close),
+  };
+}
+
+function getOpenLabelForDate(dateKey) {
+  const override = getOpeningOverride(dateKey);
+  const holiday = getHoliday(dateKey);
+  if (override?.closed) return holiday ? `${holiday.name || "Feriado"} · cerrado` : "Cerrado";
+  if (override?.open && override?.close) {
+    return `${holiday ? `${holiday.name || "Feriado"} · ` : ""}${override.open}-${override.close} local`;
+  }
+  if (holiday) return `${holiday.name || "Feriado"} ${holiday.open}-${holiday.close}`;
+  return getOpenLabel(new Date(`${dateKey}T12:00:00`).getDay());
+}
+
+function saveOpeningOverride(dateKey, values) {
+  const settings = getLocationSettings();
+  updateLocationSettings({
+    monthlyOpeningHours: {
+      ...(settings.monthlyOpeningHours || {}),
+      [dateKey]: values,
+    },
+  });
+  saveState();
+  if (dateKey.startsWith(monthInputValue(activeMonth))) renderSchedule();
+}
+
+function resetOpeningOverride(dateKey) {
+  const monthlyOpeningHours = { ...(getLocationSettings().monthlyOpeningHours || {}) };
+  delete monthlyOpeningHours[dateKey];
+  updateLocationSettings({ monthlyOpeningHours });
+  saveState();
+  if (dateKey.startsWith(monthInputValue(activeMonth))) renderSchedule();
+}
+
+function renderStoreHoursEditor() {
+  if (!els.storeHoursEditor || !els.storeHoursDays) return;
+  const canEdit = appRole === "admin";
+  els.storeHoursEditor.hidden = !canEdit;
+  if (!canEdit) return;
+  const monthKey = monthInputValue(storeHoursActiveMonth);
+  els.storeHoursMonth.value = monthKey;
+  const rows = getMonthDays(storeHoursActiveMonth).map((date) => {
+    const dateKey = toDateInput(date);
+    const override = getOpeningOverride(dateKey);
+    const defaults = getDefaultOpeningForDate(dateKey);
+    const holiday = getHoliday(dateKey);
+    const closed = override?.closed === true;
+    return `
+      <div class="store-hours-row${override ? " is-custom" : ""}${closed ? " is-closed" : ""}" data-store-date="${dateKey}">
+        <div class="store-hours-date">
+          <strong>${DAY_NAMES[date.getDay()]} ${date.getDate()}</strong>
+          <small>${holiday ? escapeHtml(holiday.name || "Feriado") : override ? "Horario personalizado" : "Horario predeterminado"}</small>
+        </div>
+        <label>Apertura
+          <input type="time" data-store-open value="${escapeHtml(override?.open || defaults.open)}"${closed ? " disabled" : ""} />
+        </label>
+        <label>Cierre
+          <input type="time" data-store-close value="${escapeHtml(override?.close || defaults.close)}"${closed ? " disabled" : ""} />
+        </label>
+        <label class="store-closed-toggle">
+          <input type="checkbox" data-store-closed${closed ? " checked" : ""} />
+          <span>Cerrado</span>
+        </label>
+        <button class="mini-button" type="button" data-store-reset${override ? "" : " disabled"}>Usar predeterminado</button>
+      </div>`;
+  }).join("");
+  els.storeHoursDays.innerHTML = `<div class="store-hours-list">${rows}</div>`;
+
+  els.storeHoursDays.querySelectorAll("[data-store-date]").forEach((row) => {
+    const dateKey = row.dataset.storeDate;
+    const openInput = row.querySelector("[data-store-open]");
+    const closeInput = row.querySelector("[data-store-close]");
+    const closedInput = row.querySelector("[data-store-closed]");
+    const persist = () => {
+      const closed = closedInput.checked;
+      if (!closed && (!openInput.value || !closeInput.value || openInput.value >= closeInput.value)) {
+        alert("La hora de cierre debe ser posterior a la apertura.");
+        renderStoreHoursEditor();
+        return;
+      }
+      saveOpeningOverride(dateKey, {
+        open: openInput.value || getDefaultOpeningForDate(dateKey).open,
+        close: closeInput.value || getDefaultOpeningForDate(dateKey).close,
+        closed,
+      });
+      renderStoreHoursEditor();
+    };
+    openInput.addEventListener("change", persist);
+    closeInput.addEventListener("change", persist);
+    closedInput.addEventListener("change", persist);
+    row.querySelector("[data-store-reset]").addEventListener("click", () => {
+      resetOpeningOverride(dateKey);
+      renderStoreHoursEditor();
+    });
+  });
 }
 
 function getRegularOpeningPeriods(day) {
@@ -1821,6 +1983,22 @@ async function flushSharedState() {
   }
 }
 
+function waitForStateSave(delay = 120) {
+  return new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+async function persistSharedStateNow() {
+  if (!sharedStateEnabled) return true;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    while (sharedStateSaving) await waitForStateSave();
+    if (!sharedStatePending) return true;
+    await flushSharedState();
+    if (!sharedStatePending && !sharedStateSaving) return true;
+    await waitForStateSave(250);
+  }
+  return false;
+}
+
 async function connectSharedState(role, employeeId = null, authData = {}) {
   try {
     const loginResponse = await fetch(`/api/auth/${role}`, {
@@ -1852,8 +2030,25 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
     const payload = await stateResponse.json();
 
     if (payload.state) {
-      state = seedDefaultHolidays(mergeState(DEFAULT_STATE, payload.state));
+      const localSnapshot = state;
+      const serverState = seedDefaultHolidays(mergeState(DEFAULT_STATE, payload.state));
+      const serverIds = new Set((serverState.employees || []).map((employee) => employee.id));
+      const recoverableEmployees = role === "admin"
+        ? (localSnapshot.employees || []).filter((employee) =>
+            employee.id !== "pablo"
+            && !serverIds.has(employee.id)
+            && !DEFAULT_EMPLOYEES.some((defaultEmployee) => defaultEmployee.id === employee.id)
+          )
+        : [];
+      recoverableEmployees.forEach((employee) => {
+        serverState.employees.push(employee);
+        if (localSnapshot.profiles?.[employee.id]) serverState.profiles[employee.id] = localSnapshot.profiles[employee.id];
+        if (localSnapshot.baseSchedules?.[employee.id]) serverState.baseSchedules[employee.id] = localSnapshot.baseSchedules[employee.id];
+        if (localSnapshot.contracts?.[employee.id]) serverState.contracts[employee.id] = localSnapshot.contracts[employee.id];
+      });
+      state = serverState;
       if (role !== 'visitor') saveLocalStateSnapshot();
+      if (recoverableEmployees.length) saveState();
     } else {
       scheduleSharedStateSave();
     }
@@ -1953,6 +2148,7 @@ function mergeState(base, saved) {
   merged.expenses = (merged.expenses || []).map((expense) =>
     applyExpenseCategoryOverride(expense, expenseCategoryOverrides)
   );
+  removePabloFromState(merged);
   return merged;
 }
 
@@ -1965,6 +2161,27 @@ function mergeDefaultEmployees(savedEmployees) {
     ...employee,
     locationId: normalizeLocationId(employee.locationId || employee.branch || employee.store || DEFAULT_LOCATION_ID),
   }));
+}
+
+function removePabloFromState(nextState) {
+  if (!nextState) return nextState;
+  nextState.employees = (nextState.employees || []).filter((employee) => employee.id !== "pablo");
+  ["punches", "wasteRecords"].forEach((key) => {
+    nextState[key] = (nextState[key] || []).filter((item) => item.employeeId !== "pablo");
+  });
+  nextState.changes = (nextState.changes || []).filter((item) =>
+    item.employeeId !== "pablo" && item.replacementEmployeeId !== "pablo" && item.action !== "owner"
+  );
+  ["profiles", "contracts", "baseSchedules"].forEach((key) => {
+    if (nextState[key]) delete nextState[key].pablo;
+  });
+  Object.values(nextState.payrollSettlements || {}).forEach((locationMonths) => {
+    Object.values(locationMonths || {}).forEach((month) => {
+      if (month) delete month.pablo;
+    });
+  });
+  nextState.pabloRemovalVersion = 1;
+  return nextState;
 }
 
 function createBlankBaseSchedule() {
@@ -2182,7 +2399,6 @@ function actionLabel(action) {
     absence: "Quitar turno",
     replace: "Reemplazo",
     extra: "Extra",
-    owner: "Cobertura Pablo",
   };
   return labels[action] || action;
 }
@@ -3115,10 +3331,13 @@ async function handleTeamMemberForm(event) {
   document.querySelector('#teamMemberActiveFrom').value = toDateInput(new Date());
   document.querySelector('#teamMemberColor').value = '#416877';
   saveState();
-  await flushSharedState();
+  const persisted = await persistSharedStateNow();
   populateSelectors();
   renderEmployeeChoiceButtons();
   render();
+  if (!persisted) {
+    alert("El empleado quedó guardado en este dispositivo, pero no se pudo confirmar el guardado en Netlify. Revisá la conexión antes de salir.");
+  }
 }
 
 function renderPersonnelPanel() {

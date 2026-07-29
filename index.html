@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=18" />
+    <link rel="stylesheet" href="styles.css?v=19" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -323,6 +323,21 @@
             <div class="legend" id="employeeLegend"></div>
           </div>
           <div class="schedule-table" id="scheduleTable" aria-live="polite"></div>
+          <section class="store-hours-editor" id="storeHoursEditor">
+            <div class="store-hours-heading">
+              <div>
+                <p class="eyebrow">Horario estacional</p>
+                <h3>Apertura de la tienda por día</h3>
+                <p class="form-note">Elegí un mes y modificá únicamente los días que necesites. Los demás conservan el horario predeterminado.</p>
+              </div>
+              <div class="store-hours-month-control">
+                <button class="icon-button" id="storeHoursPrevMonth" type="button" aria-label="Mes anterior de horarios">&#8249;</button>
+                <input id="storeHoursMonth" type="month" aria-label="Mes de horarios de tienda" />
+                <button class="icon-button" id="storeHoursNextMonth" type="button" aria-label="Mes siguiente de horarios">&#8250;</button>
+              </div>
+            </div>
+            <div id="storeHoursDays"></div>
+          </section>
         </section>
 
         <section class="panel tab-panel" id="punchPanel" data-panel="punch">
@@ -331,7 +346,7 @@
               <p class="eyebrow">Entrada y salida</p>
               <h2>Fichaje con ubicacion</h2>
             </div>
-            <button class="ghost-button" id="emailLateReport" type="button">Reporte a Pablo</button>
+            <button class="ghost-button" id="emailLateReport" type="button">Reporte de llegadas</button>
           </div>
 
           <div class="two-column">
@@ -369,7 +384,7 @@
               <p class="eyebrow">Aprobacion administrativa</p>
               <h2>Cambios, ausencias y cobertura</h2>
             </div>
-            <span class="admin-pill">Editor: Pablo</span>
+            <span class="admin-pill">Editor: Administrador</span>
           </div>
 
           <div class="two-column">
@@ -401,7 +416,6 @@
                     <option value="absence">Quitar turno</option>
                     <option value="replace">Reemplazar</option>
                     <option value="extra">Agregar extra</option>
-                    <option value="owner">Cobertura Pablo</option>
                   </select>
                 </label>
                 <label>
@@ -766,8 +780,8 @@
             <div class="form-surface">
               <h3>Local y reportes</h3>
               <label>
-                Email de Pablo
-                <input id="adminEmail" type="email" placeholder="pablo@ossbarcelona.com" />
+                Email del administrador
+                <input id="adminEmail" type="email" placeholder="administracion@osskaffe.com" />
               </label>
               <div class="form-grid">
                 <label>
@@ -841,6 +855,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=29"></script>
+    <script src="app.js?v=30"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const output = path.join(root, "dist");
-const files = ["index.html", "app.js", "styles.css", "xlsx.full.min.js"];
+const files = ["index.html", "app.js", "styles.css", "xlsx.full.min.js", "_redirects"];
 
 await fs.rm(output, { recursive: true, force: true });
 await fs.mkdir(output, { recursive: true });
