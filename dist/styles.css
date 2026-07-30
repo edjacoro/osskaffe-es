@@ -1705,6 +1705,57 @@ textarea {
   flex-wrap: wrap;
 }
 
+#financiasPanel > .fin-heading {
+  display: grid;
+  grid-template-columns: minmax(150px, auto) minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title projection month"
+    "tabs tabs tabs"
+    "sync sync sync";
+  align-items: center;
+}
+
+#financiasPanel > .fin-heading > :first-child {
+  grid-area: title;
+}
+
+#finTodayProjection {
+  grid-area: projection;
+  justify-self: start;
+}
+
+#finMonthNav {
+  grid-area: month;
+  justify-self: end;
+  flex-wrap: nowrap;
+}
+
+#financiasPanel .fin-subnav {
+  grid-area: tabs;
+  width: 100%;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+#financiasPanel .fin-tab {
+  min-width: max-content;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+#finBistroSync {
+  grid-area: sync;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0;
+  box-sizing: border-box;
+}
+
 .fin-today-date-input {
   position: absolute;
   width: 1px;
@@ -1968,6 +2019,24 @@ textarea {
   color: var(--ink);
 }
 
+.fin-audit-month-picker {
+  display: flex;
+  min-width: 190px;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fin-audit-month-picker input {
+  min-width: 145px;
+  min-height: 38px;
+}
+
 .fin-year-nav {
   display: flex;
   align-items: center;
@@ -2038,6 +2107,26 @@ textarea {
   color: var(--ink);
   font-size: 0.78rem;
   line-height: 1.2;
+}
+
+.heatmap-summary-row th,
+.heatmap-summary-row td {
+  border-top: 2px solid var(--line);
+  background: #eef5f8;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.heatmap-summary-value-row th,
+.heatmap-summary-value-row td {
+  border-top: 1px solid var(--line);
+  background: #fff7ec;
+  color: var(--coffee-dark);
+}
+
+.heatmap-summary-cell strong {
+  display: block;
+  font-size: 0.72rem;
 }
 
 .traffic-visual-grid {
@@ -2846,6 +2935,62 @@ textarea {
   width: 100%;
   min-height: 40px;
 }
+
+.analysis-weekday-field {
+  min-width: 0;
+  grid-column: span 2;
+  margin: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.analysis-weekday-field legend {
+  padding: 0 5px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.analysis-weekday-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px 10px;
+}
+
+.analysis-weekday-option {
+  display: flex !important;
+  min-width: 0;
+  align-items: center;
+  gap: 7px !important;
+  margin: 0 !important;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f8fbfc;
+  color: var(--ink) !important;
+  font-size: 0.78rem !important;
+  font-weight: 750 !important;
+  text-transform: none !important;
+  cursor: pointer;
+}
+
+.analysis-weekday-option input {
+  width: 17px !important;
+  height: 17px;
+  min-height: 17px !important;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--blue);
+}
+
+.analysis-weekday-all {
+  background: var(--blue-soft);
+  color: var(--blue-dark) !important;
+}
+
 .analysis-kpis {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 18px 0;
@@ -3018,6 +3163,12 @@ textarea {
   .analysis-filters,
   .analysis-kpis {
     grid-template-columns: 1fr;
+  }
+  .analysis-weekday-field {
+    grid-column: auto;
+  }
+  .analysis-weekday-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .analysis-bar-row {
     grid-template-columns: 90px minmax(100px, 1fr) 62px;
@@ -3222,6 +3373,28 @@ canvas {
 
   .traffic-month-nav {
     width: 100%;
+  }
+
+  #financiasPanel > .fin-heading {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "title"
+      "projection"
+      "month"
+      "tabs"
+      "sync";
+    align-items: stretch;
+  }
+
+  #finTodayProjection,
+  #finMonthNav {
+    width: 100%;
+    min-width: 0;
+    justify-self: stretch;
+  }
+
+  #finMonthNav {
+    justify-content: flex-start;
   }
 }
 

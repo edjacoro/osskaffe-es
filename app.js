@@ -1738,6 +1738,10 @@ function renderHourlyHeatmap(analysis) {
   });
   const maxTickets = Math.max(1, ...[...byDayHour.values()].map((item) => item.tickets));
   const dayOrder = [1, 2, 3, 4, 5, 6, 0];
+  const averageTicket = analysis.totalTickets > 0 ? analysis.totalSales / analysis.totalTickets : 0;
+  const hourlyTotals = hours.map((hour) => dayOrder.reduce((total, day) => {
+    return total + Number(byDayHour.get(`${day}-${hour}`)?.tickets || 0);
+  }, 0));
   const rows = dayOrder.map((day) => {
     const cells = hours.map((hour) => {
       const item = byDayHour.get(`${day}-${hour}`);
@@ -1750,13 +1754,21 @@ function renderHourlyHeatmap(analysis) {
     }).join('');
     return `<tr><th>${DAY_NAMES[day]}</th>${cells}</tr>`;
   }).join('');
+  const ticketTotalsRow = hourlyTotals.map((tickets) => `
+    <td class="heatmap-summary-cell"><strong>${tickets.toLocaleString('es-ES')}</strong></td>`).join('');
+  const estimatedSalesRow = hourlyTotals.map((tickets) => `
+    <td class="heatmap-summary-cell heatmap-summary-money"><strong>${formatEur(tickets * averageTicket)}</strong></td>`).join('');
   return `
     <section class="traffic-heatmap-panel">
-      <h3>Mapa de calor <small>tickets por día y hora</small></h3>
+      <h3>Mapa de calor <small>tickets por día y hora · valor estimado con ticket promedio ${formatEur(averageTicket)}</small></h3>
       <div class="traffic-heatmap-scroll">
       <table class="fin-table heatmap-table">
         <thead><tr><th>Día</th>${hours.map((hour) => `<th>${String(hour).padStart(2, '0')}h</th>`).join('')}</tr></thead>
         <tbody>${rows}</tbody>
+        <tfoot>
+          <tr class="heatmap-summary-row"><th>Total pedidos</th>${ticketTotalsRow}</tr>
+          <tr class="heatmap-summary-row heatmap-summary-value-row"><th>Valor estimado</th>${estimatedSalesRow}</tr>
+        </tfoot>
       </table>
       </div>
     </section>`;
@@ -4297,13 +4309,15 @@ function initFinanzas() {
     finActiveMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() - 1, 1);
     renderFinMonthNav();
     renderFinanzas();
-    syncBistrosoftMonth(true);
+    if (activeFinTab === 'audit') syncBistrosoftAuditMonth();
+    else syncBistrosoftMonth(true);
   });
   document.querySelector('#finNextMonth').addEventListener('click', () => {
     finActiveMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() + 1, 1);
     renderFinMonthNav();
     renderFinanzas();
-    syncBistrosoftMonth(true);
+    if (activeFinTab === 'audit') syncBistrosoftAuditMonth();
+    else syncBistrosoftMonth(true);
   });
 
   document.querySelector('#finImportForm').addEventListener('submit', handleSalesCsvImport);
@@ -4716,7 +4730,7 @@ function setActiveFinTab(tab) {
     panel.classList.toggle('is-visible', panel.dataset.finPanel === tab);
   });
   renderFinanzas();
-  if (tab === 'audit') syncBistrosoftAuditToday();
+  if (tab === 'audit') syncBistrosoftAuditMonth();
 }
 
 function resetFinTodayView() {
@@ -4743,9 +4757,20 @@ async function syncBistrosoftAuditToday() {
   if (!finBistroSync.available) return;
   const today = toDateInput(new Date());
   const until = toDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1));
+  return syncBistrosoftAuditRange(today, until);
+}
+
+function syncBistrosoftAuditMonth(month = finActiveMonth) {
+  if (!finBistroSync.available) return Promise.resolve();
+  const from = toDateInput(new Date(month.getFullYear(), month.getMonth(), 1));
+  const until = toDateInput(new Date(month.getFullYear(), month.getMonth() + 1, 1));
+  return syncBistrosoftAuditRange(from, until);
+}
+
+async function syncBistrosoftAuditRange(from, until) {
   try {
     const payloads = await Promise.all(['barcelona', 'madrid'].map(async (locationId) => {
-      const query = new URLSearchParams({ from: today, until, location: locationId });
+      const query = new URLSearchParams({ from, until, location: locationId });
       const response = await fetch(`/api/bistrosoft/sales?${query}`, { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok || !payload.ok || !Array.isArray(payload.sales)) throw new Error(payload.error || 'Bistrosoft no respondio correctamente');
@@ -4753,17 +4778,39 @@ async function syncBistrosoftAuditToday() {
     }));
 
     payloads.forEach(({ locationId, payload }) => {
-      const imported = payload.sales.map((sale) => ({ ...sale, locationId }));
+      const previousItems = new Map(
+        getLocationSales(locationId)
+          .filter((sale) => Array.isArray(sale.items) && sale.items.length)
+          .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
+      );
+      const imported = payload.sales.map((sale) => ({
+        ...sale,
+        locationId,
+        items: sale.items?.length
+          ? sale.items
+          : (previousItems.get(String(sale.bistroId || sale.id)) || []),
+      }));
       state.sales = [
-        ...state.sales.filter((sale) => !(normalizeLocationId(sale.locationId) === locationId && sale._source === 'bistrosoft' && sale.date === today)),
+        ...state.sales.filter((sale) => !(
+          normalizeLocationId(sale.locationId) === locationId
+          && sale._source === 'bistrosoft'
+          && sale.date >= from
+          && sale.date < until
+        )),
         ...imported,
       ];
       const importedExpenses = (payload.expenses || []).map((expense) => applyExpenseCategoryOverride({ ...expense, locationId }));
       state.expenses = [
-        ...state.expenses.filter((expense) => !(normalizeLocationId(expense.locationId) === locationId && expense._source === 'bistrosoft' && expense.date === today)),
+        ...state.expenses.filter((expense) => !(
+          normalizeLocationId(expense.locationId) === locationId
+          && expense._source === 'bistrosoft'
+          && expense.date >= from
+          && expense.date < until
+        )),
         ...importedExpenses,
       ];
     });
+    saveState({ shared: payloads.some(({ payload }) => !payload.persisted) });
     if (activeFinTab === 'audit') renderFinAudit();
   } catch (_) {
     // La auditoria conserva los ultimos datos disponibles si una sucursal no responde.
@@ -6366,6 +6413,7 @@ function renderFinAudit() {
 
   const monthKey = monthInputValue(finActiveMonth);
   const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  const currentMonthKey = monthInputValue(firstDayOfMonth(new Date()));
   const days = getMonthDays(finActiveMonth);
   const branchMaps = {
     barcelona: summarizeSalesForLocation('barcelona', monthKey),
@@ -6449,7 +6497,10 @@ function renderFinAudit() {
         <h3>Auditoria diaria Barcelona / Madrid</h3>
         <p class="form-note">Comparativo mensual por dia para detectar rapido diferencias, faltantes o picos de venta.</p>
       </div>
-      <strong>${monthLabel}</strong>
+      <label class="fin-audit-month-picker">
+        <span>Mes auditado</span>
+        <input id="finAuditMonth" type="month" value="${monthKey}" max="${currentMonthKey}" aria-label="Elegir mes para auditoría">
+      </label>
     </div>
     <div class="fin-kpi-grid fin-resumen-kpi-grid" style="margin-bottom:18px">
       <div class="fin-kpi-card"><span>Barcelona</span><strong>${formatEur(totals.barcelonaSales)}</strong><small>${totals.barcelonaTickets} tickets</small></div>
@@ -6492,6 +6543,16 @@ function renderFinAudit() {
         </tr></tfoot>
       </table>
     </div>`;
+
+  document.querySelector('#finAuditMonth')?.addEventListener('change', (event) => {
+    if (!event.target.value) return;
+    const [year, month] = event.target.value.split('-').map(Number);
+    if (!Number.isInteger(year) || !Number.isInteger(month)) return;
+    finActiveMonth = new Date(year, month - 1, 1);
+    renderFinMonthNav();
+    renderFinAudit();
+    syncBistrosoftAuditMonth();
+  });
 }
 
 // -------- ANALISIS --------
@@ -6560,6 +6621,14 @@ function printFinAnalysis() {
   window.print();
 }
 
+function getAnalysisSelectedWeekdays(filters) {
+  if (Array.isArray(filters?.weekdays)) {
+    return [...new Set(filters.weekdays.map(String).filter((value) => /^[0-6]$/.test(value)))];
+  }
+  const legacyValue = String(filters?.weekday ?? 'all');
+  return legacyValue === 'all' ? [] : [legacyValue].filter((value) => /^[0-6]$/.test(value));
+}
+
 function renderFinAnalysis() {
   const el = document.querySelector('#finAnalysisContent');
   if (!el) return;
@@ -6570,19 +6639,20 @@ function renderFinAnalysis() {
     type: 'hour',
     dateFrom: monthStart,
     dateTo: today,
-    weekday: 'all',
+    weekdays: [],
     hourFrom: '0',
     hourTo: '23',
     barista: 'all',
     metric: 'sales',
   };
   const filters = finAnalysisFilters;
+  const selectedWeekdays = getAnalysisSelectedWeekdays(filters);
   const allLocationSales = getLocationSales();
   const baristas = [...new Set(allLocationSales.flatMap(saleBaristaLabels))].sort((a, b) => a.localeCompare(b));
   const selectedSales = allLocationSales.filter((sale) => {
     if (!sale.date || sale.date < filters.dateFrom || sale.date > filters.dateTo) return false;
     const day = analysisDate(sale.date).getDay();
-    if (filters.weekday !== 'all' && day !== Number(filters.weekday)) return false;
+    if (selectedWeekdays.length && !selectedWeekdays.includes(String(day))) return false;
     const hour = parseSaleHour(sale.time);
     if (hour !== null && (hour < Number(filters.hourFrom) || hour > Number(filters.hourTo))) return false;
     if (filters.barista !== 'all' && !saleBaristaLabels(sale).includes(filters.barista)) return false;
@@ -6614,6 +6684,12 @@ function renderFinAnalysis() {
       <strong>${shown}</strong>
     </div>`;
   }).join('');
+  const analysisDayOrder = [1, 2, 3, 4, 5, 6, 0];
+  const weekdayOptions = analysisDayOrder.map((dayIndex) => `
+    <label class="analysis-weekday-option">
+      <input name="weekdays" type="checkbox" value="${dayIndex}"${selectedWeekdays.includes(String(dayIndex)) ? ' checked' : ''}>
+      <span>${DAY_NAMES[dayIndex]}</span>
+    </label>`).join('');
 
   el.innerHTML = `
     <section class="analysis-report" id="analysisPrintable">
@@ -6631,7 +6707,16 @@ function renderFinAnalysis() {
         </select></label>
         <label>Desde<input name="dateFrom" type="date" value="${filters.dateFrom}"></label>
         <label>Hasta<input name="dateTo" type="date" value="${filters.dateTo}"></label>
-        <label>Día<select name="weekday"><option value="all">Todos</option>${DAY_NAMES.map((day, index) => `<option value="${index}"${filters.weekday === String(index) ? ' selected' : ''}>${day}</option>`).join('')}</select></label>
+        <fieldset class="analysis-weekday-field">
+          <legend>Día</legend>
+          <div class="analysis-weekday-options">
+            <label class="analysis-weekday-option analysis-weekday-all">
+              <input name="weekdays" type="checkbox" value="all"${selectedWeekdays.length ? '' : ' checked'}>
+              <span>Todos</span>
+            </label>
+            ${weekdayOptions}
+          </div>
+        </fieldset>
         <label>Hora desde<input name="hourFrom" type="number" min="0" max="23" value="${filters.hourFrom}"></label>
         <label>Hora hasta<input name="hourTo" type="number" min="0" max="23" value="${filters.hourTo}"></label>
         <label>Barista<select name="barista"><option value="all">Todos</option>${baristas.map((name) => `<option value="${escapeHtml(name)}"${filters.barista === name ? ' selected' : ''}>${escapeHtml(name)}</option>`).join('')}</select></label>
@@ -6657,7 +6742,15 @@ function renderFinAnalysis() {
 
   document.querySelector('#analysisFilters')?.addEventListener('change', (event) => {
     const form = new FormData(event.currentTarget);
-    finAnalysisFilters = Object.fromEntries(form.entries());
+    const checkedWeekdays = form.getAll('weekdays').map(String);
+    const individualWeekdays = checkedWeekdays.filter((value) => value !== 'all');
+    const weekdays = event.target?.name === 'weekdays'
+      ? (event.target.value === 'all' && event.target.checked ? [] : individualWeekdays)
+      : (checkedWeekdays.includes('all') ? [] : individualWeekdays);
+    finAnalysisFilters = {
+      ...Object.fromEntries(form.entries()),
+      weekdays,
+    };
     renderFinAnalysis();
   });
   document.querySelector('#analysisPrint')?.addEventListener('click', printFinAnalysis);
