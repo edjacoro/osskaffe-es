@@ -149,6 +149,10 @@ empezar a registrar desde ahora con datos importados y mantener historial.
   pruebas. El respaldo incluye grilla, finanzas, reclasificaciones de Bistrosoft, personal,
   fichas, mermas, presupuestos y ajustes. No incluye las contrasenas de empleados, que quedan
   guardadas como hashes separados en cada sitio Netlify.
+- `Sincronizar historial` recupera el detalle de articulos de Bistrosoft mediante funciones
+  de fondo por mes. Netlify puede procesar cada mes hasta 15 minutos sin cortar la tarea.
+  Los meses se lanzan en lotes de dos y los resultados ya completados se conservan en las
+  sincronizaciones posteriores. Esta carga es la que alimenta cross-selling y articulos/ticket.
 
 ### Otros hostings
 

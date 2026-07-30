@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=21" />
+    <link rel="stylesheet" href="styles.css?v=22" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -507,7 +507,7 @@
               <p class="eyebrow">Bistrosoft + grilla</p>
               <h2>Carga por hora y refuerzos</h2>
             </div>
-            <div class="fin-month-nav">
+            <div class="fin-month-nav traffic-month-nav">
               <button class="icon-button" id="trafficPrevMonth" type="button">&#8249;</button>
               <strong id="trafficMonthDisplay">Mes</strong>
               <button class="icon-button" id="trafficNextMonth" type="button">&#8250;</button>
@@ -576,8 +576,10 @@
                 <strong id="finSyncTitle">Comprobando Bistrosoft...</strong>
                 <span id="finSyncDetail">La sincronizacion automatica se inicia al abrir la aplicacion.</span>
               </div>
-              <button class="ghost-button" id="finSyncHistory" type="button">Sincronizar historial</button>
-              <button class="ghost-button" id="finSyncNow" type="button">Sincronizar ahora</button>
+              <div class="fin-sync-actions">
+                <button class="ghost-button" id="finSyncHistory" type="button">Sincronizar historial</button>
+                <button class="ghost-button" id="finSyncNow" type="button">Sincronizar ahora</button>
+              </div>
             </div>
           </div>
 
@@ -858,6 +860,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=33"></script>
+    <script src="app.js?v=35"></script>
   </body>
 </html>

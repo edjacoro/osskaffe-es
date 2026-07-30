@@ -1796,6 +1796,14 @@ textarea {
   flex: 0 0 auto;
 }
 
+.fin-sync-actions {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
 @keyframes fin-sync-pulse {
   50% {
     opacity: 0.45;
@@ -2062,6 +2070,45 @@ textarea {
   overflow-x: auto;
 }
 
+.traffic-kpi-scroll,
+.traffic-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--blue) #e7eef3;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+}
+
+.traffic-kpi-grid {
+  min-width: 920px;
+  grid-template-columns: repeat(4, minmax(205px, 1fr)) !important;
+  margin-bottom: 8px;
+  padding: 0 0 8px;
+  border-bottom: 0;
+}
+
+.traffic-kpi-scroll::-webkit-scrollbar,
+.traffic-table-scroll::-webkit-scrollbar {
+  height: 12px;
+}
+
+.traffic-kpi-scroll::-webkit-scrollbar-track,
+.traffic-table-scroll::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: #e7eef3;
+}
+
+.traffic-kpi-scroll::-webkit-scrollbar-thumb,
+.traffic-table-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid #e7eef3;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
 .traffic-heatmap-panel .fin-table {
   min-width: 0;
   font-size: 0.72rem;
@@ -2082,6 +2129,10 @@ textarea {
   .fin-kpi-grid,
   .fin-resumen-kpi-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  .traffic-kpi-grid {
+    min-width: 0;
   }
 }
 
@@ -2517,6 +2568,21 @@ textarea {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.traffic-month-nav {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.traffic-month-nav > * {
+  flex: 0 0 auto;
 }
 
 .fin-today-projection {
@@ -3122,8 +3188,40 @@ canvas {
     flex-basis: calc(100% - 24px);
   }
 
-  .fin-sync-bar .ghost-button {
-    flex: 1 1 150px;
+  .fin-sync-actions {
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  .fin-sync-actions .ghost-button {
+    width: auto;
+    min-width: max-content;
+    flex: 0 0 auto;
+  }
+
+  .fin-sync-bar {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .fin-sync-copy {
+    max-width: 100%;
+  }
+
+  #trafficPanel .panel-heading {
+    align-items: stretch;
+  }
+
+  .traffic-month-nav {
+    width: 100%;
   }
 }
 

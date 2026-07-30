@@ -770,15 +770,17 @@ function renderTraffic() {
     : '';
 
   const cards = `
-    <div class="fin-kpi-grid fin-resumen-kpi-grid" style="margin-bottom:16px">
-      <div class="fin-kpi-card"><span>Venta promedio / hora activa</span><strong>${formatEur(analysis.avgSalesPerActiveHour)}</strong><small>${formatEur(analysis.totalSales)} total con hora</small></div>
-      <div class="fin-kpi-card"><span>Tickets promedio / hora activa</span><strong>${analysis.avgTicketsPerActiveHour.toFixed(1)}</strong><small>${analysis.totalTickets} tickets con hora</small></div>
-      <div class="fin-kpi-card"><span>Hora pico</span><strong>${formatHumanDate(peak.date)} · ${formatHour(peak.hour)}</strong><small>${peak.tickets} tickets · ${formatEur(peak.sales)}</small></div>
-      <div class="fin-kpi-card"><span>Horas criticas</span><strong>${suggestions.length}</strong></div>
-      <div class="fin-kpi-card"><span>Tickets por persona</span><strong>${analysis.avgTicketsPerStaffHour.toFixed(1)}</strong><small>promedio por hora cubierta</small></div>
-      <div class="fin-kpi-card"><span>Venta por persona</span><strong>${formatEur(analysis.avgSalesPerStaffHour)}</strong><small>promedio por hora cubierta</small></div>
-      <div class="fin-kpi-card"><span>Día más cargado</span><strong>${busiestDay ? formatHumanDate(busiestDay.date) : '—'}</strong><small>${busiestDay ? `${busiestDay.tickets} tickets · ${formatEur(busiestDay.sales)}` : ''}</small></div>
-      <div class="fin-kpi-card"><span>Mejor franja promedio</span><strong>${bestHour ? `${formatHour(bestHour.hour)}-${formatHour(bestHour.hour + 1)}` : '—'}</strong><small>${bestHour ? `${bestHour.tickets} tickets · ${formatEur(bestHour.sales)}` : ''}</small></div>
+    <div class="traffic-kpi-scroll" aria-label="Indicadores de carga por hora">
+      <div class="fin-kpi-grid fin-resumen-kpi-grid traffic-kpi-grid">
+        <div class="fin-kpi-card"><span>Venta promedio / hora activa</span><strong>${formatEur(analysis.avgSalesPerActiveHour)}</strong><small>${formatEur(analysis.totalSales)} total con hora</small></div>
+        <div class="fin-kpi-card"><span>Tickets promedio / hora activa</span><strong>${analysis.avgTicketsPerActiveHour.toFixed(1)}</strong><small>${analysis.totalTickets} tickets con hora</small></div>
+        <div class="fin-kpi-card"><span>Hora pico</span><strong>${formatHumanDate(peak.date)} · ${formatHour(peak.hour)}</strong><small>${peak.tickets} tickets · ${formatEur(peak.sales)}</small></div>
+        <div class="fin-kpi-card"><span>Horas criticas</span><strong>${suggestions.length}</strong></div>
+        <div class="fin-kpi-card"><span>Tickets por persona</span><strong>${analysis.avgTicketsPerStaffHour.toFixed(1)}</strong><small>promedio por hora cubierta</small></div>
+        <div class="fin-kpi-card"><span>Venta por persona</span><strong>${formatEur(analysis.avgSalesPerStaffHour)}</strong><small>promedio por hora cubierta</small></div>
+        <div class="fin-kpi-card"><span>Día más cargado</span><strong>${busiestDay ? formatHumanDate(busiestDay.date) : '—'}</strong><small>${busiestDay ? `${busiestDay.tickets} tickets · ${formatEur(busiestDay.sales)}` : ''}</small></div>
+        <div class="fin-kpi-card"><span>Mejor franja promedio</span><strong>${bestHour ? `${formatHour(bestHour.hour)}-${formatHour(bestHour.hour + 1)}` : '—'}</strong><small>${bestHour ? `${bestHour.tickets} tickets · ${formatEur(bestHour.sales)}` : ''}</small></div>
+      </div>
     </div>`;
 
   const suggestionHtml = topRows.length ? topRows.map((item) => `
@@ -820,7 +822,7 @@ function renderTraffic() {
     ${renderPeakProductInsights(analysis)}
     ${renderArticleSalesInsights()}
     <h3 style="margin:18px 0 10px">Detalle por hora</h3>
-    <div style="overflow-x:auto">
+    <div class="traffic-table-scroll">
       <table class="fin-table">
         <thead><tr>
           <th>Fecha</th>
@@ -4556,6 +4558,7 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
     let totalImported = 0;
     let totalExpensesImported = 0;
     let allPersisted = true;
+    const detailJobs = [];
     for (let index = 0; index < months.length; index++) {
       const [year, month] = months[index].split('-').map(Number);
       const from = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -4577,21 +4580,17 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
             )
             .map((sale) => sale.date),
         )].sort();
-        for (let dayIndex = 0; dayIndex < detailDates.length; dayIndex++) {
-          finBistroSync.historyProgress = `Completando artículos ${formatHumanDate(detailDates[dayIndex])} (${dayIndex + 1}/${detailDates.length})...`;
-          renderFinSyncStatus();
-          const detailDate = parseDateKey(detailDates[dayIndex]);
-          const detailUntil = new Date(
-            detailDate.getFullYear(),
-            detailDate.getMonth(),
-            detailDate.getDate() + 1,
-          );
-          const detailResult = await fetchBistrosoftRange(
-            detailDates[dayIndex],
-            toDateInput(detailUntil),
-          );
-          allPersisted = allPersisted && detailResult.persisted;
+        if (detailDates.length) {
+          detailJobs.push(() => syncBistrosoftDetailMonthBackground(months[index], index + 1, months.length));
         }
+      }
+    }
+
+    if (detailJobs.length) {
+      finBistroSync.historyProgress = `Procesando artículos históricos en ${detailJobs.length} meses...`;
+      renderFinSyncStatus();
+      for (let index = 0; index < detailJobs.length; index += 2) {
+        await Promise.all(detailJobs.slice(index, index + 2).map((startJob) => startJob()));
       }
     }
 
@@ -4612,6 +4611,49 @@ async function syncBistrosoftHistory(silent = false, onlyMissing = false) {
     finBistroSync.historyProgress = null;
     renderFinSyncStatus();
   }
+}
+
+function waitMilliseconds(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function syncBistrosoftDetailMonthBackground(month, position, totalMonths) {
+  const jobId = createId();
+  const locationId = activeLocationId;
+  const query = new URLSearchParams({
+    month,
+    location: locationId,
+    jobId,
+  });
+  const startResponse = await fetch(`/api/bistrosoft/details?${query}`, {
+    method: 'POST',
+    cache: 'no-store',
+  });
+  if (!startResponse.ok && startResponse.status !== 202) {
+    throw new Error(`No se pudo iniciar el detalle de ${month}.`);
+  }
+
+  for (let attempt = 0; attempt < 190; attempt++) {
+    await waitMilliseconds(5000);
+    finBistroSync.historyProgress = `Artículos ${month} (${position}/${totalMonths}) · procesamiento de fondo...`;
+    renderFinSyncStatus();
+    const statusQuery = new URLSearchParams({ month, location: locationId });
+    const statusResponse = await fetch(`/api/bistrosoft/details-status?${statusQuery}`, { cache: 'no-store' });
+    if (!statusResponse.ok) continue;
+    const payload = await statusResponse.json();
+    if (payload.job?.jobId !== jobId) continue;
+    if (payload.job.status === 'error') {
+      throw new Error(payload.job.error || `No se pudo completar ${month}.`);
+    }
+    if (payload.job.status === 'complete') {
+      const [year, monthNumber] = month.split('-').map(Number);
+      const from = `${month}-01`;
+      const until = toDateInput(new Date(year, monthNumber, 1));
+      await fetchBistrosoftRange(from, until);
+      return payload.job;
+    }
+  }
+  throw new Error(`El detalle de ${month} superó el tiempo máximo de procesamiento.`);
 }
 
 function renderFinSyncStatus() {

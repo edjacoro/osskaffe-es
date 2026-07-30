@@ -422,7 +422,7 @@ async function restoreBistroSaleItems(sales, locationId) {
 async function enrichBistroSaleItems(sales, cookies, locationId) {
   await restoreBistroSaleItems(sales, locationId);
   const pending = sales.filter((sale) => !Array.isArray(sale.items) || sale.items.length === 0);
-  const workerCount = Math.min(8, pending.length);
+  const workerCount = Math.min(16, pending.length);
   let cursor = 0;
   await Promise.all(Array.from({ length: workerCount }, async () => {
     while (cursor < pending.length) {
@@ -446,7 +446,13 @@ async function enrichBistroSaleItems(sales, cookies, locationId) {
   return sales;
 }
 
-export async function getBistroSales(from, until, authenticatedCookies = "", locationId = DEFAULT_LOCATION_ID) {
+export async function getBistroSales(
+  from,
+  until,
+  authenticatedCookies = "",
+  locationId = DEFAULT_LOCATION_ID,
+  options = {},
+) {
   const id = normalizeLocationId(locationId);
   let cookies = authenticatedCookies || await loginBistrosoft(id);
   const sales = [];
@@ -495,7 +501,7 @@ export async function getBistroSales(from, until, authenticatedCookies = "", loc
   } while (sales.length < totalCount);
 
   const rangeDays = Math.ceil((new Date(`${until}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000);
-  if (rangeDays <= 1) await enrichBistroSaleItems(sales, cookies, id);
+  if (rangeDays <= 1 || options.includeAllItems) await enrichBistroSaleItems(sales, cookies, id);
   else await restoreBistroSaleItems(sales, id);
 
   sales.forEach((sale) => {
