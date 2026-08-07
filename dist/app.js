@@ -648,15 +648,15 @@ function renderDayRow(date) {
 }
 
 function renderMetrics() {
-  const days = getMonthDays(activeMonth).map(toDateInput);
-  const planned = days.reduce((sum, dateKey) => {
-    return sum + getVisibleShiftsForDate(dateKey).reduce((daySum, shift) => daySum + shift.end - shift.start, 0);
-  }, 0);
-  const pending = getLocationChanges().filter((change) => change.status === "pending").length;
+  const coverage = getMonthlyStoreCoverage(activeMonth);
   const suggestions = getSuggestions();
 
-  els.plannedHours.textContent = formatHours(planned);
-  els.pendingCount.textContent = String(pending);
+  els.plannedHours.textContent = formatHours(coverage.openHours);
+  els.plannedHours.title = `${formatHours(coverage.openHours)} de apertura programada para el local`;
+  els.pendingCount.textContent = formatHours(coverage.freeHours);
+  els.pendingCount.title = coverage.freeHours > 0
+    ? `${formatHours(coverage.freeHours)} de apertura sin ningún empleado asignado`
+    : "Todas las horas de apertura tienen al menos un empleado asignado";
   els.suggestionCount.textContent = String(suggestions.length);
 }
 
@@ -1358,6 +1358,82 @@ function getOpenLabelForDate(dateKey) {
   return getOpenLabel(new Date(`${dateKey}T12:00:00`).getDay());
 }
 
+function getOpeningPeriodsForDate(dateKey) {
+  const override = getOpeningOverride(dateKey);
+  if (override?.closed) return [];
+
+  const holiday = getHoliday(dateKey);
+  let periods;
+  if (override?.open && override?.close) {
+    periods = [{ open: override.open, close: override.close }];
+  } else if (holiday?.open && holiday?.close) {
+    periods = [{ open: holiday.open, close: holiday.close }];
+  } else {
+    periods = getRegularOpeningPeriods(parseDateKey(dateKey).getDay());
+  }
+
+  return periods.map((period) => {
+    const open = typeof period.open === "number" ? period.open : timeToDecimal(period.open);
+    const close = typeof period.close === "number" ? period.close : timeToDecimal(period.close);
+    return { open, close };
+  }).filter((period) => Number.isFinite(period.open) && Number.isFinite(period.close) && period.close > period.open);
+}
+
+function calculateStoreCoverage(openingPeriods = [], shifts = []) {
+  let openHours = 0;
+  let coveredHours = 0;
+
+  openingPeriods.forEach((period) => {
+    openHours += period.close - period.open;
+    const overlaps = shifts.map((shift) => ({
+      start: Math.max(period.open, Number(shift.start)),
+      end: Math.min(period.close, Number(shift.end)),
+    })).filter((interval) => Number.isFinite(interval.start) && Number.isFinite(interval.end) && interval.end > interval.start)
+      .sort((a, b) => a.start - b.start || a.end - b.end);
+
+    let coveredUntil = period.open;
+    overlaps.forEach((interval) => {
+      const start = Math.max(coveredUntil, interval.start);
+      if (interval.end > start) coveredHours += interval.end - start;
+      coveredUntil = Math.max(coveredUntil, interval.end);
+    });
+  });
+
+  return {
+    openHours,
+    coveredHours,
+    freeHours: Math.max(0, openHours - coveredHours),
+  };
+}
+
+function getStoreCoverageForDate(dateKey) {
+  return calculateStoreCoverage(getOpeningPeriodsForDate(dateKey), getShiftsForDate(dateKey));
+}
+
+function getStoreCoverageForRange(dateFrom, dateTo) {
+  const result = { openHours: 0, coveredHours: 0, freeHours: 0, days: [] };
+  if (!dateFrom || !dateTo || dateFrom > dateTo) return result;
+
+  const cursor = parseDateKey(dateFrom);
+  const last = parseDateKey(dateTo);
+  while (cursor <= last) {
+    const dateKey = toDateInput(cursor);
+    const coverage = getStoreCoverageForDate(dateKey);
+    result.openHours += coverage.openHours;
+    result.coveredHours += coverage.coveredHours;
+    result.freeHours += coverage.freeHours;
+    result.days.push({ dateKey, ...coverage });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
+}
+
+function getMonthlyStoreCoverage(monthDate = activeMonth) {
+  const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const last = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+  return getStoreCoverageForRange(toDateInput(first), toDateInput(last));
+}
+
 function saveOpeningOverride(dateKey, values) {
   const settings = getLocationSettings();
   updateLocationSettings({
@@ -1367,7 +1443,10 @@ function saveOpeningOverride(dateKey, values) {
     },
   });
   saveState();
-  if (dateKey.startsWith(monthInputValue(activeMonth))) renderSchedule();
+  if (dateKey.startsWith(monthInputValue(activeMonth))) {
+    renderSchedule();
+    renderMetrics();
+  }
 }
 
 function resetOpeningOverride(dateKey) {
@@ -1375,7 +1454,10 @@ function resetOpeningOverride(dateKey) {
   delete monthlyOpeningHours[dateKey];
   updateLocationSettings({ monthlyOpeningHours });
   saveState();
-  if (dateKey.startsWith(monthInputValue(activeMonth))) renderSchedule();
+  if (dateKey.startsWith(monthInputValue(activeMonth))) {
+    renderSchedule();
+    renderMetrics();
+  }
 }
 
 function renderStoreHoursEditor() {
@@ -4269,6 +4351,8 @@ let finPnlYear = new Date().getFullYear();
 let finPendingFile = null;   // archivo xlsx/csv seleccionado pendiente de importar
 let finEditingExpenseId = null; // id del gasto en edición (null = modo creación)
 let finAnalysisFilters = null;
+let finAiQuestion = '';
+let finAiResult = null;
 const BISTROSOFT_SYNC_INTERVAL_MS = 30000;
 const BISTROSOFT_RECENT_DAYS = 0;
 let finBistroSync = {
@@ -4855,6 +4939,10 @@ function renderFinanzas() {
   else if (activeFinTab === 'presupuesto') renderFinPresupuesto();
   else if (activeFinTab === 'audit') renderFinAudit();
   else if (activeFinTab === 'analysis') renderFinAnalysis();
+  else if (activeFinTab === 'ai') {
+    if (finAiQuestion) finAiResult = answerFinAiQuestion(finAiQuestion);
+    renderFinAi();
+  }
 }
 
 // -------- HOY --------
@@ -6754,6 +6842,447 @@ function renderFinAnalysis() {
     renderFinAnalysis();
   });
   document.querySelector('#analysisPrint')?.addEventListener('click', printFinAnalysis);
+}
+
+// -------- IA DE DATOS --------
+
+const FIN_AI_MONTH_ALIASES = [
+  ['enero'],
+  ['febrero'],
+  ['marzo'],
+  ['abril'],
+  ['mayo'],
+  ['junio'],
+  ['julio'],
+  ['agosto'],
+  ['septiembre', 'setiembre'],
+  ['octubre'],
+  ['noviembre'],
+  ['diciembre'],
+];
+
+const FIN_AI_PRODUCT_STOP_WORDS = new Set([
+  'de', 'del', 'la', 'las', 'el', 'los', 'con', 'sin', 'para', 'por', 'un', 'una', 'y',
+]);
+
+function normalizeFinAiText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function stemFinAiToken(token) {
+  if (token.length > 4 && token.endsWith('es')) return token.slice(0, -2);
+  if (token.length > 3 && token.endsWith('s')) return token.slice(0, -1);
+  return token;
+}
+
+function finAiProductTokens(value) {
+  return normalizeFinAiText(value).split(/\s+/).filter(Boolean)
+    .filter((token) => !FIN_AI_PRODUCT_STOP_WORDS.has(token))
+    .map(stemFinAiToken);
+}
+
+function getFinAiMonthKeys(dateFrom, dateTo) {
+  const keys = [];
+  const cursor = new Date(`${dateFrom.slice(0, 7)}-01T12:00:00`);
+  const last = new Date(`${dateTo.slice(0, 7)}-01T12:00:00`);
+  while (cursor <= last) {
+    keys.push(monthInputValue(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return keys;
+}
+
+function getFinAiPeriod(question, sales = getLocationSales()) {
+  const normalized = normalizeFinAiText(question);
+  const today = new Date();
+  const todayKey = toDateInput(today);
+  if (/\bhoy\b/.test(normalized)) {
+    return { dateFrom: todayKey, dateTo: todayKey, label: formatHumanDate(todayKey), monthKeys: [todayKey.slice(0, 7)] };
+  }
+  if (/\bayer\b/.test(normalized)) {
+    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    const key = toDateInput(yesterday);
+    return { dateFrom: key, dateTo: key, label: formatHumanDate(key), monthKeys: [key.slice(0, 7)] };
+  }
+
+  const lastDays = normalized.match(/ultim\w*\s+(\d{1,3})\s+dias?/);
+  if (lastDays) {
+    const count = Math.max(1, Number(lastDays[1]));
+    const first = new Date(today.getFullYear(), today.getMonth(), today.getDate() - count + 1);
+    const dateFrom = toDateInput(first);
+    return { dateFrom, dateTo: todayKey, label: `últimos ${count} días`, monthKeys: getFinAiMonthKeys(dateFrom, todayKey) };
+  }
+
+  const mentions = [];
+  FIN_AI_MONTH_ALIASES.forEach((aliases, monthIndex) => {
+    aliases.forEach((alias) => {
+      const position = normalized.search(new RegExp(`\\b${alias}\\b`));
+      if (position >= 0) mentions.push({ monthIndex, position });
+    });
+  });
+  mentions.sort((a, b) => a.position - b.position);
+  const uniqueMentions = mentions.filter((mention, index) =>
+    index === 0 || mention.monthIndex !== mentions[index - 1].monthIndex
+  );
+  const explicitYears = [...normalized.matchAll(/\b(20\d{2})\b/g)].map((match) => Number(match[1]));
+  const availableYears = sales.map((sale) => Number(String(sale.date || '').slice(0, 4)))
+    .filter((year) => Number.isInteger(year) && year >= 2000);
+  const defaultYear = explicitYears[0] || (availableYears.length ? Math.max(...availableYears) : finActiveMonth.getFullYear());
+
+  if (uniqueMentions.length) {
+    const firstMention = uniqueMentions[0];
+    const lastMention = uniqueMentions[uniqueMentions.length - 1];
+    let firstYear = defaultYear;
+    let lastYear = explicitYears.length > 1 ? explicitYears[explicitYears.length - 1] : defaultYear;
+    if (uniqueMentions.length > 1 && firstMention.monthIndex > lastMention.monthIndex && explicitYears.length < 2) {
+      lastYear += 1;
+    }
+    const firstDate = new Date(firstYear, firstMention.monthIndex, 1);
+    const lastDate = new Date(lastYear, lastMention.monthIndex + 1, 0);
+    const dateFrom = toDateInput(firstDate);
+    const dateTo = toDateInput(lastDate);
+    const label = uniqueMentions.length === 1
+      ? `${MONTH_NAMES[firstMention.monthIndex]} ${firstYear}`
+      : `${MONTH_NAMES[firstMention.monthIndex]} ${firstYear} – ${MONTH_NAMES[lastMention.monthIndex]} ${lastYear}`;
+    return { dateFrom, dateTo, label, monthKeys: getFinAiMonthKeys(dateFrom, dateTo) };
+  }
+
+  if (/\b(este|el) ano\b|\bano actual\b/.test(normalized)) {
+    const year = explicitYears[0] || defaultYear;
+    const dateFrom = `${year}-01-01`;
+    const dateTo = `${year}-12-31`;
+    return { dateFrom, dateTo, label: String(year), monthKeys: getFinAiMonthKeys(dateFrom, dateTo) };
+  }
+
+  const year = explicitYears[0] || finActiveMonth.getFullYear();
+  const month = finActiveMonth.getMonth();
+  const dateFrom = toDateInput(new Date(year, month, 1));
+  const dateTo = toDateInput(new Date(year, month + 1, 0));
+  return { dateFrom, dateTo, label: `${MONTH_NAMES[month]} ${year}`, monthKeys: [dateFrom.slice(0, 7)] };
+}
+
+function buildFinAiProductCatalog(sales = getLocationSales()) {
+  const catalog = new Map();
+  sales.forEach((sale) => {
+    (sale.items || []).forEach((item) => {
+      const label = itemName(item);
+      const key = normalizeFinAiText(label);
+      if (!key || catalog.has(key)) return;
+      const tokens = finAiProductTokens(label);
+      catalog.set(key, { key, label, tokens, compact: tokens.join('') });
+    });
+  });
+  return [...catalog.values()].sort((a, b) => b.key.length - a.key.length);
+}
+
+function resolveFinAiProducts(question, sales = getLocationSales()) {
+  const normalized = normalizeFinAiText(question);
+  const compact = normalized.replace(/\s+/g, '');
+  const questionTokens = new Set(finAiProductTokens(question));
+  return buildFinAiProductCatalog(sales).filter((product) => {
+    const exact = normalized.includes(product.key) || (product.compact.length >= 4 && compact.includes(product.compact));
+    if (exact) return true;
+    const overlap = product.tokens.filter((token) => questionTokens.has(token)).length;
+    if (product.tokens.length === 1) return overlap === 1;
+    return overlap >= 2 && overlap / product.tokens.length >= 0.6;
+  });
+}
+
+function aggregateFinAiProducts(sales) {
+  const products = new Map();
+  sales.forEach((sale, saleIndex) => {
+    (sale.items || []).forEach((item) => {
+      const label = itemName(item);
+      const key = normalizeFinAiText(label);
+      if (!key) return;
+      const current = products.get(key) || {
+        key,
+        label,
+        quantity: 0,
+        amount: 0,
+        tickets: new Set(),
+        months: new Map(),
+      };
+      const quantity = itemQuantity(item);
+      current.quantity += quantity;
+      current.amount += itemAmount(item);
+      current.tickets.add(String(sale.id || sale.bistroId || sale.ticketNumber || `${sale.date}-${sale.time}-${saleIndex}`));
+      const monthKey = String(sale.date || '').slice(0, 7);
+      current.months.set(monthKey, (current.months.get(monthKey) || 0) + quantity);
+      products.set(key, current);
+    });
+  });
+  return [...products.values()].sort((a, b) => b.quantity - a.quantity || b.amount - a.amount);
+}
+
+function getFinAiDetailCoverage(sales) {
+  const ticketCount = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const detailTickets = sales.reduce((sum, sale) =>
+    sum + (Array.isArray(sale.items) && sale.items.length ? Number(sale.count || 1) : 0), 0);
+  return {
+    ticketCount,
+    detailTickets,
+    percent: ticketCount > 0 ? detailTickets / ticketCount * 100 : 0,
+  };
+}
+
+function finAiCoverageNote(coverage) {
+  if (!coverage.ticketCount) return 'No hay tickets sincronizados en el período consultado.';
+  if (!coverage.detailTickets) return 'Bistrosoft no entregó detalle de artículos para los tickets de este período; no se inventan cantidades.';
+  const percent = coverage.percent.toLocaleString('es-ES', { maximumFractionDigits: 1 });
+  return `Cobertura de artículos: ${coverage.detailTickets} de ${coverage.ticketCount} tickets (${percent}%).`;
+}
+
+function finAiMonthLabel(monthKey) {
+  const [year, month] = monthKey.split('-').map(Number);
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+function buildFinAiProductResult(question, period, periodSales, allSales, wantsTop) {
+  const coverage = getFinAiDetailCoverage(periodSales);
+  const rows = aggregateFinAiProducts(periodSales);
+  if (!coverage.detailTickets) {
+    return {
+      answer: `No puedo calcular productos para ${period.label} porque no hay tickets con detalle de artículos.`,
+      note: finAiCoverageNote(coverage),
+      kpis: [], chart: [], table: null,
+    };
+  }
+
+  if (wantsTop) {
+    const top = rows.slice(0, 10);
+    const totalUnits = rows.reduce((sum, row) => sum + row.quantity, 0);
+    return {
+      answer: top.length
+        ? `Estos son los productos más vendidos en ${period.label}.`
+        : `No se encontraron productos vendidos en ${period.label}.`,
+      note: finAiCoverageNote(coverage),
+      kpis: [
+        { label: 'Unidades registradas', value: formatQuantity(totalUnits) },
+        { label: 'Productos distintos', value: String(rows.length) },
+        { label: 'Tickets con detalle', value: String(coverage.detailTickets) },
+      ],
+      chart: top.map((row) => ({ label: row.label, value: row.quantity, display: formatQuantity(row.quantity) })),
+      chartTitle: 'Unidades por producto',
+      table: {
+        columns: ['Producto', 'Unidades', 'Tickets', 'Venta identificada'],
+        rows: top.map((row) => [row.label, formatQuantity(row.quantity), String(row.tickets.size), row.amount > 0 ? formatEur(row.amount) : '—']),
+      },
+    };
+  }
+
+  const matches = resolveFinAiProducts(question, allSales);
+  if (!matches.length) {
+    const suggestions = aggregateFinAiProducts(allSales).slice(0, 8).map((row) => row.label).join(', ');
+    return {
+      answer: 'No pude reconocer el producto. Escribí el nombre como figura en Bistrosoft.',
+      note: suggestions ? `Algunos nombres disponibles: ${suggestions}.` : finAiCoverageNote(coverage),
+      kpis: [], chart: [], table: null,
+    };
+  }
+
+  const matchKeys = new Set(matches.map((match) => match.key));
+  const selected = rows.filter((row) => matchKeys.has(row.key));
+  const totalQuantity = selected.reduce((sum, row) => sum + row.quantity, 0);
+  const totalAmount = selected.reduce((sum, row) => sum + row.amount, 0);
+  const ticketIds = new Set(selected.flatMap((row) => [...row.tickets]));
+  const monthly = period.monthKeys.map((monthKey) => ({
+    label: finAiMonthLabel(monthKey),
+    quantity: selected.reduce((sum, row) => sum + (row.months.get(monthKey) || 0), 0),
+  }));
+  const matchedLabels = matches.map((match) => match.label);
+  const answer = totalQuantity > 0
+    ? `Se vendieron ${formatQuantity(totalQuantity)} unidades de ${matchedLabels.join(', ')} en ${period.label}.`
+    : `No hay ventas registradas de ${matchedLabels.join(', ')} en ${period.label}.`;
+  const chart = selected.length > 1
+    ? selected.map((row) => ({ label: row.label, value: row.quantity, display: formatQuantity(row.quantity) }))
+    : monthly.map((row) => ({ label: row.label, value: row.quantity, display: formatQuantity(row.quantity) }));
+
+  return {
+    answer,
+    note: finAiCoverageNote(coverage),
+    kpis: [
+      { label: 'Unidades', value: formatQuantity(totalQuantity) },
+      { label: 'Tickets', value: String(ticketIds.size) },
+      { label: 'Variantes encontradas', value: String(matches.length) },
+      { label: 'Venta identificada', value: totalAmount > 0 ? formatEur(totalAmount) : '—' },
+    ],
+    chart,
+    chartTitle: selected.length > 1 ? 'Comparación por producto' : 'Unidades por mes',
+    table: {
+      columns: ['Producto', 'Unidades', 'Tickets', 'Venta identificada'],
+      rows: selected.length
+        ? selected.map((row) => [row.label, formatQuantity(row.quantity), String(row.tickets.size), row.amount > 0 ? formatEur(row.amount) : '—'])
+        : matchedLabels.map((label) => [label, '0', '0', '—']),
+    },
+  };
+}
+
+function buildFinAiFinanceResult(period, sales, expenses) {
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+  const tickets = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const result = totalSales - totalExpenses;
+  const monthly = period.monthKeys.map((monthKey) => {
+    const monthSales = sales.filter((sale) => sale.date?.startsWith(monthKey));
+    const monthExpenses = expenses.filter((expense) => expense.date?.startsWith(monthKey));
+    const salesValue = monthSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+    const expenseValue = monthExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+    const monthTickets = monthSales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+    return { monthKey, sales: salesValue, expenses: expenseValue, result: salesValue - expenseValue, tickets: monthTickets };
+  });
+  return {
+    answer: `En ${period.label}, la tienda registró ${formatEur(totalSales)} en ventas y ${tickets} pedidos.`,
+    note: 'Los importes usan las ventas y los gastos guardados para la tienda activa.',
+    kpis: [
+      { label: 'Ventas', value: formatEur(totalSales) },
+      { label: 'Pedidos', value: String(tickets) },
+      { label: 'Ticket promedio', value: tickets ? formatEur(totalSales / tickets) : '—' },
+      { label: 'Resultado', value: `${result >= 0 ? '+' : ''}${formatEur(result)}` },
+    ],
+    chart: monthly.map((row) => ({ label: finAiMonthLabel(row.monthKey), value: row.sales, display: formatEur(row.sales) })),
+    chartTitle: 'Ventas por mes',
+    table: {
+      columns: ['Mes', 'Ventas', 'Pedidos', 'Gastos', 'Resultado'],
+      rows: monthly.map((row) => [
+        finAiMonthLabel(row.monthKey), formatEur(row.sales), String(row.tickets), formatEur(row.expenses), `${row.result >= 0 ? '+' : ''}${formatEur(row.result)}`,
+      ]),
+    },
+  };
+}
+
+function buildFinAiCoverageResult(period) {
+  const coverage = getStoreCoverageForRange(period.dateFrom, period.dateTo);
+  const coveragePercent = coverage.openHours > 0 ? coverage.coveredHours / coverage.openHours * 100 : 0;
+  const freeDays = coverage.days.filter((day) => day.freeHours > 0);
+  const monthly = period.monthKeys.map((monthKey) => {
+    const monthDays = coverage.days.filter((day) => day.dateKey.startsWith(monthKey));
+    return {
+      monthKey,
+      open: monthDays.reduce((sum, day) => sum + day.openHours, 0),
+      covered: monthDays.reduce((sum, day) => sum + day.coveredHours, 0),
+      free: monthDays.reduce((sum, day) => sum + day.freeHours, 0),
+    };
+  });
+  return {
+    answer: coverage.freeHours > 0
+      ? `Hay ${formatHours(coverage.freeHours)} sin cubrir durante la apertura de ${period.label}.`
+      : `Todas las horas de apertura de ${period.label} tienen al menos un empleado asignado.`,
+    note: 'La cobertura se calcula con los horarios mensuales de apertura y los turnos aprobados de la grilla.',
+    kpis: [
+      { label: 'Tienda abierta', value: formatHours(coverage.openHours) },
+      { label: 'Horas cubiertas', value: formatHours(coverage.coveredHours) },
+      { label: 'H. libres', value: formatHours(coverage.freeHours) },
+      { label: 'Cobertura', value: `${coveragePercent.toLocaleString('es-ES', { maximumFractionDigits: 1 })}%` },
+    ],
+    chart: monthly.map((row) => ({ label: finAiMonthLabel(row.monthKey), value: row.free, display: formatHours(row.free) })),
+    chartTitle: 'Horas libres por mes',
+    table: {
+      columns: ['Mes', 'Tienda abierta', 'Cubiertas', 'H. libres'],
+      rows: monthly.map((row) => [finAiMonthLabel(row.monthKey), formatHours(row.open), formatHours(row.covered), formatHours(row.free)]),
+    },
+    secondary: freeDays.slice(0, 31).map((day) => `${formatHumanDate(day.dateKey)}: ${formatHours(day.freeHours)}`),
+  };
+}
+
+function answerFinAiQuestion(question, salesOverride = null, expensesOverride = null) {
+  const allSales = Array.isArray(salesOverride) ? salesOverride : getLocationSales();
+  const allExpenses = Array.isArray(expensesOverride) ? expensesOverride : getLocationExpenses();
+  const period = getFinAiPeriod(question, allSales);
+  const sales = allSales.filter((sale) => sale.date >= period.dateFrom && sale.date <= period.dateTo);
+  const expenses = allExpenses.filter((expense) => expense.date >= period.dateFrom && expense.date <= period.dateTo);
+  const normalized = normalizeFinAiText(question);
+  const wantsCoverage = /hora.*libre|sin cubrir|cobertura|tienda.*abiert|hora.*planificad/.test(normalized);
+  const wantsTop = /\btop\b|ranking|mas vendid|productos? principales?/.test(normalized);
+  const products = resolveFinAiProducts(question, allSales);
+  const wantsProductData = wantsTop || products.length > 0 || /producto|articulo|unidad|cuant\w*.*vend/.test(normalized);
+
+  if (wantsCoverage) return buildFinAiCoverageResult(period);
+  if (wantsProductData) return buildFinAiProductResult(question, period, sales, allSales, wantsTop);
+  return buildFinAiFinanceResult(period, sales, expenses);
+}
+
+function renderFinAiResult(result) {
+  if (!result) {
+    return '<div class="fin-ai-empty"><strong>Preguntá con tus propias palabras</strong><span>El asistente puede buscar productos, comparar períodos, resumir ventas y revisar horas sin cobertura.</span></div>';
+  }
+  const kpis = result.kpis?.length ? `<div class="fin-kpi-grid fin-ai-kpis">${result.kpis.map((kpi) => `
+    <div class="fin-kpi-card"><span>${escapeHtml(kpi.label)}</span><strong>${escapeHtml(kpi.value)}</strong></div>
+  `).join('')}</div>` : '';
+  const maxValue = Math.max(1, ...(result.chart || []).map((row) => Number(row.value || 0)));
+  const chart = result.chart?.length ? `<section class="analysis-chart fin-ai-chart">
+    <h4>${escapeHtml(result.chartTitle || 'Resultado')}</h4>
+    ${result.chart.map((row) => `<div class="analysis-bar-row">
+      <span>${escapeHtml(row.label)}</span>
+      <div class="analysis-bar-track"><i style="width:${Math.max(row.value > 0 ? 2 : 0, Number(row.value || 0) / maxValue * 100)}%"></i></div>
+      <strong>${escapeHtml(row.display)}</strong>
+    </div>`).join('')}
+  </section>` : '';
+  const table = result.table ? `<div class="analysis-table-wrap fin-ai-table-wrap"><table class="fin-table">
+    <thead><tr>${result.table.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead>
+    <tbody>${result.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table></div>` : '';
+  const secondary = result.secondary?.length ? `<details class="fin-ai-details"><summary>Días con horas libres</summary><div>${result.secondary.map((line) => `<span>${escapeHtml(line)}</span>`).join('')}</div></details>` : '';
+  return `<section class="fin-ai-answer" aria-live="polite">
+    <div class="fin-ai-answer-copy"><span>Respuesta</span><strong>${escapeHtml(result.answer)}</strong></div>
+    ${kpis}${chart}${table}${secondary}
+    ${result.note ? `<p class="analysis-source-note">${escapeHtml(result.note)}</p>` : ''}
+  </section>`;
+}
+
+function renderFinAi() {
+  const container = document.querySelector('#finAiContent');
+  if (!container) return;
+  const examples = [
+    '¿Cuántos Pan de queso se vendieron en Agosto?',
+    '¿Cuántos Cold Brew se vendieron entre Julio y Agosto?',
+    'Comparar Pan de queso y Croissant en Agosto',
+    'Top 10 productos de Agosto',
+    '¿Cuántas horas libres hay en Agosto?',
+  ];
+  container.innerHTML = `
+    <section class="fin-ai-shell">
+      <div class="fin-table-header fin-ai-heading">
+        <div>
+          <p class="eyebrow">Consulta inteligente</p>
+          <h3>IA de datos · ${escapeHtml(getLocation().label)}</h3>
+          <p class="form-note">Responde con la información sincronizada desde Bistrosoft y la grilla. Si falta detalle de artículos, lo indica y no estima cantidades.</p>
+        </div>
+        <span class="fin-ai-private-badge">DATOS LOCALES</span>
+      </div>
+      <form class="fin-ai-form" id="finAiForm">
+        <label for="finAiQuestion">Tu pregunta</label>
+        <div class="fin-ai-compose">
+          <textarea id="finAiQuestion" rows="3" placeholder="Ejemplo: ¿Cuántos Cold Brew se vendieron entre Julio y Agosto?">${escapeHtml(finAiQuestion)}</textarea>
+          <button class="primary-button" type="submit">Consultar</button>
+        </div>
+      </form>
+      <div class="fin-ai-examples" aria-label="Preguntas de ejemplo">
+        ${examples.map((example) => `<button type="button" class="mini-button" data-ai-example="${escapeHtml(example)}">${escapeHtml(example)}</button>`).join('')}
+      </div>
+      ${renderFinAiResult(finAiResult)}
+    </section>`;
+
+  document.querySelector('#finAiForm')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const question = document.querySelector('#finAiQuestion')?.value.trim() || '';
+    if (!question) return;
+    finAiQuestion = question;
+    finAiResult = answerFinAiQuestion(question);
+    renderFinAi();
+  });
+  container.querySelectorAll('[data-ai-example]').forEach((button) => {
+    button.addEventListener('click', () => {
+      finAiQuestion = button.dataset.aiExample;
+      finAiResult = answerFinAiQuestion(finAiQuestion);
+      renderFinAi();
+    });
+  });
 }
 
 // -------- METRICS --------

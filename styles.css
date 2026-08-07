@@ -3102,6 +3102,184 @@ textarea {
   font-size: .75rem;
 }
 
+/* Finanzas: asistente local de datos */
+.fin-ai-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.fin-ai-heading {
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 0;
+}
+
+.fin-ai-heading h3 {
+  margin: 2px 0 5px;
+}
+
+.fin-ai-private-badge {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid #a9d4c9;
+  border-radius: 999px;
+  background: #eef9f6;
+  color: #14725f;
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
+.fin-ai-form {
+  display: grid;
+  gap: 7px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbfc;
+}
+
+.fin-ai-form > label {
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.fin-ai-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.fin-ai-compose textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.fin-ai-compose .primary-button {
+  min-width: 145px;
+}
+
+.fin-ai-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fin-ai-examples .mini-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  white-space: normal;
+  text-align: left;
+}
+
+.fin-ai-empty {
+  display: grid;
+  gap: 5px;
+  padding: 28px 20px;
+  border: 1px dashed #bfd0da;
+  border-radius: 12px;
+  background: #fff;
+  text-align: center;
+}
+
+.fin-ai-empty span {
+  color: var(--muted);
+  font-size: .84rem;
+}
+
+.fin-ai-answer {
+  display: grid;
+  gap: 16px;
+}
+
+.fin-ai-answer-copy {
+  display: grid;
+  gap: 5px;
+  padding: 16px 18px;
+  border-left: 4px solid var(--blue);
+  border-radius: 0 10px 10px 0;
+  background: var(--blue-soft);
+}
+
+.fin-ai-answer-copy span {
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.fin-ai-answer-copy strong {
+  color: var(--blue-dark);
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+
+.fin-ai-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fin-ai-chart {
+  min-width: 0;
+}
+
+.fin-ai-table-wrap {
+  margin-top: 0;
+}
+
+.fin-ai-details {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.fin-ai-details summary {
+  cursor: pointer;
+  color: var(--blue-dark);
+  font-weight: 850;
+}
+
+.fin-ai-details > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px 12px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: .8rem;
+}
+
+@media (max-width: 800px) {
+  .fin-ai-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fin-ai-details > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .fin-ai-heading {
+    flex-direction: column;
+  }
+  .fin-ai-compose,
+  .fin-ai-kpis,
+  .fin-ai-details > div {
+    grid-template-columns: 1fr;
+  }
+  .fin-ai-compose .primary-button {
+    width: 100%;
+  }
+}
+
 /* Editor mensual de horarios de apertura */
 .store-hours-editor {
   padding: 22px 20px 24px;

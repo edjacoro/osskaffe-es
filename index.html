@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=25" />
+    <link rel="stylesheet" href="styles.css?v=26" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -305,8 +305,8 @@
             <strong id="plannedHours">0 h</strong>
           </article>
           <article class="metric-card">
-            <span>Pendientes</span>
-            <strong id="pendingCount">0</strong>
+            <span title="Horas de apertura sin al menos un empleado asignado">H. Libres</span>
+            <strong id="pendingCount">0 h</strong>
           </article>
           <article class="metric-card">
             <span>Horas criticas</span>
@@ -569,6 +569,7 @@
               <button class="fin-tab" data-fin-tab="presupuesto" type="button">Presupuesto</button>
               <button class="fin-tab" data-fin-tab="audit" type="button">Auditoría</button>
               <button class="fin-tab" data-fin-tab="analysis" type="button">Análisis</button>
+              <button class="fin-tab" data-fin-tab="ai" type="button">IA</button>
             </nav>
             <div class="fin-sync-bar" id="finBistroSync" aria-live="polite">
               <span class="fin-sync-dot" id="finSyncDot" aria-hidden="true"></span>
@@ -756,6 +757,11 @@
             <div id="finAnalysisContent" style="padding:20px"></div>
           </div>
 
+          <!-- IA DE DATOS -->
+          <div class="fin-panel" data-fin-panel="ai">
+            <div id="finAiContent" style="padding:20px"></div>
+          </div>
+
           <!-- P&L -->
           <div class="fin-panel" data-fin-panel="pnl">
             <div style="padding:20px">
@@ -860,6 +866,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=36"></script>
+    <script src="app.js?v=43"></script>
   </body>
 </html>

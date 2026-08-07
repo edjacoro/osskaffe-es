@@ -114,6 +114,17 @@ vendidos en horas pico, venta mensual por cantidad y top 5 anualizado. Estos
 rankings aparecen cuando la venta sincronizada/importada incluye detalle de
 articulos.
 
+En la cabecera de **Grilla**, **Horas planificadas** representa las horas totales
+de apertura configuradas para el mes y **H. Libres** muestra las horas de apertura
+sin ningun empleado asignado. El calculo respeta cierres, festivos, horarios
+personalizados y los turnos aprobados.
+
+La pestana **Finanzas > IA** permite consultar con lenguaje natural ventas,
+productos, comparaciones, rankings y cobertura de la grilla. Procesa localmente
+los datos ya sincronizados y no requiere una clave de IA externa. Las cantidades
+de productos solo se informan cuando Bistrosoft entrego el detalle de articulos;
+la pantalla muestra la cobertura disponible y no completa datos faltantes.
+
 La grilla base de Madrid se cargo con la direccion `Calle de Manuel Cortina, 1,
 Chamberi, 28010 Madrid` y coordenadas `40.43073, -3.69918`. Los festivos 2026
 incluyen nacionales, Comunidad de Madrid y municipio de Madrid, todos con
