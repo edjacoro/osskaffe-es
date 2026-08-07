@@ -1,6 +1,7 @@
 import {
   employeeState,
   isActiveEmployee,
+  mergeAdminState,
   mergeEmployeeState,
   readStateEntry,
   requireSession,
@@ -44,7 +45,7 @@ export default async (request) => {
     }
     await updateState((current) =>
       session.role === "admin"
-        ? body.state
+        ? mergeAdminState(current, body.state)
         : mergeEmployeeState(current, body.state, session.employeeId)
     );
     return response({ ok: true });

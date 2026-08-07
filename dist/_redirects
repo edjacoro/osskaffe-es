@@ -9,4 +9,5 @@
 /api/bistrosoft/sales   /.netlify/functions/bistro-sales    200
 /api/bistrosoft/months  /.netlify/functions/bistro-months   200
 /api/bistrosoft/details /.netlify/functions/bistro-details-background 200
+/api/bistrosoft/details-start /.netlify/functions/bistro-details-start 200
 /api/bistrosoft/details-status /.netlify/functions/bistro-details-status 200

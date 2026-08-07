@@ -133,9 +133,21 @@ button {
   margin-top: auto;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   color: rgba(255, 255, 255, 0.7);
   font-size: 0.86rem;
+}
+
+.sidebar-save-label {
+  min-width: 0;
+}
+
+.sidebar-session-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .status-dot {
@@ -704,6 +716,12 @@ textarea {
   }
 
   .sidebar-footer {
+    margin-top: 0;
+    justify-content: flex-end;
+  }
+
+  .sidebar-footer > .status-dot,
+  .sidebar-save-label {
     display: none;
   }
 
@@ -1373,6 +1391,35 @@ textarea {
   padding: 20px;
 }
 
+.team-save-status {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfc;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 750;
+}
+
+.team-save-status.is-saving {
+  border-color: #a9c8d4;
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
+.team-save-status.is-success {
+  border-color: #a9d4c9;
+  background: #eef9f6;
+  color: #14725f;
+}
+
+.team-save-status.is-error {
+  border-color: #efb4ad;
+  background: #fff2f0;
+  color: #a43b32;
+}
+
 .team-member-item.is-inactive,
 .ficha-card.is-inactive {
   opacity: 0.62;
@@ -1677,9 +1724,9 @@ textarea {
   }
 }
 
-/* Admin sidebar exit */
+/* Admin sidebar store switch + exit */
+.admin-store-switch,
 .admin-exit-btn {
-  margin-left: auto;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
@@ -1689,9 +1736,25 @@ textarea {
   cursor: pointer;
 }
 
+.admin-store-switch {
+  min-width: 44px;
+  color: #ffffff;
+  background: rgba(196, 109, 71, 0.88);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.admin-store-switch[hidden] {
+  display: none;
+}
+
+.admin-store-switch:hover,
 .admin-exit-btn:hover {
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
+}
+
+.admin-store-switch:hover {
+  background: var(--coffee);
 }
 
 /* ===========================

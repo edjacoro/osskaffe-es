@@ -78,6 +78,15 @@ function sign(value) {
   return crypto.createHmac("sha256", sessionSecret()).update(value).digest("base64url");
 }
 
+export function internalWorkerToken(scope) {
+  return sign(`internal-worker:${scope}`);
+}
+
+export function hasInternalWorkerAccess(request, scope) {
+  const received = request.headers.get("x-oss-internal-token") || "";
+  return secretsMatch(received, internalWorkerToken(scope));
+}
+
 export function createSessionCookie(role, employeeId = null) {
   const payload = Buffer.from(JSON.stringify({
     role,
@@ -298,7 +307,7 @@ async function bistroRequest(relativeUrl, options = {}, cookies = "") {
   return { data, cookies: extractCookies(result.headers) || cookies };
 }
 
-async function loginBistrosoft(locationId = DEFAULT_LOCATION_ID) {
+export async function loginBistrosoft(locationId = DEFAULT_LOCATION_ID) {
   const id = normalizeLocationId(locationId);
   const { username, password } = bistroCredentials(id);
   if (!username || !password) throw new Error("Faltan las credenciales de Bistrosoft en Netlify.");
@@ -407,26 +416,42 @@ function extractBistroDetailItems(payload = {}) {
 async function restoreBistroSaleItems(sales, locationId) {
   if (!sales.length) return sales;
   const { state } = await readStateEntry();
-  const existingItems = new Map(
+  const existingDetails = new Map(
     (state?.sales || [])
-      .filter((sale) => normalizeLocationId(sale.locationId) === locationId && Array.isArray(sale.items) && sale.items.length)
-      .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
+      .filter((sale) => normalizeLocationId(sale.locationId) === locationId)
+      .map((sale) => [String(sale.bistroId || sale.id), {
+        items: Array.isArray(sale.items) ? sale.items : [],
+        detailStatus: sale.detailStatus || null,
+        detailAttempts: Number(sale.detailAttempts || 0),
+        detailCheckedAt: sale.detailCheckedAt || null,
+      }]),
   );
   sales.forEach((sale) => {
-    const saved = existingItems.get(String(sale.bistroId || sale.id));
-    if (saved?.length) sale.items = saved;
+    const saved = existingDetails.get(String(sale.bistroId || sale.id));
+    if (!saved) return;
+    if (saved.items.length) sale.items = saved.items;
+    sale.detailStatus = saved.detailStatus;
+    sale.detailAttempts = saved.detailAttempts;
+    sale.detailCheckedAt = saved.detailCheckedAt;
   });
   return sales;
 }
 
-async function enrichBistroSaleItems(sales, cookies, locationId) {
+async function enrichBistroSaleItems(sales, cookies, locationId, options = {}) {
   await restoreBistroSaleItems(sales, locationId);
-  const pending = sales.filter((sale) => !Array.isArray(sale.items) || sale.items.length === 0);
-  const workerCount = Math.min(16, pending.length);
+  const maxDetailAttempts = Math.max(1, Number(options.maxDetailAttempts || 3));
+  const forceItemRetry = options.forceItemRetry === true;
+  const pending = sales.filter((sale) =>
+    (!Array.isArray(sale.items) || sale.items.length === 0)
+    && (forceItemRetry || Number(sale.detailAttempts || 0) < maxDetailAttempts)
+  );
+  const workerCount = Math.min(10, pending.length);
   let cursor = 0;
   await Promise.all(Array.from({ length: workerCount }, async () => {
     while (cursor < pending.length) {
       const sale = pending[cursor++];
+      sale.detailAttempts = Number(sale.detailAttempts || 0) + 1;
+      sale.detailCheckedAt = new Date().toISOString();
       const query = new URLSearchParams({
         SaleId: sale.rawSaleId,
         ShopCode: sale.shopCode,
@@ -437,9 +462,16 @@ async function enrichBistroSaleItems(sales, cookies, locationId) {
       try {
         const detail = await bistroRequest(`/api/consolidatedV2/saleDetails/?${query}`, {}, cookies);
         const detailItems = extractBistroDetailItems(detail.data);
-        if (detailItems.length) sale.items = detailItems;
+        if (detailItems.length) {
+          sale.items = detailItems;
+          sale.detailStatus = "complete";
+        } else {
+          sale.items = sale.items || [];
+          sale.detailStatus = "empty";
+        }
       } catch (_) {
         sale.items = sale.items || [];
+        sale.detailStatus = "error";
       }
     }
   }));
@@ -501,7 +533,7 @@ export async function getBistroSales(
   } while (sales.length < totalCount);
 
   const rangeDays = Math.ceil((new Date(`${until}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000);
-  if (rangeDays <= 1 || options.includeAllItems) await enrichBistroSaleItems(sales, cookies, id);
+  if (rangeDays <= 1 || options.includeAllItems) await enrichBistroSaleItems(sales, cookies, id, options);
   else await restoreBistroSaleItems(sales, id);
 
   sales.forEach((sale) => {
@@ -639,7 +671,34 @@ export async function getBistroMonths(locationId = DEFAULT_LOCATION_ID) {
     ...salesMonths,
     ...expenseHistory.expenses.map((item) => item.date.slice(0, 7)),
   ])].sort();
-  return { ok: true, locationId: id, months };
+  return {
+    ok: true,
+    locationId: id,
+    months,
+    salesMonths,
+    expenseMonths: [...new Set(expenseHistory.expenses.map((item) => item.date.slice(0, 7)))].sort(),
+  };
+}
+
+export async function getBistroSalesMonths(locationId = DEFAULT_LOCATION_ID) {
+  const id = normalizeLocationId(locationId);
+  const cookies = await loginBistrosoft(id);
+  const until = new Date();
+  until.setUTCDate(until.getUTCDate() + 1);
+  const query = new URLSearchParams({
+    Period: "ConfigurablePeriod",
+    From: "2010-01-01",
+    Until: isoDate(until),
+  });
+  const result = await bistroRequest(`/api/report/salesDataPerMonthV2?${query}`, {}, cookies);
+  if (result.data.responseCode !== 0) {
+    throw new Error("Bistrosoft no pudo informar los meses de ventas disponibles.");
+  }
+  return [...new Set(
+    (result.data.items || [])
+      .map((item) => String(item.date || ""))
+      .filter((value) => /^\d{4}-\d{2}$/.test(value)),
+  )].sort();
 }
 
 export async function readBistroStatus(locationId = DEFAULT_LOCATION_ID) {
@@ -732,16 +791,22 @@ export async function mergeBistroSales(sales, from, until, locationId = DEFAULT_
       ...(id === DEFAULT_LOCATION_ID ? current?.bistroSalesSyncedMonths || [] : []),
       ...months,
     ])].sort();
-    const previousItems = new Map(
+    const previousDetails = new Map(
       (current?.sales || [])
-        .filter((sale) => normalizeLocationId(sale.locationId) === id && Array.isArray(sale.items) && sale.items.length)
-        .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
+        .filter((sale) => normalizeLocationId(sale.locationId) === id)
+        .map((sale) => [String(sale.bistroId || sale.id), sale]),
     );
-    const mergedSales = sales.map((sale) => ({
-      ...sale,
-      locationId: id,
-      items: sale.items?.length ? sale.items : (previousItems.get(String(sale.bistroId || sale.id)) || []),
-    }));
+    const mergedSales = sales.map((sale) => {
+      const previous = previousDetails.get(String(sale.bistroId || sale.id));
+      return {
+        ...sale,
+        locationId: id,
+        items: sale.items?.length ? sale.items : (previous?.items || []),
+        detailStatus: sale.items?.length ? "complete" : (sale.detailStatus || previous?.detailStatus || null),
+        detailAttempts: Math.max(Number(sale.detailAttempts || 0), Number(previous?.detailAttempts || 0)),
+        detailCheckedAt: sale.detailCheckedAt || previous?.detailCheckedAt || null,
+      };
+    });
     return {
       ...(current || {}),
       sales: [
@@ -763,6 +828,74 @@ export async function mergeBistroSales(sales, from, until, locationId = DEFAULT_
       ...(id === DEFAULT_LOCATION_ID ? { bistroSalesSyncedMonths: nextSalesMonths } : {}),
     };
   });
+}
+
+function recordIdentity(record) {
+  return String(record?.bistroId || record?.id || "");
+}
+
+function mergePersistedBistroSales(currentSales = [], submittedSales = []) {
+  const submittedManual = submittedSales.filter((sale) => sale?._source !== "bistrosoft");
+  const currentBistro = currentSales.filter((sale) => sale?._source === "bistrosoft");
+  const submittedBistro = submittedSales.filter((sale) => sale?._source === "bistrosoft");
+  const byId = new Map(currentBistro.map((sale) => [recordIdentity(sale), sale]));
+  submittedBistro.forEach((sale) => {
+    const key = recordIdentity(sale);
+    const persisted = byId.get(key);
+    if (!persisted) {
+      byId.set(key, sale);
+      return;
+    }
+    const persistedItems = Array.isArray(persisted.items) ? persisted.items : [];
+    const submittedItems = Array.isArray(sale.items) ? sale.items : [];
+    byId.set(key, {
+      ...sale,
+      ...persisted,
+      items: persistedItems.length >= submittedItems.length ? persistedItems : submittedItems,
+      detailAttempts: Math.max(Number(persisted.detailAttempts || 0), Number(sale.detailAttempts || 0)),
+      detailCheckedAt: persisted.detailCheckedAt || sale.detailCheckedAt || null,
+      detailStatus: persistedItems.length
+        ? "complete"
+        : (persisted.detailStatus || sale.detailStatus || null),
+    });
+  });
+  return [...submittedManual, ...byId.values()];
+}
+
+function mergePersistedBistroExpenses(currentExpenses = [], submittedExpenses = []) {
+  const submittedManual = submittedExpenses.filter((expense) => expense?._source !== "bistrosoft");
+  const currentBistro = currentExpenses.filter((expense) => expense?._source === "bistrosoft");
+  const submittedBistro = submittedExpenses.filter((expense) => expense?._source === "bistrosoft");
+  const submittedById = new Map(submittedBistro.map((expense) => [recordIdentity(expense), expense]));
+  const byId = new Map(currentBistro.map((expense) => {
+    const submitted = submittedById.get(recordIdentity(expense));
+    return [recordIdentity(expense), {
+      ...(submitted || {}),
+      ...expense,
+      category: submitted?.category || expense.category,
+    }];
+  }));
+  submittedBistro.forEach((expense) => {
+    const key = recordIdentity(expense);
+    if (!byId.has(key)) byId.set(key, expense);
+  });
+  return [...submittedManual, ...byId.values()];
+}
+
+export function mergeAdminState(current, submitted) {
+  if (!current || typeof current !== "object") return submitted;
+  return {
+    ...submitted,
+    employees: Array.isArray(current.employees) && current.employees.length
+      ? current.employees
+      : submitted.employees,
+    sales: mergePersistedBistroSales(current.sales || [], submitted.sales || []),
+    expenses: mergePersistedBistroExpenses(current.expenses || [], submitted.expenses || []),
+    bistroSyncedMonthsByLocation: current.bistroSyncedMonthsByLocation || submitted.bistroSyncedMonthsByLocation,
+    bistroSalesSyncedMonths: current.bistroSalesSyncedMonths || submitted.bistroSalesSyncedMonths,
+    bistroExpenseSyncedMonths: current.bistroExpenseSyncedMonths || submitted.bistroExpenseSyncedMonths,
+    bistroDetailJobs: current.bistroDetailJobs || submitted.bistroDetailJobs,
+  };
 }
 
 export async function mergeBistroExpenses(expenses, from, until, locationId = DEFAULT_LOCATION_ID) {

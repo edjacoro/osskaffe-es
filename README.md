@@ -101,6 +101,11 @@ eligen sucursal despues de iniciar sesion; cada empleado entra directo a la
 sucursal definida en su ficha. Finanzas, gastos, mermas, presupuestos, afluencia
 y fichajes se guardan separados por `locationId`.
 
+Una vez dentro como administrador, el boton compacto `BCN` / `MAD` situado junto
+a **Salir** permite cambiar de tienda sin cerrar la sesion. La grilla, Finanzas,
+Personal, Ajustes y la sincronizacion de Bistrosoft se actualizan para la sucursal
+seleccionada.
+
 La pestana **Finanzas > Auditoria** compara ventas diarias de Barcelona y Madrid
 mes a mes. Sirve como control rapido para ver cada dia, tickets, totales y
 diferencia entre locales.
@@ -145,6 +150,12 @@ empezar a registrar desde ahora con datos importados y mantener historial.
 - La vista del empleado incluye **Mis horas**, cierre automatico de fichajes olvidados y
   avisos del navegador cinco minutos antes del turno mientras la aplicacion permanece abierta.
 - El administrador puede agregar, dar de baja y reactivar personal desde **Fichas > Personal**.
+- Las altas, ediciones, cambios de tienda, bajas programadas y reactivaciones de Personal se
+  confirman mediante una escritura pequena e independiente en Netlify Blobs. Por eso quedan
+  disponibles al borrar el cache, cambiar de ordenador o abrir una ventana de incognito. Si
+  Netlify no confirma una modificacion, la app la informa y no la presenta como guardada.
+- Al primer ingreso administrativo despues de actualizar, la app intenta recuperar en Netlify
+  los empleados antiguos que todavia existan solamente en la copia local de ese navegador.
 - Al fichar una salida, el empleado debe confirmar las mermas del dia. Finanzas incluye una
   pestaña mensual para consultar esas cantidades.
 - La sincronizacion de Bistrosoft incorpora tambien los movimientos de caja tipo Retiro como
@@ -160,10 +171,19 @@ empezar a registrar desde ahora con datos importados y mantener historial.
   pruebas. El respaldo incluye grilla, finanzas, reclasificaciones de Bistrosoft, personal,
   fichas, mermas, presupuestos y ajustes. No incluye las contrasenas de empleados, que quedan
   guardadas como hashes separados en cada sitio Netlify.
-- `Sincronizar historial` recupera el detalle de articulos de Bistrosoft mediante funciones
-  de fondo por mes. Netlify puede procesar cada mes hasta 15 minutos sin cortar la tarea.
-  Los meses se lanzan en lotes de dos y los resultados ya completados se conservan en las
-  sincronizaciones posteriores. Esta carga es la que alimenta cross-selling y articulos/ticket.
+- **Completar productos** inicia una carga historica unica para Barcelona y Madrid. Netlify
+  recorre los meses disponibles en lotes diarios, guarda cada dia inmediatamente y conserva
+  la cola fuera del navegador. Se puede cambiar de seccion, cambiar de tienda o cerrar la app
+  sin perder el avance.
+- La cola tiene bloqueo contra procesos duplicados, reintentos por dia y un control programado
+  cada 10 minutos que retoma cualquier lote detenido. La sincronizacion automatica agrega
+  tambien los tres dias recientes para incorporar los tickets nuevos con sus productos.
+- Finanzas muestra por tienda el avance del recorrido y, al finalizar, la cobertura real de
+  tickets con detalle. Un resultado inferior al 100% queda identificado como cobertura parcial:
+  la app no inventa articulos para los tickets que Bistrosoft no entregue aun despues de los
+  reintentos. Esta cobertura alimenta cross-selling, articulos/ticket, rankings y consultas de IA.
+- Las escrituras completas de navegadores antiguos ya no pueden reemplazar las ventas con
+  detalle que el proceso de fondo haya guardado en Netlify.
 
 ### Otros hostings
 

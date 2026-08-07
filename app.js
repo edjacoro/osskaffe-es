@@ -265,6 +265,7 @@ let sharedStatePollTimer = null;
 let sharedStateSaving = false;
 let sharedStatePending = false;
 let suppressSharedStateSave = false;
+let pendingTeamRecoverySnapshot = { employees: [], profiles: {}, baseSchedules: {}, contracts: {} };
 let pendingEmployeeId = null;
 let empHoursMonth = firstDayOfMonth(new Date());
 let shiftNotificationTimer = null;
@@ -346,13 +347,30 @@ async function refreshTeamDirectory() {
     if (!response.ok) return;
     const payload = await response.json();
     if (!payload.ok || !Array.isArray(payload.employees)) return;
+    // Si durante esta lectura ya se inicio una sesion, /api/state contiene una
+    // vista mas completa (incluye altas futuras y bajas historicas) y prevalece.
+    if (sharedStateEnabled || appRole) return;
     const serverIds = new Set(payload.employees.map((employee) => employee.id));
-    const localCustomEmployees = (state.employees || []).filter((employee) =>
-      employee.id !== "pablo"
+    const localOnlyEmployees = (state.employees || []).filter((employee) =>
+      employee.id !== 'pablo'
       && !serverIds.has(employee.id)
       && !DEFAULT_EMPLOYEES.some((defaultEmployee) => defaultEmployee.id === employee.id)
     );
-    state.employees = [...payload.employees, ...localCustomEmployees];
+    if (localOnlyEmployees.length) {
+      const recoveryById = new Map(pendingTeamRecoverySnapshot.employees.map((employee) => [employee.id, employee]));
+      localOnlyEmployees.forEach((employee) => recoveryById.set(employee.id, structuredClone(employee)));
+      pendingTeamRecoverySnapshot.employees = [...recoveryById.values()];
+      ['profiles', 'baseSchedules', 'contracts'].forEach((key) => {
+        localOnlyEmployees.forEach((employee) => {
+          if (state[key]?.[employee.id]) {
+            pendingTeamRecoverySnapshot[key][employee.id] = structuredClone(state[key][employee.id]);
+          }
+        });
+      });
+    }
+    // Cuando Netlify responde, su directorio es la fuente firme. No mezclar altas
+    // que solo existan en el cache local porque eso oculta un guardado fallido.
+    state.employees = payload.employees;
     state.baseSchedules = mergeBaseSchedules(DEFAULT_BASE_SCHEDULES, state.baseSchedules, state.employees);
     addDefaultProfilesForNewEmployees(state);
     renderEmployeeChoiceButtons();
@@ -2086,7 +2104,7 @@ function waitForStateSave(delay = 120) {
 }
 
 async function persistSharedStateNow() {
-  if (!sharedStateEnabled) return true;
+  if (!sharedStateEnabled) return false;
   for (let attempt = 0; attempt < 6; attempt += 1) {
     while (sharedStateSaving) await waitForStateSave();
     if (!sharedStatePending) return true;
@@ -2131,8 +2149,11 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
       const localSnapshot = state;
       const serverState = seedDefaultHolidays(mergeState(DEFAULT_STATE, payload.state));
       const serverIds = new Set((serverState.employees || []).map((employee) => employee.id));
+      const recoveryById = new Map();
+      (pendingTeamRecoverySnapshot.employees || []).forEach((employee) => recoveryById.set(employee.id, employee));
+      (localSnapshot.employees || []).forEach((employee) => recoveryById.set(employee.id, employee));
       const recoverableEmployees = role === "admin"
-        ? (localSnapshot.employees || []).filter((employee) =>
+        ? [...recoveryById.values()].filter((employee) =>
             employee.id !== "pablo"
             && !serverIds.has(employee.id)
             && !DEFAULT_EMPLOYEES.some((defaultEmployee) => defaultEmployee.id === employee.id)
@@ -2140,13 +2161,55 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
         : [];
       recoverableEmployees.forEach((employee) => {
         serverState.employees.push(employee);
-        if (localSnapshot.profiles?.[employee.id]) serverState.profiles[employee.id] = localSnapshot.profiles[employee.id];
-        if (localSnapshot.baseSchedules?.[employee.id]) serverState.baseSchedules[employee.id] = localSnapshot.baseSchedules[employee.id];
-        if (localSnapshot.contracts?.[employee.id]) serverState.contracts[employee.id] = localSnapshot.contracts[employee.id];
+        if (localSnapshot.profiles?.[employee.id] || pendingTeamRecoverySnapshot.profiles?.[employee.id]) {
+          serverState.profiles[employee.id] = structuredClone(
+            localSnapshot.profiles?.[employee.id] || pendingTeamRecoverySnapshot.profiles[employee.id]
+          );
+        }
+        if (localSnapshot.baseSchedules?.[employee.id] || pendingTeamRecoverySnapshot.baseSchedules?.[employee.id]) {
+          serverState.baseSchedules[employee.id] = structuredClone(
+            localSnapshot.baseSchedules?.[employee.id] || pendingTeamRecoverySnapshot.baseSchedules[employee.id]
+          );
+        }
+        if (localSnapshot.contracts?.[employee.id] || pendingTeamRecoverySnapshot.contracts?.[employee.id]) {
+          serverState.contracts[employee.id] = structuredClone(
+            localSnapshot.contracts?.[employee.id] || pendingTeamRecoverySnapshot.contracts[employee.id]
+          );
+        }
       });
       state = serverState;
+      let recoveredTeamMembers = 0;
+      const failedRecoveryIds = new Set();
+      for (const employee of recoverableEmployees) {
+        const recovered = await persistTeamMemberPayload(
+          structuredClone(employee),
+          structuredClone(state.profiles?.[employee.id] || {}),
+          structuredClone(state.baseSchedules?.[employee.id] || createBlankBaseSchedule()),
+          structuredClone(state.contracts?.[employee.id] || {}),
+        );
+        if (recovered) recoveredTeamMembers += 1;
+        else failedRecoveryIds.add(employee.id);
+      }
+      pendingTeamRecoverySnapshot.employees = recoverableEmployees
+        .filter((employee) => failedRecoveryIds.has(employee.id))
+        .map((employee) => structuredClone(employee));
+      ['profiles', 'baseSchedules', 'contracts'].forEach((key) => {
+        pendingTeamRecoverySnapshot[key] = Object.fromEntries(
+          pendingTeamRecoverySnapshot.employees
+            .filter((employee) => state[key]?.[employee.id])
+            .map((employee) => [employee.id, structuredClone(state[key][employee.id])])
+        );
+      });
       if (role !== 'visitor') saveLocalStateSnapshot();
-      if (recoverableEmployees.length) saveState();
+      clearInterval(sharedStatePollTimer);
+      sharedStatePollTimer = setInterval(refreshSharedState, 15000);
+      return {
+        available: true,
+        authenticated: true,
+        error: null,
+        recoveredTeamMembers,
+        failedTeamRecoveries: failedRecoveryIds.size,
+      };
     } else {
       scheduleSharedStateSave();
     }
@@ -2658,6 +2721,7 @@ function initRoleScreen() {
   });
 
   document.querySelector("#adminExit").addEventListener("click", exitToRoleScreen);
+  document.querySelector("#adminStoreSwitch").addEventListener("click", switchAdminLocation);
 }
 
 function renderEmployeeChoiceButtons() {
@@ -2690,6 +2754,32 @@ function chooseLocation(locationId) {
   if (pendingLocationRole === "visitor") setVisitMode(activeLocationId);
   else setAdminMode(activeLocationId);
   pendingLocationRole = null;
+}
+
+function updateAdminStoreSwitch() {
+  const button = document.querySelector('#adminStoreSwitch');
+  if (!button) return;
+  const isAdmin = appRole === 'admin';
+  button.hidden = !isAdmin;
+  if (!isAdmin) return;
+  const inBarcelona = activeLocationId === 'barcelona';
+  const currentCode = inBarcelona ? 'BCN' : 'MAD';
+  const targetLabel = inBarcelona ? 'Madrid' : 'Barcelona';
+  button.textContent = currentCode;
+  button.title = `Tienda actual: ${getLocation().label}. Cambiar a ${targetLabel}`;
+  button.setAttribute('aria-label', button.title);
+}
+
+function switchAdminLocation() {
+  if (appRole !== 'admin') return;
+  activeLocationId = activeLocationId === 'barcelona' ? 'madrid' : 'barcelona';
+  updateAdminStoreSwitch();
+  const teamLocation = document.querySelector('#teamMemberLocation');
+  if (teamLocation) teamLocation.value = activeLocationId;
+  populateSelectors();
+  hydrateSettingsForm();
+  render();
+  initBistrosoftSync();
 }
 
 async function beginEmployeeAccess(employeeId) {
@@ -2780,6 +2870,12 @@ async function tryAdminPin() {
   if (sharedLogin.authenticated && (sharedLogin.available || pin === correct)) {
     pinError.hidden = true;
     showLocationStep("admin");
+    if (sharedLogin.recoveredTeamMembers) {
+      alert(`Se recuperaron y guardaron en Netlify ${sharedLogin.recoveredTeamMembers} empleado(s) que solo existÃ­an en este navegador.`);
+    }
+    if (sharedLogin.failedTeamRecoveries) {
+      alert(`No se pudieron recuperar ${sharedLogin.failedTeamRecoveries} empleado(s). Siguen visibles en este navegador; revisÃ¡ la conexiÃ³n y volvÃ© a guardar sus fichas.`);
+    }
   } else {
     pinError.textContent = sharedLogin.error || "PIN incorrecto. Intentá de nuevo.";
     pinError.hidden = false;
@@ -2795,6 +2891,7 @@ function setAdminMode(locationId = DEFAULT_LOCATION_ID) {
   document.querySelector("#role-screen").hidden = true;
   document.querySelector("#employee-app").hidden = true;
   document.querySelector(".app-shell").hidden = false;
+  updateAdminStoreSwitch();
   if (!adminInited) {
     adminInited = true;
     init();
@@ -2841,6 +2938,7 @@ function setVisitMode(locationId = DEFAULT_LOCATION_ID) {
   document.querySelector("#employee-app").hidden = true;
   document.querySelector(".app-shell").hidden = false;
   document.querySelector("#adminExit").textContent = "Salir";
+  updateAdminStoreSwitch();
   if (!adminInited) {
     adminInited = true;
     init();
@@ -2862,6 +2960,7 @@ function exitToRoleScreen() {
   activeLocationId = DEFAULT_LOCATION_ID;
   pendingEmployeeId = null;
   pendingLocationRole = null;
+  updateAdminStoreSwitch();
   document.body.classList.remove("visit-mode");
   document.querySelector(".app-shell").hidden = true;
   document.querySelector("#employee-app").hidden = true;
@@ -3311,7 +3410,7 @@ function getEmployeeDisplayName(fullName, fallback = "") {
   return normalizedName ? normalizedName.split(" ")[0] : fallback;
 }
 
-function saveProfileData(employeeId, data) {
+function applyProfileData(employeeId, data) {
   const normalizedLocation = data.locationId ? normalizeLocationId(data.locationId) : getEmployeeLocationId(employeeId);
   const employee = (state.employees || []).find((item) => item.id === employeeId);
   if (employee) {
@@ -3320,6 +3419,10 @@ function saveProfileData(employeeId, data) {
   }
   state.profiles[employeeId] = { ...getProfile(employeeId), ...data, locationId: normalizedLocation };
   if (!state.baseSchedules?.[employeeId]) saveEmployeeBaseSchedule(employeeId, createBlankBaseSchedule());
+}
+
+function saveProfileData(employeeId, data) {
+  applyProfileData(employeeId, data);
   saveState();
   populateSelectors();
   renderEmployeeChoiceButtons();
@@ -3402,12 +3505,58 @@ function teamMemberId(name) {
     .slice(0, 24) || "empleado";
   let id = base;
   let suffix = 2;
-  const existing = new Set(getEmployees(true).map((employee) => employee.id));
+  const existing = new Set(getAllEmployees(true).map((employee) => employee.id));
   while (existing.has(id)) {
     id = `${base}-${suffix}`;
     suffix += 1;
   }
   return id;
+}
+
+function setTeamPersistenceStatus(message, status = '') {
+  const element = document.querySelector('#teamMemberSaveStatus');
+  if (!element) return;
+  element.textContent = message;
+  element.classList.toggle('is-saving', status === 'saving');
+  element.classList.toggle('is-success', status === 'success');
+  element.classList.toggle('is-error', status === 'error');
+}
+
+async function persistTeamMemberPayload(employee, profile = {}, baseSchedule = null, contract = null) {
+  setTeamPersistenceStatus(`Guardando a ${employee.label} en Netlify...`, 'saving');
+  try {
+    const response = await fetch('/api/team', {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employee, profile, baseSchedule, contract }),
+    });
+    if (!response.ok) {
+      const detail = await parseApiError(response, 'No se pudo guardar el empleado en Netlify.');
+      throw new Error(`${detail} (HTTP ${response.status})`);
+    }
+    const payload = await response.json();
+    if (!payload.ok || !payload.employee) throw new Error('Netlify no confirmó el registro del empleado.');
+    setTeamPersistenceStatus(
+      `${employee.label} quedó guardado en Netlify${payload.persistedAt ? ` · ${formatDateTime(new Date(payload.persistedAt))}` : ''}.`,
+      'success',
+    );
+    return true;
+  } catch (error) {
+    setTeamPersistenceStatus(error.message || 'No se pudo guardar el empleado en Netlify.', 'error');
+    return false;
+  }
+}
+
+function persistTeamMemberNow(employeeId) {
+  const employee = (state.employees || []).find((item) => item.id === employeeId);
+  if (!employee) return Promise.resolve(false);
+  return persistTeamMemberPayload(
+    structuredClone(employee),
+    structuredClone(state.profiles?.[employeeId] || {}),
+    structuredClone(state.baseSchedules?.[employeeId] || createBlankBaseSchedule()),
+    structuredClone(state.contracts?.[employeeId] || {}),
+  );
 }
 
 async function handleTeamMemberForm(event) {
@@ -3421,7 +3570,7 @@ async function handleTeamMemberForm(event) {
   if (!label || !role) return;
 
   const id = teamMemberId(label);
-  state.employees.push({
+  const employee = {
     id,
     label,
     role,
@@ -3430,22 +3579,28 @@ async function handleTeamMemberForm(event) {
     active: true,
     canLogin: true,
     activeFrom,
-  });
-  state.profiles[id] = { ...(state.profiles[id] || {}), area, locationId };
+  };
+  const profile = { area, locationId };
+  const baseSchedule = createBlankBaseSchedule();
+  const persisted = await persistTeamMemberPayload(employee, profile, baseSchedule, {});
+  if (!persisted) {
+    alert('El alta no se completó porque Netlify no confirmó el guardado. Los datos siguen en el formulario para que puedas reintentar.');
+    return;
+  }
+
+  state.employees.push(employee);
+  if (!state.profiles) state.profiles = {};
+  state.profiles[id] = profile;
   if (!state.baseSchedules) state.baseSchedules = {};
-  state.baseSchedules[id] = createBlankBaseSchedule();
+  state.baseSchedules[id] = baseSchedule;
+  saveState({ shared: false });
   document.querySelector('#teamMemberForm').reset();
   document.querySelector('#teamMemberLocation').value = activeLocationId;
   document.querySelector('#teamMemberActiveFrom').value = toDateInput(new Date());
   document.querySelector('#teamMemberColor').value = '#416877';
-  saveState();
-  const persisted = await persistSharedStateNow();
   populateSelectors();
   renderEmployeeChoiceButtons();
   render();
-  if (!persisted) {
-    alert("El empleado quedó guardado en este dispositivo, pero no se pudo confirmar el guardado en Netlify. Revisá la conexión antes de salir.");
-  }
 }
 
 function renderPersonnelPanel() {
@@ -3537,7 +3692,7 @@ function renderPersonnelPanel() {
   });
 
   container.querySelectorAll('[data-save-team]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const id = button.dataset.saveTeam;
       const employee = state.employees.find((item) => item.id === id);
       const roleInput = container.querySelector(`[data-team-role="${id}"]`);
@@ -3552,11 +3707,21 @@ function renderPersonnelPanel() {
         return;
       }
 
+      const previousEmployee = structuredClone(employee);
+      const previousProfile = state.profiles?.[id] ? structuredClone(state.profiles[id]) : null;
       employee.role = role;
       employee.color = colorInput.value;
       employee.locationId = normalizeLocationId(locationInput.value);
       state.profiles[id] = { ...(state.profiles[id] || {}), locationId: employee.locationId };
-      saveState();
+      if (!await persistTeamMemberNow(id)) {
+        Object.assign(employee, previousEmployee);
+        if (previousProfile) state.profiles[id] = previousProfile;
+        else delete state.profiles[id];
+        alert('El cambio no se aplicó porque Netlify no confirmó el guardado.');
+        renderPersonnelPanel();
+        return;
+      }
+      saveState({ shared: false });
       populateSelectors();
       renderEmployeeChoiceButtons();
       render();
@@ -3564,7 +3729,7 @@ function renderPersonnelPanel() {
   });
 
   container.querySelectorAll('[data-terminate-team]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const employee = state.employees.find((item) => item.id === button.dataset.terminateTeam);
       if (!employee) return;
       const inactiveFrom = container.querySelector(`[data-team-end-date="${employee.id}"]`)?.value;
@@ -3573,9 +3738,16 @@ function renderPersonnelPanel() {
         return alert('La baja no puede ser anterior a la fecha de alta.');
       }
       if (!confirm(`¿Programar la baja de ${employee.label} desde ${formatHumanDate(inactiveFrom)}? Su historial se conservará.`)) return;
+      const previousEmployee = structuredClone(employee);
       employee.active = false;
       employee.inactiveFrom = inactiveFrom;
-      saveState();
+      if (!await persistTeamMemberNow(employee.id)) {
+        Object.assign(employee, previousEmployee);
+        alert('La baja no se aplicó porque Netlify no confirmó el guardado.');
+        renderPersonnelPanel();
+        return;
+      }
+      saveState({ shared: false });
       populateSelectors();
       renderEmployeeChoiceButtons();
       render();
@@ -3583,14 +3755,21 @@ function renderPersonnelPanel() {
   });
 
   container.querySelectorAll('[data-reactivate-team]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const employee = state.employees.find((item) => item.id === button.dataset.reactivateTeam);
       if (!employee) return;
       if (confirm(`¿Reactivar a ${employee.label} desde hoy?`)) {
+        const previousEmployee = structuredClone(employee);
         employee.active = true;
         employee.activeFrom = toDateInput(new Date());
         employee.inactiveFrom = null;
-        saveState();
+        if (!await persistTeamMemberNow(employee.id)) {
+          Object.assign(employee, previousEmployee);
+          alert('La reactivación no se aplicó porque Netlify no confirmó el guardado.');
+          renderPersonnelPanel();
+          return;
+        }
+        saveState({ shared: false });
         populateSelectors();
         renderEmployeeChoiceButtons();
         render();
@@ -4095,16 +4274,35 @@ function renderAdminFichas() {
     bindBaseScheduleEditor(form);
     form.addEventListener("input", updateDraft);
     form.addEventListener("change", updateDraft);
-    form.addEventListener("submit", (event) => {
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = readFichaForm(form);
       const employeeId = form.dataset.fichaForm;
+      const employee = state.employees.find((item) => item.id === employeeId);
+      if (!employee) return;
+      const previousEmployee = structuredClone(employee);
+      const previousProfile = state.profiles?.[employeeId] ? structuredClone(state.profiles[employeeId]) : null;
+      const previousSchedule = state.baseSchedules?.[employeeId]
+        ? structuredClone(state.baseSchedules[employeeId])
+        : null;
       saveEmployeeBaseSchedule(employeeId, readBaseScheduleForm(form));
-      saveProfileData(employeeId, data);
+      applyProfileData(employeeId, data);
+      if (!await persistTeamMemberNow(employeeId)) {
+        Object.assign(employee, previousEmployee);
+        if (previousProfile) state.profiles[employeeId] = previousProfile;
+        else delete state.profiles[employeeId];
+        if (previousSchedule) state.baseSchedules[employeeId] = previousSchedule;
+        else delete state.baseSchedules[employeeId];
+        alert('La ficha no se modificÃ³ porque Netlify no confirmÃ³ el guardado. Los datos permanecen en el formulario para que puedas reintentar.');
+        return;
+      }
+      saveState({ shared: false });
+      populateSelectors();
+      renderEmployeeChoiceButtons();
       activeAdminFichaEditId = null;
       adminFichaEditDraft = null;
       adminBaseScheduleEditDraft = null;
-      renderAdminFichas();
+      render();
     });
   });
 }
@@ -4366,6 +4564,8 @@ let finBistroSync = {
   lastItemDetailCount: 0,
   error: null,
   historyProgress: null,
+  detailJobs: {},
+  detailStarting: false,
   timer: null,
 };
 
@@ -4407,7 +4607,7 @@ function initFinanzas() {
   document.querySelector('#finImportForm').addEventListener('submit', handleSalesCsvImport);
   document.querySelector('#finManualSaleForm').addEventListener('submit', handleManualSaleForm);
   document.querySelector('#finSyncNow').addEventListener('click', handleBistrosoftSyncClick);
-  document.querySelector('#finSyncHistory').addEventListener('click', () => syncBistrosoftHistory(false));
+  document.querySelector('#finSyncHistory').addEventListener('click', startBistrosoftDetailBackfill);
 
   // File picker
   document.querySelector('#finFileInput').addEventListener('change', (e) => {
@@ -4504,17 +4704,82 @@ async function initBistrosoftSync() {
 
     if (!finBistroSync.available) return;
     await syncBistrosoftMonth(true);
-    await syncBistrosoftHistory(true, true);
+    await refreshBistroDetailStatus();
     await syncBistrosoftRecent();
 
     if (!finBistroSync.timer) {
-      finBistroSync.timer = setInterval(() => syncBistrosoftRecent(), BISTROSOFT_SYNC_INTERVAL_MS);
+      finBistroSync.timer = setInterval(() => {
+        syncBistrosoftRecent();
+        refreshBistroDetailStatus();
+      }, BISTROSOFT_SYNC_INTERVAL_MS);
     }
   } catch (_) {
     finBistroSync.backendAvailable = false;
     finBistroSync.available = false;
     finBistroSync.connected = false;
     finBistroSync.error = 'Cerra esta pestaña y ejecuta ABRIR APLICACION.cmd desde la carpeta de la aplicacion.';
+    renderFinSyncStatus();
+  }
+}
+
+function detailJobIsActive(job) {
+  return job && ['queued', 'running'].includes(job.status);
+}
+
+function detailJobStoreCode(locationId) {
+  return locationId === 'madrid' ? 'MAD' : 'BCN';
+}
+
+function detailJobStatusText(locationId, job) {
+  const code = detailJobStoreCode(locationId);
+  if (!job) return `${code}: pendiente de iniciar`;
+  if (detailJobIsActive(job)) {
+    const progress = Number(job.progressPercent || 0).toLocaleString('es-ES', { maximumFractionDigits: 1 });
+    return `${code}: ${progress}% (${job.finishedDays || 0}/${job.totalDays || 0} dias)`;
+  }
+  const coverage = Number(job.coveragePercent || 0).toLocaleString('es-ES', { maximumFractionDigits: 1 });
+  return `${code}: ${coverage}% de cobertura (${job.detailTickets || 0}/${job.totalTickets || 0} tickets)`;
+}
+
+async function refreshBistroDetailStatus() {
+  try {
+    const response = await fetch('/api/bistrosoft/details-status', { cache: 'no-store' });
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (!payload.ok || !payload.jobs) return;
+    finBistroSync.detailJobs = payload.jobs;
+    renderFinSyncStatus();
+  } catch (_) {
+    // El estado se vuelve a consultar sin interrumpir la operacion normal.
+  }
+}
+
+async function startBistrosoftDetailBackfill() {
+  if (finBistroSync.detailStarting || finBistroSync.available === false) return;
+  finBistroSync.detailStarting = true;
+  finBistroSync.historyProgress = 'Preparando la cola historica de productos...';
+  renderFinSyncStatus();
+  const existingJobs = Object.values(finBistroSync.detailJobs || {}).filter(Boolean);
+  const force = existingJobs.some((job) => ['complete', 'complete_partial'].includes(job.status));
+  try {
+    const response = await fetch('/api/bistrosoft/details-start', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locations: LOCATION_IDS, force }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || 'No se pudo iniciar la carga historica de productos.');
+    }
+    finBistroSync.detailJobs = { ...(finBistroSync.detailJobs || {}), ...(payload.jobs || {}) };
+    alert('La carga de productos quedo iniciada para las tiendas configuradas. Continua en Netlify aunque cambies de seccion o cierres el navegador.');
+  } catch (error) {
+    finBistroSync.error = error.message || 'No se pudo iniciar la carga historica de productos.';
+  } finally {
+    finBistroSync.detailStarting = false;
+    finBistroSync.historyProgress = null;
+    await refreshBistroDetailStatus();
     renderFinSyncStatus();
   }
 }
@@ -4766,12 +5031,38 @@ function renderFinSyncStatus() {
   bar.classList.toggle('is-syncing', finBistroSync.syncing);
   bar.classList.toggle('is-error', !!finBistroSync.error && !finBistroSync.syncing);
   button.disabled = finBistroSync.syncing;
-  historyButton.disabled = finBistroSync.syncing || finBistroSync.available === false;
+  historyButton.disabled = finBistroSync.syncing || finBistroSync.available === false || finBistroSync.detailStarting;
   button.textContent = finBistroSync.available === false ? 'Reintentar conexion' : 'Sincronizar ahora';
+  const detailEntries = Object.entries(finBistroSync.detailJobs || {}).filter(([, job]) => job);
+  const detailActive = detailEntries.some(([, job]) => detailJobIsActive(job));
+  historyButton.textContent = detailActive ? 'Productos en proceso' : 'Completar productos';
+  historyButton.title = detailEntries
+    .flatMap(([locationId, job]) => (job.partialMonths || []).map((month) =>
+      `${detailJobStoreCode(locationId)} ${month.month}: ${month.detailTickets}/${month.tickets} tickets con detalle`
+    ))
+    .join(' | ') || 'Completar y verificar productos historicos';
 
   if (finBistroSync.syncing) {
     title.textContent = `Sincronizando Bistrosoft ${getLocation().label}...`;
     detail.textContent = finBistroSync.historyProgress || 'Leyendo las ventas del periodo seleccionado.';
+    return;
+  }
+
+  if (finBistroSync.detailStarting) {
+    title.textContent = 'Preparando productos historicos...';
+    detail.textContent = finBistroSync.historyProgress || 'Creando una cola segura en Netlify.';
+    return;
+  }
+
+  if (detailActive) {
+    title.textContent = 'Completando productos historicos en segundo plano';
+    detail.textContent = `${detailEntries.map(([locationId, job]) => detailJobStatusText(locationId, job)).join(' | ')} | Podes seguir usando la app.`;
+    return;
+  }
+
+  if (detailEntries.length && detailEntries.every(([, job]) => ['complete', 'complete_partial'].includes(job.status))) {
+    title.textContent = 'Historial de productos verificado';
+    detail.textContent = detailEntries.map(([locationId, job]) => detailJobStatusText(locationId, job)).join(' | ');
     return;
   }
 
