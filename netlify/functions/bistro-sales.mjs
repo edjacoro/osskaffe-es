@@ -1,4 +1,5 @@
 import {
+  bistroDetailFetchOptions,
   getBistroData,
   mergeBistroExpenses,
   mergeBistroSales,
@@ -19,7 +20,19 @@ export default async (request) => {
     return response({ ok: false, error: "Rango invalido." }, 400);
   }
   try {
-    const { sales: result, expenses: expenseResult } = await getBistroData(from, until, locationId);
+    const detailOptions = url.searchParams.get("skipItems") === "1"
+      ? { skipItemEnrichment: true }
+      : bistroDetailFetchOptions(
+        from,
+        until,
+        url.searchParams.get("forceItems") === "1",
+      );
+    const { sales: result, expenses: expenseResult } = await getBistroData(
+      from,
+      until,
+      locationId,
+      detailOptions,
+    );
     const mergedState = await mergeBistroSales(result.sales, from, until, locationId);
     await mergeBistroExpenses(expenseResult.expenses, from, until, locationId);
     const persistedSales = (mergedState?.sales || []).filter((sale) =>

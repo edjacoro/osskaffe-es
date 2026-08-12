@@ -533,7 +533,9 @@ export async function getBistroSales(
   } while (sales.length < totalCount);
 
   const rangeDays = Math.ceil((new Date(`${until}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000);
-  if (rangeDays <= 1 || options.includeAllItems) await enrichBistroSaleItems(sales, cookies, id, options);
+  if (!options.skipItemEnrichment && (rangeDays <= 1 || options.includeAllItems)) {
+    await enrichBistroSaleItems(sales, cookies, id, options);
+  }
   else await restoreBistroSaleItems(sales, id);
 
   sales.forEach((sale) => {
@@ -635,11 +637,24 @@ export async function getBistroExpenses(from, until, authenticatedCookies = "", 
   return { ok: true, from, until, totalCount: expenses.length, locationId: id, expenses };
 }
 
-export async function getBistroData(from, until, locationId = DEFAULT_LOCATION_ID) {
+export function bistroDetailFetchOptions(from, until, forceRequested = false) {
+  const fromMs = Date.parse(`${from}T00:00:00Z`);
+  const untilMs = Date.parse(`${until}T00:00:00Z`);
+  const isSingleDay = Number.isFinite(fromMs) && Number.isFinite(untilMs)
+    && untilMs - fromMs === 86400000;
+  if (!forceRequested || !isSingleDay) return {};
+  return {
+    includeAllItems: true,
+    forceItemRetry: true,
+    maxDetailAttempts: 6,
+  };
+}
+
+export async function getBistroData(from, until, locationId = DEFAULT_LOCATION_ID, options = {}) {
   const id = normalizeLocationId(locationId);
   const cookies = await loginBistrosoft(id);
   const [sales, expenses] = await Promise.all([
-    getBistroSales(from, until, cookies, id),
+    getBistroSales(from, until, cookies, id, options),
     getBistroExpenses(from, until, cookies, id),
   ]);
   return { sales, expenses };

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { datesForMonths, nextDateKey, summarizeDetailJob } from "../netlify/functions/_bistro-detail-queue.mjs";
-import { mergeAdminState } from "../netlify/functions/_shared.mjs";
+import { isValidBistroDay, nextBistroDay, summarizeDayDetailJob } from "../netlify/functions/_bistro-detail-day.mjs";
+import { bistroDetailFetchOptions, mergeAdminState } from "../netlify/functions/_shared.mjs";
 
 assert.equal(nextDateKey("2026-02-28"), "2026-03-01");
 assert.equal(datesForMonths(["2024-02"], "2024-02-29").length, 29);
@@ -8,6 +9,31 @@ assert.deepEqual(
   datesForMonths(["2026-07", "2026-08"], "2026-08-02").slice(-3),
   ["2026-07-31", "2026-08-01", "2026-08-02"],
 );
+
+assert.deepEqual(
+  bistroDetailFetchOptions("2026-06-29", "2026-06-30", true),
+  { includeAllItems: true, forceItemRetry: true, maxDetailAttempts: 6 },
+);
+assert.deepEqual(bistroDetailFetchOptions("2026-06-01", "2026-07-01", true), {});
+assert.deepEqual(bistroDetailFetchOptions("2026-06-29", "2026-06-30", false), {});
+assert.equal(isValidBistroDay("2026-06-29"), true);
+assert.equal(isValidBistroDay("2026-06-31"), false);
+assert.equal(nextBistroDay("2026-06-30"), "2026-07-01");
+const daySummary = summarizeDayDetailJob({
+  jobId: "day-job",
+  locationId: "barcelona",
+  date: "2026-06-29",
+  status: "partial",
+  attempt: 3,
+  maxAttempts: 3,
+  totalTickets: 76,
+  detailTickets: 70,
+  unresolvedTickets: 6,
+});
+assert.equal(daySummary.status, "partial");
+assert.equal(daySummary.totalTickets, 76);
+assert.equal(daySummary.detailTickets, 70);
+assert.equal(daySummary.unresolvedTickets, 6);
 
 const summary = summarizeDetailJob({
   jobId: "job-test",

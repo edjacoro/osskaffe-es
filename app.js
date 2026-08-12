@@ -4947,6 +4947,8 @@ let finBistroSync = {
   historyProgress: null,
   detailJobs: {},
   detailStarting: false,
+  dayJobs: {},
+  dayPollTimers: {},
   timer: null,
 };
 
@@ -4966,7 +4968,11 @@ function initFinanzas() {
       finTodayDate = event.target.value;
       finActiveMonth = firstDayOfMonth(new Date(`${finTodayDate}T12:00:00`));
       renderFinanzas();
-      await syncBistrosoftDay(finTodayDate, true);
+      await syncBistrosoftDay(finTodayDate, true, { skipItemEnrichment: true });
+      const coverage = getBistroDayItemCoverage(finTodayDate, activeLocationId);
+      if (coverage.totalTickets > coverage.detailTickets) {
+        await startBistrosoftDayDetailRepair({ automatic: true });
+      }
     });
   }
 
@@ -4988,6 +4994,7 @@ function initFinanzas() {
   document.querySelector('#finImportForm').addEventListener('submit', handleSalesCsvImport);
   document.querySelector('#finManualSaleForm').addEventListener('submit', handleManualSaleForm);
   document.querySelector('#finSyncNow').addEventListener('click', handleBistrosoftSyncClick);
+  document.querySelector('#finSyncDay').addEventListener('click', () => startBistrosoftDayDetailRepair());
   document.querySelector('#finSyncHistory').addEventListener('click', startBistrosoftDetailBackfill);
 
   // File picker
@@ -5122,14 +5129,142 @@ function detailJobStatusText(locationId, job) {
   return `${code}: ${coverage}% de cobertura (${job.detailTickets || 0}/${job.totalTickets || 0} tickets)`;
 }
 
+function bistroDayJobKey(locationId, date) {
+  return `${locationId}|${date}`;
+}
+
+function getBistroDayItemCoverage(date, locationId = activeLocationId) {
+  const sales = getLocationSales(locationId).filter((sale) =>
+    sale._source === 'bistrosoft' && sale.date === date
+  );
+  return sales.reduce((coverage, sale) => {
+    const tickets = Number(sale.count || 1);
+    coverage.totalTickets += tickets;
+    if (Array.isArray(sale.items) && sale.items.length) coverage.detailTickets += tickets;
+    return coverage;
+  }, { totalTickets: 0, detailTickets: 0 });
+}
+
+function dayDetailJobIsActive(job) {
+  return job && ['queued', 'running'].includes(job.status);
+}
+
+function scheduleBistrosoftDayDetailPoll(locationId, date, jobId, delay = 2500) {
+  const key = bistroDayJobKey(locationId, date);
+  clearTimeout(finBistroSync.dayPollTimers[key]);
+  finBistroSync.dayPollTimers[key] = setTimeout(() => {
+    pollBistrosoftDayDetailRepair(locationId, date, jobId);
+  }, delay);
+}
+
+async function pollBistrosoftDayDetailRepair(locationId, date, jobId) {
+  const key = bistroDayJobKey(locationId, date);
+  try {
+    const query = new URLSearchParams({ location: locationId, date });
+    const response = await fetch(`/api/bistrosoft/details-day-status?${query}`, { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || 'No se pudo consultar la carga del dia.');
+    if (!payload.job || payload.job.jobId !== jobId) {
+      scheduleBistrosoftDayDetailPoll(locationId, date, jobId);
+      return;
+    }
+    finBistroSync.dayJobs[key] = payload.job;
+    renderFinSyncStatus();
+    if (dayDetailJobIsActive(payload.job)) {
+      scheduleBistrosoftDayDetailPoll(locationId, date, jobId);
+      return;
+    }
+    if (locationId === activeLocationId && date === finTodayDate) {
+      if (finBistroSync.syncing) {
+        scheduleBistrosoftDayDetailPoll(locationId, date, jobId);
+        return;
+      }
+      await syncBistrosoftDay(date, true, { skipItemEnrichment: true });
+    }
+  } catch (error) {
+    const current = finBistroSync.dayJobs[key] || {};
+    finBistroSync.dayJobs[key] = {
+      ...current,
+      jobId,
+      locationId,
+      date,
+      status: 'error',
+      lastError: error.message || 'No se pudo completar la carga del dia.',
+    };
+    renderFinSyncStatus();
+  }
+}
+
+async function startBistrosoftDayDetailRepair({ automatic = false } = {}) {
+  if (finBistroSync.available === false || !finTodayDate) return;
+  const date = finTodayDate;
+  const locationId = activeLocationId;
+  const coverage = getBistroDayItemCoverage(date, locationId);
+  if (!coverage.totalTickets) {
+    if (!automatic) alert(`No hay tickets de Bistrosoft para ${formatHumanDate(date)}.`);
+    return;
+  }
+  const key = bistroDayJobKey(locationId, date);
+  const current = finBistroSync.dayJobs[key];
+  if (dayDetailJobIsActive(current)) {
+    scheduleBistrosoftDayDetailPoll(locationId, date, current.jobId, 500);
+    return;
+  }
+
+  finBistroSync.dayJobs[key] = {
+    jobId: createId(),
+    locationId,
+    date,
+    status: 'queued',
+    totalTickets: coverage.totalTickets,
+    detailTickets: coverage.detailTickets,
+    attempt: 0,
+    maxAttempts: 3,
+  };
+  renderFinSyncStatus();
+
+  try {
+    const response = await fetch('/api/bistrosoft/details-day-start', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location: locationId, date }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok || !payload.job) {
+      throw new Error(payload.error || 'No se pudo iniciar la carga del dia.');
+    }
+    finBistroSync.dayJobs[key] = payload.job;
+    renderFinSyncStatus();
+    scheduleBistrosoftDayDetailPoll(locationId, date, payload.job.jobId, 1000);
+  } catch (error) {
+    finBistroSync.dayJobs[key] = {
+      ...finBistroSync.dayJobs[key],
+      status: 'error',
+      lastError: error.message || 'No se pudo iniciar la carga del dia.',
+    };
+    renderFinSyncStatus();
+    if (!automatic) alert(finBistroSync.dayJobs[key].lastError);
+  }
+}
+
 async function refreshBistroDetailStatus() {
   try {
+    const previousJob = finBistroSync.detailJobs?.[activeLocationId] || null;
     const response = await fetch('/api/bistrosoft/details-status', { cache: 'no-store' });
     if (!response.ok) return;
     const payload = await response.json();
     if (!payload.ok || !payload.jobs) return;
     finBistroSync.detailJobs = payload.jobs;
     renderFinSyncStatus();
+    const currentJob = finBistroSync.detailJobs?.[activeLocationId] || null;
+    const jobJustFinished = detailJobIsActive(previousJob) && currentJob && !detailJobIsActive(currentJob);
+    const selectedSales = getLocationSales().filter((sale) => sale.date === finTodayDate);
+    const selectedDayMissingDetail = selectedSales.length > 0
+      && selectedSales.every((sale) => !Array.isArray(sale.items) || sale.items.length === 0);
+    if (jobJustFinished && activeFinTab === 'hoy' && selectedDayMissingDetail) {
+      await syncBistrosoftDay(finTodayDate, true, { skipItemEnrichment: true });
+    }
   } catch (_) {
     // El estado se vuelve a consultar sin interrumpir la operacion normal.
   }
@@ -5187,11 +5322,11 @@ function syncBistrosoftRecent() {
   return syncBistrosoftRange(toDateInput(fromDate), toDateInput(untilDate), true);
 }
 
-function syncBistrosoftDay(date, silent = true) {
+function syncBistrosoftDay(date, silent = true, options = {}) {
   if (!finBistroSync.available || !date) return Promise.resolve();
   const current = new Date(`${date}T12:00:00`);
   const until = toDateInput(new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1));
-  return syncBistrosoftRange(date, until, silent);
+  return syncBistrosoftRange(date, until, silent, options);
 }
 
 function bistroSaleMatchKeys(sale) {
@@ -5250,7 +5385,7 @@ function mergeBistroSaleForClient(sale, locationId, previousIndex, preferPreviou
   };
 }
 
-async function syncBistrosoftRange(from, until, silent = true) {
+async function syncBistrosoftRange(from, until, silent = true, options = {}) {
   if (finBistroSync.syncing) return;
 
   finBistroSync.syncing = true;
@@ -5259,7 +5394,7 @@ async function syncBistrosoftRange(from, until, silent = true) {
   renderFinSyncStatus();
 
   try {
-    const result = await fetchBistrosoftRange(from, until);
+    const result = await fetchBistrosoftRange(from, until, options);
     saveState({ shared: !result.persisted });
     renderFinanzas();
   } catch (error) {
@@ -5272,8 +5407,10 @@ async function syncBistrosoftRange(from, until, silent = true) {
   }
 }
 
-async function fetchBistrosoftRange(from, until) {
+async function fetchBistrosoftRange(from, until, options = {}) {
   const query = new URLSearchParams({ from, until, location: activeLocationId });
+  if (options.forceItemRetry === true) query.set('forceItems', '1');
+  if (options.skipItemEnrichment === true) query.set('skipItems', '1');
   const response = await fetch(`/api/bistrosoft/sales?${query}`, { cache: 'no-store' });
   const payload = await response.json();
   if (!response.ok || !payload.ok || !Array.isArray(payload.sales)) {
@@ -5451,13 +5588,30 @@ function renderFinSyncStatus() {
   const title = document.querySelector('#finSyncTitle');
   const detail = document.querySelector('#finSyncDetail');
   const button = document.querySelector('#finSyncNow');
+  const dayButton = document.querySelector('#finSyncDay');
   const historyButton = document.querySelector('#finSyncHistory');
-  if (!bar || !title || !detail || !button || !historyButton) return;
+  if (!bar || !title || !detail || !button || !dayButton || !historyButton) return;
+
+  const dayKey = bistroDayJobKey(activeLocationId, finTodayDate);
+  const dayJob = finBistroSync.dayJobs[dayKey] || null;
+  const dayCoverage = getBistroDayItemCoverage(finTodayDate, activeLocationId);
+  const dayActive = dayDetailJobIsActive(dayJob);
+  const dayLabel = formatHumanDate(finTodayDate);
 
   bar.classList.toggle('is-connected', finBistroSync.connected && !finBistroSync.syncing);
-  bar.classList.toggle('is-syncing', finBistroSync.syncing);
-  bar.classList.toggle('is-error', !!finBistroSync.error && !finBistroSync.syncing);
+  bar.classList.toggle('is-syncing', finBistroSync.syncing || dayActive);
+  bar.classList.toggle('is-error', (!!finBistroSync.error && !finBistroSync.syncing) || dayJob?.status === 'error');
   button.disabled = finBistroSync.syncing;
+  dayButton.hidden = activeFinTab !== 'hoy';
+  dayButton.disabled = dayActive || finBistroSync.available === false || dayCoverage.totalTickets === 0;
+  dayButton.textContent = dayActive
+    ? `CARGANDO ${dayLabel}`
+    : (dayCoverage.detailTickets >= dayCoverage.totalTickets && dayCoverage.totalTickets > 0
+      ? `RECARGAR PRODUCTOS ${dayLabel}`
+      : `CARGAR PRODUCTOS ${dayLabel}`);
+  dayButton.title = dayCoverage.totalTickets
+    ? `${dayCoverage.detailTickets} de ${dayCoverage.totalTickets} tickets con productos en ${dayLabel}`
+    : `No hay tickets de Bistrosoft en ${dayLabel}`;
   historyButton.disabled = finBistroSync.syncing || finBistroSync.available === false || finBistroSync.detailStarting;
   button.textContent = finBistroSync.available === false ? 'Reintentar conexion' : 'Sincronizar ahora';
   const detailEntries = Object.entries(finBistroSync.detailJobs || {}).filter(([, job]) => job);
@@ -5468,6 +5622,30 @@ function renderFinSyncStatus() {
       `${detailJobStoreCode(locationId)} ${month.month}: ${month.detailTickets}/${month.tickets} tickets con detalle`
     ))
     .join(' | ') || 'Completar y verificar productos historicos';
+
+  if (dayActive) {
+    title.textContent = `Cargando productos de ${dayLabel}`;
+    detail.textContent = `Procesando solo este dia en segundo plano · intento ${dayJob.attempt || 0} de ${dayJob.maxAttempts || 3} · podes seguir usando la app.`;
+    return;
+  }
+
+  if (activeFinTab === 'hoy' && dayJob?.status === 'complete') {
+    title.textContent = `Productos de ${dayLabel} cargados`;
+    detail.textContent = `${dayJob.detailTickets} de ${dayJob.totalTickets} tickets tienen productos. Cross-selling y articulos por ticket ya estan actualizados.`;
+    return;
+  }
+
+  if (activeFinTab === 'hoy' && dayJob?.status === 'partial') {
+    title.textContent = `Carga parcial de productos de ${dayLabel}`;
+    detail.textContent = `${dayJob.detailTickets} de ${dayJob.totalTickets} tickets tienen productos · quedan ${dayJob.unresolvedTickets} sin detalle en Bistrosoft. Podes reintentar desde el boton del dia.`;
+    return;
+  }
+
+  if (activeFinTab === 'hoy' && dayJob?.status === 'error') {
+    title.textContent = `No se pudieron cargar los productos de ${dayLabel}`;
+    detail.textContent = `${dayJob.lastError || 'La lectura puntual fallo.'} Podes reintentar sin volver a cargar el historial.`;
+    return;
+  }
 
   if (finBistroSync.syncing) {
     title.textContent = `Sincronizando Bistrosoft ${getLocation().label}...`;
