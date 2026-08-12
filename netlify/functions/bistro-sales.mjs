@@ -20,10 +20,19 @@ export default async (request) => {
   }
   try {
     const { sales: result, expenses: expenseResult } = await getBistroData(from, until, locationId);
-    await mergeBistroSales(result.sales, from, until, locationId);
+    const mergedState = await mergeBistroSales(result.sales, from, until, locationId);
     await mergeBistroExpenses(expenseResult.expenses, from, until, locationId);
+    const persistedSales = (mergedState?.sales || []).filter((sale) =>
+      normalizeLocationId(sale.locationId) === locationId
+      && sale._source === "bistrosoft"
+      && sale.date >= from
+      && sale.date < until
+    );
     return response({
       ...result,
+      sales: persistedSales,
+      totalCount: persistedSales.length,
+      itemDetailCount: persistedSales.filter((sale) => Array.isArray(sale.items) && sale.items.length).length,
       expenses: expenseResult.expenses,
       expenseCount: expenseResult.totalCount,
       persisted: true,

@@ -767,6 +767,35 @@ function getExpenseCategoryOverride(expense, overrides = {}, locationId = DEFAUL
   return null;
 }
 
+export function bistroSaleItemDetailScore(sale) {
+  const items = Array.isArray(sale?.items) ? sale.items : [];
+  if (!items.length) return 0;
+  const quantity = items.reduce((sum, item) => {
+    const value = Number(item?.qty ?? item?.quantity ?? item?.count ?? 1);
+    return sum + (Number.isFinite(value) && value > 0 ? value : 1);
+  }, 0);
+  const completeBonus = sale?.detailStatus === "complete" ? 100000000 : 0;
+  return completeBonus + items.length * 100000 + quantity;
+}
+
+export function mergeBistroSaleDetail(sale, previous, locationId = DEFAULT_LOCATION_ID) {
+  const incomingItems = Array.isArray(sale?.items) ? sale.items : [];
+  const previousItems = Array.isArray(previous?.items) ? previous.items : [];
+  const usePrevious = previousItems.length > 0
+    && bistroSaleItemDetailScore(previous) > bistroSaleItemDetailScore(sale);
+  const items = usePrevious ? previousItems : incomingItems;
+  return {
+    ...sale,
+    locationId: normalizeLocationId(locationId),
+    items,
+    detailStatus: items.length
+      ? "complete"
+      : (sale?.detailStatus || previous?.detailStatus || null),
+    detailAttempts: Math.max(Number(sale?.detailAttempts || 0), Number(previous?.detailAttempts || 0)),
+    detailCheckedAt: sale?.detailCheckedAt || previous?.detailCheckedAt || null,
+  };
+}
+
 function collectExpenseCategoryOverrides(expenses = [], overrides = {}, locationId = DEFAULT_LOCATION_ID) {
   const next = { ...(overrides || {}) };
   expenses.forEach((expense) => {
@@ -796,17 +825,9 @@ export async function mergeBistroSales(sales, from, until, locationId = DEFAULT_
         .filter((sale) => normalizeLocationId(sale.locationId) === id)
         .map((sale) => [String(sale.bistroId || sale.id), sale]),
     );
-    const mergedSales = sales.map((sale) => {
-      const previous = previousDetails.get(String(sale.bistroId || sale.id));
-      return {
-        ...sale,
-        locationId: id,
-        items: sale.items?.length ? sale.items : (previous?.items || []),
-        detailStatus: sale.items?.length ? "complete" : (sale.detailStatus || previous?.detailStatus || null),
-        detailAttempts: Math.max(Number(sale.detailAttempts || 0), Number(previous?.detailAttempts || 0)),
-        detailCheckedAt: sale.detailCheckedAt || previous?.detailCheckedAt || null,
-      };
-    });
+    const mergedSales = sales.map((sale) =>
+      mergeBistroSaleDetail(sale, previousDetails.get(String(sale.bistroId || sale.id)), id)
+    );
     return {
       ...(current || {}),
       sales: [

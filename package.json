@@ -8,7 +8,8 @@
     "check": "node --check app.js && node --check netlify/functions/_shared.mjs && node --check netlify/functions/_team.mjs && node --check netlify/functions/_bistro-detail-queue.mjs && node --check netlify/functions/team-list.mjs && node --check netlify/functions/bistro-details-start.mjs && node --check netlify/functions/bistro-details-background.mjs && node --check netlify/functions/bistro-details-status.mjs && node --check netlify/functions/bistro-details-watchdog.mjs && node --check netlify/functions/auth-employee.mjs && node --check netlify/functions/auth-visit.mjs && node --check netlify/functions/state.mjs && node --check netlify/functions/state-import.mjs",
     "test:team": "node scripts/test-team-persistence.mjs",
     "test:bistro-details": "node scripts/test-bistro-detail-model.mjs",
-    "test:pastry": "node scripts/test-pastry-recipes.mjs"
+    "test:pastry": "node scripts/test-pastry-recipes.mjs",
+    "test:finance": "node scripts/test-finance-audit-consistency.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "10.7.9"

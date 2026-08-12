@@ -838,6 +838,7 @@ textarea {
 }
 
 .role-card {
+  position: relative;
   width: 100%;
   max-width: 360px;
   background: #ffffff;
@@ -972,6 +973,29 @@ textarea {
 
 .role-link:hover {
   color: var(--ink);
+}
+
+.role-back-button {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--blue-dark);
+  background: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 5px 14px rgba(26, 49, 58, 0.08);
+}
+
+.role-back-button:hover,
+.role-back-button:focus-visible {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  outline: none;
 }
 
 #adminPinInput {

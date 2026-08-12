@@ -5194,6 +5194,62 @@ function syncBistrosoftDay(date, silent = true) {
   return syncBistrosoftRange(date, until, silent);
 }
 
+function bistroSaleMatchKeys(sale) {
+  const keys = new Set();
+  if (sale?.bistroId) keys.add(`bistro:${String(sale.bistroId)}`);
+  if (sale?.id) keys.add(`id:${String(sale.id)}`);
+  const date = String(sale?.date || '');
+  const ticket = String(sale?.ticketNumber || '');
+  const time = String(sale?.time || '');
+  const total = Number(sale?.total || 0).toFixed(2);
+  if (date && ticket) keys.add(`ticket:${date}|${ticket}`);
+  if (date && ticket && time) keys.add(`ticket-time:${date}|${ticket}|${time}`);
+  if (date && ticket) keys.add(`ticket-total:${date}|${ticket}|${total}`);
+  return [...keys];
+}
+
+function bistroItemDetailScore(sale) {
+  const items = Array.isArray(sale?.items) ? sale.items : [];
+  if (!items.length) return 0;
+  const quantity = items.reduce((sum, item) => sum + itemQuantity(item), 0);
+  const completeBonus = sale.detailStatus === 'complete' ? 100000000 : 0;
+  return completeBonus + items.length * 100000 + quantity;
+}
+
+function indexBistroSales(sales) {
+  const index = new Map();
+  sales.forEach((sale) => {
+    bistroSaleMatchKeys(sale).forEach((key) => {
+      const current = index.get(key);
+      if (!current || bistroItemDetailScore(sale) > bistroItemDetailScore(current)) index.set(key, sale);
+    });
+  });
+  return index;
+}
+
+function mergeBistroSaleForClient(sale, locationId, previousIndex, preferPreviousDetail = false) {
+  const previous = bistroSaleMatchKeys(sale)
+    .map((key) => previousIndex.get(key))
+    .filter(Boolean)
+    .sort((left, right) => bistroItemDetailScore(right) - bistroItemDetailScore(left))[0];
+  const incomingItems = Array.isArray(sale?.items) ? sale.items : [];
+  const previousItems = Array.isArray(previous?.items) ? previous.items : [];
+  const keepPrevious = previousItems.length > 0 && (
+    preferPreviousDetail || bistroItemDetailScore(previous) > bistroItemDetailScore(sale)
+  );
+  const items = keepPrevious ? previousItems : incomingItems;
+  return {
+    ...sale,
+    locationId,
+    items,
+    detailStatus: items.length
+      ? 'complete'
+      : (sale.detailStatus || previous?.detailStatus || null),
+    detailAttempts: Math.max(Number(sale.detailAttempts || 0), Number(previous?.detailAttempts || 0)),
+    detailCheckedAt: sale.detailCheckedAt || previous?.detailCheckedAt || null,
+  };
+}
+
 async function syncBistrosoftRange(from, until, silent = true) {
   if (finBistroSync.syncing) return;
 
@@ -5224,20 +5280,10 @@ async function fetchBistrosoftRange(from, until) {
     throw new Error(payload.error || 'Bistrosoft no respondio correctamente');
   }
 
-  const previousItems = new Map(
-    getLocationSales()
-      .filter((sale) => Array.isArray(sale.items) && sale.items.length)
-      .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
-  );
+  const previousSales = indexBistroSales(getLocationSales());
   const imported = payload.sales.filter((sale) =>
     sale && typeof sale.date === 'string' && Number.isFinite(Number(sale.total))
-  ).map((sale) => ({
-    ...sale,
-    locationId: activeLocationId,
-    items: sale.items?.length
-      ? sale.items
-      : (previousItems.get(String(sale.bistroId || sale.id)) || []),
-  }));
+  ).map((sale) => mergeBistroSaleForClient(sale, activeLocationId, previousSales));
   const importedExpenses = (payload.expenses || [])
     .filter((expense) =>
       expense && typeof expense.date === 'string' && Number.isFinite(Number(expense.amount))
@@ -5534,18 +5580,10 @@ async function syncBistrosoftAuditRange(from, until) {
     }));
 
     payloads.forEach(({ locationId, payload }) => {
-      const previousItems = new Map(
-        getLocationSales(locationId)
-          .filter((sale) => Array.isArray(sale.items) && sale.items.length)
-          .map((sale) => [String(sale.bistroId || sale.id), sale.items]),
+      const previousSales = indexBistroSales(getLocationSales(locationId));
+      const imported = payload.sales.map((sale) =>
+        mergeBistroSaleForClient(sale, locationId, previousSales, true)
       );
-      const imported = payload.sales.map((sale) => ({
-        ...sale,
-        locationId,
-        items: sale.items?.length
-          ? sale.items
-          : (previousItems.get(String(sale.bistroId || sale.id)) || []),
-      }));
       state.sales = [
         ...state.sales.filter((sale) => !(
           normalizeLocationId(sale.locationId) === locationId
@@ -7153,20 +7191,6 @@ function renderFinResumen() {
 
 // -------- AUDITORIA SUCURSALES --------
 
-function summarizeSalesForLocation(locationId, monthKey) {
-  const map = new Map();
-  getLocationSales(locationId)
-    .filter((sale) => sale.date.startsWith(monthKey))
-    .forEach((sale) => {
-      const current = map.get(sale.date) || { sales: 0, tickets: 0, saleRows: [] };
-      current.sales += Number(sale.total || 0);
-      current.tickets += Number(sale.count || 1);
-      current.saleRows.push(sale);
-      map.set(sale.date, current);
-    });
-  return map;
-}
-
 function renderFinAudit() {
   const el = document.querySelector('#finAuditContent');
   if (!el) return;
@@ -7175,19 +7199,22 @@ function renderFinAudit() {
   const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
   const currentMonthKey = monthInputValue(firstDayOfMonth(new Date()));
   const days = getMonthDays(finActiveMonth);
-  const branchMaps = {
-    barcelona: summarizeSalesForLocation('barcelona', monthKey),
-    madrid: summarizeSalesForLocation('madrid', monthKey),
-  };
-
   const rowsData = days.map((date) => {
     const dateKey = toDateInput(date);
-    const barcelona = branchMaps.barcelona.get(dateKey) || { sales: 0, tickets: 0, saleRows: [] };
-    const madrid = branchMaps.madrid.get(dateKey) || { sales: 0, tickets: 0, saleRows: [] };
-    barcelona.crossSelling = calculateCrossSelling(barcelona.saleRows);
-    madrid.crossSelling = calculateCrossSelling(madrid.saleRows);
-    barcelona.itemMetrics = calculateItemMetrics(barcelona.saleRows);
-    madrid.itemMetrics = calculateItemMetrics(madrid.saleRows);
+    const barcelonaMetrics = calcDayMetricsForLocation(dateKey, 'barcelona');
+    const madridMetrics = calcDayMetricsForLocation(dateKey, 'madrid');
+    const barcelona = {
+      sales: barcelonaMetrics.totalSales,
+      tickets: barcelonaMetrics.ticketCount,
+      crossSelling: barcelonaMetrics.crossSelling,
+      itemMetrics: barcelonaMetrics.itemMetrics,
+    };
+    const madrid = {
+      sales: madridMetrics.totalSales,
+      tickets: madridMetrics.ticketCount,
+      crossSelling: madridMetrics.crossSelling,
+      itemMetrics: madridMetrics.itemMetrics,
+    };
     return {
       dateKey,
       barcelona,
@@ -8045,9 +8072,9 @@ function formatCrossSelling(metric) {
   return `1 cada ${value} cafés`;
 }
 
-function calcDayMetrics(date) {
-  const sales = getLocationSales().filter((s) => s.date === date);
-  const expenses = getLocationExpenses().filter((e) => e.date === date);
+function calcDayMetricsForLocation(date, locationId = activeLocationId) {
+  const sales = getLocationSales(locationId).filter((sale) => sale.date === date);
+  const expenses = getLocationExpenses(locationId).filter((expense) => expense.date === date);
   const totalSales = sales.reduce((s, t) => s + t.total, 0);
   const ticketCount = sales.reduce((s, t) => s + (t.count || 1), 0);
   const avgTicket = ticketCount > 0 ? totalSales / ticketCount : 0;
@@ -8056,14 +8083,16 @@ function calcDayMetrics(date) {
   const itemCounts = {};
   sales.forEach((sale) => {
     (sale.items || []).forEach((item) => {
-      itemCounts[item.name] = (itemCounts[item.name] || 0) + item.qty;
+      const name = itemName(item);
+      if (!name) return;
+      itemCounts[name] = (itemCounts[name] || 0) + itemQuantity(item);
     });
   });
   const topItems = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
   const pairCounts = {};
   sales.forEach((sale) => {
-    const names = [...new Set((sale.items || []).map((i) => i.name))];
+    const names = [...new Set((sale.items || []).map(itemName).filter(Boolean))];
     for (let i = 0; i < names.length; i++) {
       for (let j = i + 1; j < names.length; j++) {
         const pair = [names[i], names[j]].sort().join(' + ');
@@ -8076,6 +8105,10 @@ function calcDayMetrics(date) {
   const crossSelling = calculateCrossSelling(sales);
   const itemMetrics = calculateItemMetrics(sales);
   return { totalSales, ticketCount, avgTicket, totalExpenses, result: totalSales - totalExpenses, topItems, topPairs, crossSelling, itemMetrics };
+}
+
+function calcDayMetrics(date) {
+  return calcDayMetricsForLocation(date, activeLocationId);
 }
 
 function groupSalesByDate() {

@@ -144,6 +144,8 @@ empezar a registrar desde ahora con datos importados y mantener historial.
 ### Accesos y perfiles
 
 - Cada empleado configura sus datos obligatorios y una contrasena propia en el primer acceso.
+- Al entrar en **Soy del Team**, el boton **Volver** queda visible en el lateral superior para
+  regresar al menu inicial si se eligio un acceso equivocado.
 - Las contrasenas se guardan protegidas mediante hash de forma separada en Netlify Blobs y no forman parte
   del estado compartido que recibe el navegador.
 - El perfil **Visita** usa la clave `ossbcn` y solamente consulta Grilla y Finanzas.
@@ -190,6 +192,9 @@ empezar a registrar desde ahora con datos importados y mantener historial.
   reintentos. Esta cobertura alimenta cross-selling, articulos/ticket, rankings y consultas de IA.
 - Las escrituras completas de navegadores antiguos ya no pueden reemplazar las ventas con
   detalle que el proceso de fondo haya guardado en Netlify.
+- Los renglones diarios de **Finanzas > Auditoria** usan la misma funcion de calculo que la vista
+  de un dia especifico en **Hoy**. Al actualizar un mes, se conserva la version mas completa de
+  los articulos de cada ticket, evitando que cambie el cross-selling ya verificado por dia.
 
 ### Otros hostings
 

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=29" />
+    <link rel="stylesheet" href="styles.css?v=30" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -33,9 +33,9 @@
         </div>
 
         <div id="roleStepEmployee" hidden>
+          <button class="role-back-button" id="backToStep1a" type="button" aria-label="Volver al menú anterior">&#8249; Volver</button>
           <p class="role-subtitle">¿Quién sos?</p>
           <div class="role-btn-group" id="empChoiceButtons"></div>
-          <button class="role-link" id="backToStep1a" type="button">← Volver</button>
         </div>
 
         <div id="roleStepAdmin" hidden>
@@ -880,6 +880,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=47"></script>
+    <script src="app.js?v=48"></script>
   </body>
 </html>
