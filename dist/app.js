@@ -225,6 +225,225 @@ const DEFAULT_LOCATION_SETTINGS = {
   },
 };
 
+const PASTRY_RECIPES = [
+  {
+    id: "banana-bread",
+    name: "Banana Bread",
+    yieldLabel: "1 budín · 7 porciones",
+    ingredients: [
+      { name: "Manteca", quantity: 90, unit: "g" },
+      { name: "Azúcar blanca", quantity: 85, unit: "g" },
+      { name: "Azúcar rubia", quantity: 85, unit: "g" },
+      { name: "Huevos", quantity: 1, unit: "u" },
+      { name: "Vainilla", quantity: 5, unit: "ml" },
+      { name: "Harina de repostería", quantity: 225, unit: "g" },
+      { name: "Sal", quantity: 5, unit: "g" },
+      { name: "Bicarbonato", quantity: 5, unit: "g" },
+      { name: "Queso crema", quantity: 90, unit: "g" },
+      { name: "Banana", quantity: 375, unit: "g" },
+      { name: "Chocolate", quantity: 133, unit: "g" },
+      { name: "Papel de horno", quantity: 0.5, unit: "u" },
+    ],
+    procedures: [
+      {
+        title: "Procedimiento",
+        note: "Trabajar con todos los ingredientes a temperatura ambiente.",
+        steps: [
+          "Precalentar el horno a 150 °C.",
+          "Agregar papel de horno a las budineras.",
+          "Pisar la banana con el queso crema.",
+          "Cremar la manteca pomada con los azúcares.",
+          "Agregar los huevos y la vainilla en dos partes.",
+          "Mezclar aparte los secos: harina, bicarbonato y sal.",
+          "Agregar los secos en tres partes, intercalando con la mezcla de banana y queso crema.",
+          "Incorporar por último el chocolate picado grueso con espátula.",
+          "Hornear aproximadamente una hora, o hasta que al pinchar salga limpio.",
+          "Enfriar sobre rejilla. Enfilmar, etiquetar y guardar en la heladera.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "chipa",
+    name: "Chipá",
+    yieldLabel: "18 unidades de 80 g o 29 unidades de 50 g",
+    sourceNote: "La planilla indica pasar a unidades de 60 g a partir del 1/4.",
+    ingredients: [
+      { name: "Fécula de mandioca", quantity: 500, unit: "g" },
+      { name: "Manteca", quantity: 100, unit: "g" },
+      { name: "Leche", quantity: 200, unit: "ml" },
+      { name: "Huevos", quantity: 3, unit: "u" },
+      { name: "Sal", quantity: 8, unit: "g" },
+      { name: "Polvo de hornear", quantity: 5, unit: "g" },
+      { name: "Reggianito / Parmesano", quantity: 250, unit: "g" },
+      { name: "Edam", quantity: 250, unit: "g" },
+    ],
+    procedures: [
+      {
+        title: "Procedimiento",
+        steps: [
+          "Rallar los quesos.",
+          "Integrar en un recipiente grande la fécula, la sal y el polvo de hornear.",
+          "Agregar la manteca fría cortada en cubos y mezclar con las manos hasta lograr un arenado.",
+          "Agregar los huevos y la leche e integrar hasta lograr una masa que no quede ni muy líquida ni muy seca.",
+          "Incorporar por último los quesos.",
+          "Porcionar según el gramaje elegido, congelar y rotular.",
+          "Cocinar en horno precalentado a 180 °C hasta dorar.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "dates",
+    name: "Dátiles",
+    yieldLabel: "1 kilo · 50 unidades",
+    ingredients: [
+      { name: "Dátiles", quantity: 1, unit: "caja" },
+      { name: "Mantequilla de maní", quantity: 100, unit: "g" },
+      { name: "Chocolate", quantity: 250, unit: "g" },
+      { name: "Aceite de coco", quantity: 25, unit: "g" },
+      { name: "Sal Maldon", quantity: 10, unit: "g" },
+    ],
+    procedures: [
+      {
+        title: "Procedimiento",
+        steps: [
+          "Colocar agua hasta un cuarto de la olla pequeña y poner a calentar.",
+          "En un bol metálico pequeño, colocar el chocolate con el aceite de coco y llevar a baño María hasta derretir por completo.",
+          "Quitar el carozo de todos los dátiles.",
+          "Con ayuda de una manga, rellenar cada dátil con mantequilla de maní. Cerrar y limpiar el excedente.",
+          "Bañar los dátiles con el chocolate derretido usando un tenedor, quitar el excedente y colocar a secar sobre una placa antiadherente.",
+          "Decorar con sal Maldon mientras el chocolate aún no haya solidificado.",
+          "Conservar en un recipiente hermético hasta su exposición.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "lemon-poppy",
+    name: "Budín de limón y amapola",
+    yieldLabel: "1 budín",
+    ingredients: [
+      { name: "Azúcar", quantity: 250, unit: "g" },
+      { name: "Mantequilla", quantity: 125, unit: "g" },
+      { name: "Aceite", quantity: 35, unit: "ml" },
+      { name: "Huevos", quantity: 3, unit: "u" },
+      { name: "Jugo de limón", quantity: 150, unit: "ml" },
+      { name: "Harina", quantity: 240, unit: "g" },
+      { name: "Sal", quantity: 0.33, unit: "g" },
+      { name: "Polvo de hornear", quantity: 8, unit: "g" },
+      { name: "Leche", quantity: 150, unit: "ml" },
+      { name: "Ralladura", quantity: 150, unit: "g" },
+      { name: "Amapolas", quantity: 8.33, unit: "g" },
+      { group: "Glasé", name: "Jugo de limón", quantity: 1, unit: "u" },
+      { group: "Glasé", name: "Azúcar impalpable", quantity: 83.33, unit: "g" },
+      { name: "Papel de horno", quantity: 0.5, unit: "u" },
+    ],
+    procedures: [
+      {
+        title: "Procedimiento",
+        steps: [
+          "Precalentar el horno a 150 °C.",
+          "Mezclar el jugo de limón con la leche y reservar; debe cortarse para formar una buttermilk.",
+          "Cremar la manteca pomada con el azúcar.",
+          "Agregar los huevos de a uno.",
+          "Mezclar la harina, el polvo de hornear, la sal y las amapolas.",
+          "Agregar los secos intercalados con la leche cortada hasta obtener una mezcla homogénea.",
+          "Forrar cada molde con papel de horno.",
+          "Agregar aproximadamente 960 g de preparación en cada molde.",
+          "Hornear durante 55 minutos o hasta que el palillo salga seco.",
+          "Dejar enfriar sobre rejilla, desmoldar, enfilmar, etiquetar y guardar en la heladera.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "carrot-cake",
+    name: "Carrot Cake",
+    yieldLabel: "1 budín",
+    ingredients: [
+      { name: "Zanahoria rallada", quantity: 266, unit: "g" },
+      { name: "Azúcar", quantity: 133.3, unit: "g" },
+      { name: "Azúcar moreno", quantity: 106, unit: "g" },
+      { name: "Harina de almendras", quantity: 133.3, unit: "g" },
+      { name: "Harina de arroz", quantity: 66.6, unit: "g" },
+      { name: "Bicarbonato", quantity: 2.3, unit: "g" },
+      { name: "Canela", quantity: 1.5, unit: "g" },
+      { name: "Jengibre", quantity: 0.83, unit: "g" },
+      { name: "Nuez moscada", quantity: 0.25, unit: "g" },
+      { name: "Huevos", quantity: 3, unit: "u" },
+      { name: "Aceite de coco", quantity: 60, unit: "g" },
+      { name: "Nueces picadas", quantity: 33.3, unit: "g" },
+      { name: "Papel de horno", quantity: 0.5, unit: "u" },
+      { group: "Frosting", name: "Azúcar glas", quantity: 50, unit: "g" },
+      { group: "Frosting", name: "Manteca", quantity: 50, unit: "g" },
+      { group: "Frosting", name: "Queso crema", quantity: 100, unit: "g" },
+      { group: "Frosting", name: "Vainilla", quantity: 5, unit: "ml" },
+      { group: "Presentación", name: "Nueces", quantity: 30, unit: "g" },
+    ],
+    procedures: [
+      {
+        title: "Budín",
+        steps: [
+          "Precalentar el horno a 150 °C y colocar papel de horno en el molde.",
+          "Pelar y rallar las zanahorias.",
+          "Blanquear los huevos con los azúcares hasta duplicar el volumen y obtener un color claro.",
+          "Incorporar el aceite en forma de hilo hasta integrar.",
+          "Agregar los secos, la zanahoria y las nueces troceadas con espátula.",
+          "Hornear aproximadamente 50 minutos o hasta que al pinchar el palillo salga seco.",
+          "Enfriar a temperatura ambiente; luego enfilmar, etiquetar y conservar en la heladera hasta su uso.",
+        ],
+      },
+      {
+        title: "Frosting",
+        steps: [
+          "Cremar la manteca pomada con el azúcar impalpable.",
+          "Una vez integrado, agregar el queso crema y la vainilla.",
+          "Mezclar hasta obtener una preparación homogénea.",
+          "Conservar en un recipiente hermético etiquetado con fecha.",
+        ],
+      },
+      {
+        title: "Presentación",
+        steps: [
+          "Colocar aproximadamente 200 g de frosting sobre el budín, emparejar con una cuchara o espátula y decorar con 20 a 30 g de nueces picadas.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "chocolate-cookies",
+    name: "Cookies de chocolate",
+    yieldLabel: "12 cookies de 70 g",
+    ingredients: [
+      { name: "Manteca", quantity: 140, unit: "g" },
+      { name: "Azúcar rubia", quantity: 140, unit: "g" },
+      { name: "Azúcar blanca", quantity: 110, unit: "g" },
+      { name: "Huevos", quantity: 1, unit: "u" },
+      { name: "Polvo de hornear", quantity: 4, unit: "g" },
+      { name: "Bicarbonato", quantity: 5, unit: "g" },
+      { name: "Sal rosa", quantity: 3, unit: "g" },
+      { name: "Harina 0000", quantity: 250, unit: "g" },
+      { name: "Vainilla", quantity: 2, unit: "ml" },
+      { name: "Chocolate picado", quantity: 133, unit: "g" },
+    ],
+    procedures: [
+      {
+        title: "Procedimiento",
+        steps: [
+          "Blanquear la manteca con los azúcares.",
+          "Agregar el huevo de a poco y luego la vainilla.",
+          "Agregar los ingredientes secos previamente integrados.",
+          "Incorporar por último el chocolate picado.",
+          "Porcionar en unidades de 70 g, congelar y rotular. Hornear luego de 12 horas de frío y descanso.",
+          "Hornear a 150 °C durante siete minutos de cada lado.",
+          "Agregar una pizca de sal Maldon al retirar del horno.",
+        ],
+      },
+    ],
+  },
+];
+
 const DEFAULT_STATE = {
   punches: [],
   changes: [],
@@ -253,6 +472,8 @@ let appRole = null;
 let activeEmployeeId = null;
 let activeLocationId = DEFAULT_LOCATION_ID;
 let pendingLocationRole = null;
+let activePastryRecipeId = PASTRY_RECIPES[0].id;
+const pastryRecipeQuantities = Object.fromEntries(PASTRY_RECIPES.map((recipe) => [recipe.id, 1]));
 let adminInited = false;
 let empEventsInited = false;
 let activeFichasTab = 'fichas';
@@ -504,6 +725,7 @@ function bindEvents() {
   els.backupExport.addEventListener("click", exportStateBackup);
   els.backupImportButton.addEventListener("click", chooseStateBackupFile);
   els.backupImportFile.addEventListener("change", importStateBackupFile);
+  bindPastryEvents(document.querySelector("#pastryContent"));
 }
 
 function populateSelectors() {
@@ -531,7 +753,158 @@ function setTodayDefaults() {
   if (teamActiveFrom) teamActiveFrom.value = today;
 }
 
+function normalizedAccessText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function canAccessPastry() {
+  if (appRole === "admin") return true;
+  if (appRole !== "employee" || !activeEmployeeId) return false;
+  const employee = getEmployee(activeEmployeeId);
+  const profile = getProfile(activeEmployeeId);
+  const role = normalizedAccessText(employee?.role);
+  const area = normalizedAccessText(profile?.area);
+  return role.includes("encargad") || role.includes("pasteler") || area.includes("pasteler");
+}
+
+function updatePastryAccessVisibility() {
+  const adminButton = document.querySelector('.nav-item[data-tab="pastry"]');
+  if (adminButton) adminButton.hidden = appRole !== "admin";
+  const employeeButton = document.querySelector('.emp-tab[data-emp-tab="pastry"]');
+  if (employeeButton) employeeButton.hidden = !(appRole === "employee" && canAccessPastry());
+}
+
+function formatPastryQuantity(value, unit) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const formatted = new Intl.NumberFormat("es-ES", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
+  }).format(amount);
+  return `${formatted} ${unit}`;
+}
+
+function renderPastryIngredientRows(recipe, multiplier) {
+  let currentGroup = "";
+  return recipe.ingredients.map((ingredient) => {
+    const nextGroup = ingredient.group || "";
+    const groupRow = nextGroup && nextGroup !== currentGroup
+      ? `<tr class="pastry-ingredient-group"><th colspan="3">${escapeHtml(nextGroup)}</th></tr>`
+      : "";
+    currentGroup = nextGroup;
+    return `${groupRow}
+      <tr>
+        <td>${escapeHtml(ingredient.name)}</td>
+        <td>${formatPastryQuantity(ingredient.quantity, ingredient.unit)}</td>
+        <td class="pastry-required" data-pastry-total data-quantity="${ingredient.quantity}" data-unit="${escapeHtml(ingredient.unit)}">
+          ${formatPastryQuantity(ingredient.quantity * multiplier, ingredient.unit)}
+        </td>
+      </tr>`;
+  }).join("");
+}
+
+function renderPastryProcedure(procedure) {
+  return `
+    <article class="pastry-procedure-card">
+      <h4>${escapeHtml(procedure.title)}</h4>
+      ${procedure.note ? `<p class="pastry-procedure-note">${escapeHtml(procedure.note)}</p>` : ""}
+      <ol>${procedure.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+    </article>`;
+}
+
+function renderPastryContainer(container) {
+  if (!container) return;
+  const recipe = PASTRY_RECIPES.find((entry) => entry.id === activePastryRecipeId) || PASTRY_RECIPES[0];
+  const multiplier = pastryRecipeQuantities[recipe.id] ?? 1;
+  container.innerHTML = `
+    <div class="pastry-page-heading">
+      <div>
+        <p class="eyebrow">Producción del día</p>
+        <h2>Pastelería</h2>
+        <p>Elegí una receta e indicá cuántas preparaciones vas a hacer. La materia prima se calcula en el momento.</p>
+      </div>
+    </div>
+    <div class="pastry-recipe-tabs" role="tablist" aria-label="Recetas de pastelería">
+      ${PASTRY_RECIPES.map((entry) => `
+        <button class="pastry-recipe-tab${entry.id === recipe.id ? " is-active" : ""}" type="button"
+          data-pastry-recipe="${entry.id}" role="tab" aria-selected="${entry.id === recipe.id}">
+          ${escapeHtml(entry.name)}
+        </button>`).join("")}
+    </div>
+    <article class="pastry-recipe-card" data-pastry-card="${recipe.id}">
+      <div class="pastry-recipe-header">
+        <div>
+          <p class="eyebrow">Receta base</p>
+          <h3>${escapeHtml(recipe.name)}</h3>
+          <p class="pastry-yield">Rinde: <strong>${escapeHtml(recipe.yieldLabel)}</strong></p>
+        </div>
+        <label class="pastry-batch-control">
+          <span>Recetas a preparar</span>
+          <input type="number" min="0.25" step="0.25" value="${multiplier}" data-pastry-batches="${recipe.id}" inputmode="decimal" />
+        </label>
+      </div>
+      ${recipe.sourceNote ? `<p class="pastry-source-note">${escapeHtml(recipe.sourceNote)}</p>` : ""}
+      <div class="pastry-recipe-layout">
+        <section class="pastry-ingredients">
+          <h4>Ingredientes y materia prima</h4>
+          <div class="pastry-table-wrap">
+            <table class="pastry-table">
+              <thead><tr><th>Ingrediente</th><th>Receta base</th><th>Necesario ahora</th></tr></thead>
+              <tbody>${renderPastryIngredientRows(recipe, multiplier)}</tbody>
+            </table>
+          </div>
+        </section>
+        <section class="pastry-procedures">
+          <h4>Procedimiento</h4>
+          <div class="pastry-procedure-list">
+            ${recipe.procedures.map(renderPastryProcedure).join("")}
+          </div>
+        </section>
+      </div>
+    </article>`;
+}
+
+function renderPasteleria() {
+  updatePastryAccessVisibility();
+  const adminContainer = document.querySelector("#pastryContent");
+  const employeeContainer = document.querySelector("#empPastryContent");
+  if (appRole === "admin") renderPastryContainer(adminContainer);
+  else if (adminContainer) adminContainer.innerHTML = "";
+  if (appRole === "employee" && canAccessPastry()) renderPastryContainer(employeeContainer);
+  else if (employeeContainer) employeeContainer.innerHTML = "";
+}
+
+function updatePastryCalculation(container, recipeId, value) {
+  const recipe = PASTRY_RECIPES.find((entry) => entry.id === recipeId);
+  if (!container || !recipe) return;
+  const multiplier = Number.isFinite(value) && value >= 0 ? value : 0;
+  pastryRecipeQuantities[recipeId] = multiplier;
+  container.querySelectorAll("[data-pastry-total]").forEach((cell) => {
+    const baseQuantity = Number(cell.dataset.quantity || 0);
+    cell.textContent = formatPastryQuantity(baseQuantity * multiplier, cell.dataset.unit || "");
+  });
+}
+
+function bindPastryEvents(container) {
+  if (!container || container.dataset.pastryBound === "true") return;
+  container.dataset.pastryBound = "true";
+  container.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-pastry-recipe]");
+    if (!button) return;
+    activePastryRecipeId = button.dataset.pastryRecipe;
+    renderPasteleria();
+  });
+  container.addEventListener("input", (event) => {
+    const input = event.target.closest("[data-pastry-batches]");
+    if (!input) return;
+    updatePastryCalculation(container, input.dataset.pastryBatches, Number(input.value));
+  });
+}
+
 function setActiveTab(tab) {
+  if (tab === "pastry" && appRole !== "admin") return;
   if (tab === "finanzas") resetFinTodayView();
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tab === tab);
@@ -568,6 +941,7 @@ function render() {
   renderContratosPanel();
   renderPersonnelPanel();
   renderFinanzas();
+  renderPasteleria();
   saveState();
 }
 
@@ -2887,6 +3261,7 @@ async function tryAdminPin() {
 function setAdminMode(locationId = DEFAULT_LOCATION_ID) {
   activeLocationId = normalizeLocationId(locationId);
   appRole = "admin";
+  updatePastryAccessVisibility();
   document.body.classList.remove("visit-mode");
   document.querySelector("#role-screen").hidden = true;
   document.querySelector("#employee-app").hidden = true;
@@ -2911,6 +3286,7 @@ async function enterEmployeeMode(employeeId) {
   document.querySelector("#role-screen").hidden = true;
   document.querySelector(".app-shell").hidden = true;
   document.querySelector("#employee-app").hidden = false;
+  updatePastryAccessVisibility();
 
   const employee = getEmployee(employeeId);
   document.querySelector("#empGreeting").textContent = `Hola, ${employee.label}`;
@@ -2923,6 +3299,7 @@ async function enterEmployeeMode(employeeId) {
 
   const closedDates = autoCloseForgottenPunches(employeeId);
   startShiftNotifications();
+  setActiveEmpTab("today");
   renderEmployeeView();
   if (closedDates.length) {
     alert(`Se cerraron automáticamente fichajes olvidados de: ${closedDates.map(formatHumanDate).join(', ')}.`);
@@ -2934,6 +3311,7 @@ function setVisitMode(locationId = DEFAULT_LOCATION_ID) {
   appRole = "visitor";
   activeEmployeeId = null;
   document.body.classList.add("visit-mode");
+  updatePastryAccessVisibility();
   document.querySelector("#role-screen").hidden = true;
   document.querySelector("#employee-app").hidden = true;
   document.querySelector(".app-shell").hidden = false;
@@ -3007,9 +3385,11 @@ function bindEmployeeEvents() {
 
   document.querySelector("#empChangeDate").value = toDateInput(new Date());
   document.querySelector("#empProfileForm").addEventListener("submit", handleEmpProfileForm);
+  bindPastryEvents(document.querySelector("#empPastryContent"));
 }
 
 function setActiveEmpTab(tab) {
+  if (tab === "pastry" && !canAccessPastry()) tab = "today";
   document.querySelectorAll(".emp-tab").forEach((btn) => {
     btn.classList.toggle("is-active", btn.dataset.empTab === tab);
   });
@@ -3025,6 +3405,7 @@ function renderEmployeeView() {
   renderEmpHours();
   renderEmpChanges();
   renderEmpProfile();
+  renderPasteleria();
 }
 
 function renderEmpToday() {
