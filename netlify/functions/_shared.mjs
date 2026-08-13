@@ -166,13 +166,14 @@ export async function readStateEntry() {
 
 export async function updateState(mutator) {
   const store = stateStore();
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
     const entry = await store.getWithMetadata(STATE_KEY, { type: "json", consistency: "strong" });
     const current = entry?.data || null;
     const next = await mutator(current);
     const options = entry?.etag ? { onlyIfMatch: entry.etag } : { onlyIfNew: true };
     const result = await store.setJSON(STATE_KEY, next, options);
     if (result.modified) return next;
+    await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1) + Math.floor(Math.random() * 35)));
   }
   throw new Error("No se pudo guardar el estado por escrituras simultaneas.");
 }
@@ -259,9 +260,19 @@ export function visitorState(fullState) {
   };
 }
 
+function mergeRecordsById(submitted = [], current = []) {
+  const byId = new Map();
+  submitted.forEach((item) => {
+    if (item?.id) byId.set(item.id, item);
+  });
+  current.forEach((item) => {
+    if (item?.id) byId.set(item.id, item);
+  });
+  return [...byId.values()];
+}
+
 export function mergeEmployeeState(current, submitted, employeeId) {
   const currentProfiles = current?.profiles || {};
-  const ownProfile = submitted?.profiles?.[employeeId];
   const currentPunches = current?.punches || [];
   const currentChanges = current?.changes || [];
   const currentWasteRecords = current?.wasteRecords || [];
@@ -271,18 +282,14 @@ export function mergeEmployeeState(current, submitted, employeeId) {
   return {
     ...(current || {}),
     punches: [...currentPunches.filter((item) => item.employeeId !== employeeId), ...ownPunches],
-    changes: [...currentChanges.filter((item) => item.employeeId !== employeeId), ...ownChanges],
+    changes: mergeRecordsById(ownChanges, currentChanges),
     wasteRecords: [
       ...currentWasteRecords.filter((item) => item.employeeId !== employeeId),
       ...ownWasteRecords,
     ],
-    profiles: ownProfile ? {
-      ...currentProfiles,
-      [employeeId]: {
-        ...ownProfile,
-        adminNotes: currentProfiles[employeeId]?.adminNotes || "",
-      },
-    } : currentProfiles,
+    // Las fichas se guardan con /api/employee-profile. Una copia completa y
+    // antigua del navegador no puede volver a colocar datos anteriores.
+    profiles: currentProfiles,
   };
 }
 
@@ -920,11 +927,44 @@ function mergePersistedBistroExpenses(currentExpenses = [], submittedExpenses = 
 
 export function mergeAdminState(current, submitted) {
   if (!current || typeof current !== "object") return submitted;
+  const submittedLocationSettings = submitted.locationSettings || {};
+  const currentLocationSettings = current.locationSettings || {};
+  const locationIds = new Set([
+    ...Object.keys(submittedLocationSettings),
+    ...Object.keys(currentLocationSettings),
+    "barcelona",
+    "madrid",
+  ]);
+  const locationSettings = Object.fromEntries([...locationIds].map((locationId) => {
+    const submittedSettings = submittedLocationSettings[locationId] || {};
+    const currentSettings = currentLocationSettings[locationId] || {};
+    return [locationId, {
+      ...currentSettings,
+      ...submittedSettings,
+      monthlyOpeningHours: currentSettings.monthlyOpeningHours
+        || submittedSettings.monthlyOpeningHours
+        || {},
+    }];
+  }));
+  const currentBarcelonaHours = currentLocationSettings.barcelona?.monthlyOpeningHours
+    || current.settings?.monthlyOpeningHours;
   return {
     ...submitted,
     employees: Array.isArray(current.employees) && current.employees.length
       ? current.employees
       : submitted.employees,
+    profiles: { ...(submitted.profiles || {}), ...(current.profiles || {}) },
+    baseSchedules: { ...(submitted.baseSchedules || {}), ...(current.baseSchedules || {}) },
+    contracts: { ...(submitted.contracts || {}), ...(current.contracts || {}) },
+    changes: mergeRecordsById(submitted.changes || [], current.changes || []),
+    locationSettings,
+    settings: {
+      ...(current.settings || {}),
+      ...(submitted.settings || {}),
+      monthlyOpeningHours: currentBarcelonaHours
+        || submitted.settings?.monthlyOpeningHours
+        || {},
+    },
     sales: mergePersistedBistroSales(current.sales || [], submitted.sales || []),
     expenses: mergePersistedBistroExpenses(current.expenses || [], submitted.expenses || []),
     bistroSyncedMonthsByLocation: current.bistroSyncedMonthsByLocation || submitted.bistroSyncedMonthsByLocation,

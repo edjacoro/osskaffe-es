@@ -6,6 +6,8 @@
 /api/state              /.netlify/functions/state           200
 /api/store-hours        /.netlify/functions/store-hours     200
 /api/team               /.netlify/functions/team-list       200
+/api/changes            /.netlify/functions/changes         200
+/api/employee-profile   /.netlify/functions/employee-profile 200
 /api/bistrosoft/status  /.netlify/functions/bistro-status   200
 /api/bistrosoft/sales   /.netlify/functions/bistro-sales    200
 /api/bistrosoft/months  /.netlify/functions/bistro-months   200

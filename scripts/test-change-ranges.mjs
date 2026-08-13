@@ -54,8 +54,8 @@ assert.deepEqual(
 assert.match(html, /id="changeDateEnd"/);
 assert.match(html, /id="empChangeDateEnd"/);
 assert.equal((html.match(/<option>Licencia<\/option>/g) || []).length, 2);
-assert.match(html, /app\.js\?v=54/);
+assert.match(html, /app\.js\?v=55/);
 assert.match(appSource, /change\.status === "approved" && changeAppliesToDate\(change, dateKey\)/);
-assert.match(appSource, /function updateChangeStatus[\s\S]*?saveState\(\);[\s\S]*?render\(\);/);
+assert.match(appSource, /async function updateChangeStatus[\s\S]*?persistChangeMutation\(\{ action: "review", id, status \}\)/);
 
 console.log("OK: vacaciones y licencias aprobadas admiten rangos y quitan todos los turnos del intervalo.");

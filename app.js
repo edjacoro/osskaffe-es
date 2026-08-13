@@ -486,6 +486,7 @@ let sharedStatePollTimer = null;
 let sharedStateSaving = false;
 let sharedStatePending = false;
 let suppressSharedStateSave = false;
+let sharedMutationQueue = Promise.resolve();
 let pendingTeamRecoverySnapshot = { employees: [], profiles: {}, baseSchedules: {}, contracts: {} };
 let pendingEmployeeId = null;
 let empHoursMonth = firstDayOfMonth(new Date());
@@ -1391,7 +1392,11 @@ function createMockPunches() {
   render();
 }
 
-function handleChangeRequest(event) {
+async function persistChangeMutation(body) {
+  return sendSharedMutation("/api/changes", body, "No se pudo guardar la solicitud en Netlify.");
+}
+
+async function handleChangeRequest(event) {
   event.preventDefault();
   const reason = els.changeReason.value;
   const leave = isLeaveReason(reason);
@@ -1401,7 +1406,7 @@ function handleChangeRequest(event) {
     alert("La fecha hasta debe ser igual o posterior a la fecha desde.");
     return;
   }
-  state.changes.push({
+  const change = {
     id: createId(),
     locationId: activeLocationId,
     date,
@@ -1416,19 +1421,39 @@ function handleChangeRequest(event) {
     note: els.changeNote.value.trim(),
     status: "pending",
     createdAt: new Date().toISOString(),
-  });
-
-  els.changeNote.value = "";
-  saveState();
+  };
+  const submitButton = event.submitter || els.changeForm.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
+  state.changes.push(change);
+  saveState({ shared: false });
   render();
+  const result = await persistChangeMutation({ action: "create", change });
+  if (submitButton) submitButton.disabled = false;
+  if (!result.ok) {
+    state.changes = state.changes.filter((item) => item.id !== change.id);
+    saveState({ shared: false });
+    render();
+    alert(`${result.error || "No se pudo guardar la solicitud."} Los datos permanecen en el formulario para que puedas reintentar.`);
+    return;
+  }
+  els.changeNote.value = "";
 }
 
-function updateChangeStatus(id, status) {
+async function updateChangeStatus(id, status) {
+  const previous = structuredClone((state.changes || []).find((change) => change.id === id) || null);
+  if (!previous) return;
   state.changes = state.changes.map((change) => {
     return change.id === id ? { ...change, status, reviewedAt: new Date().toISOString(), reviewedBy: "Administrador" } : change;
   });
-  saveState();
+  saveState({ shared: false });
   render();
+  const result = await persistChangeMutation({ action: "review", id, status });
+  if (!result.ok) {
+    state.changes = state.changes.map((change) => change.id === id ? previous : change);
+    saveState({ shared: false });
+    render();
+    alert(`${result.error || "No se pudo guardar la aprobación."} Volvé a intentarlo.`);
+  }
 }
 
 function handleTrafficImport(event) {
@@ -1547,6 +1572,37 @@ async function parseApiError(response, fallback) {
   } catch (_) {
     return fallback;
   }
+}
+
+function enqueueSharedMutation(task) {
+  const run = sharedMutationQueue.then(task, task);
+  sharedMutationQueue = run.catch(() => {});
+  return run;
+}
+
+async function sendSharedMutation(url, body, fallback) {
+  if (!sharedStateEnabled) return { ok: true, local: true, payload: null };
+  return enqueueSharedMutation(async () => {
+    let lastError = fallback;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && payload.ok) return { ok: true, payload };
+        lastError = payload.error || `${fallback} (HTTP ${response.status})`;
+        if (![409, 429, 500, 502, 503, 504].includes(response.status)) break;
+      } catch (_) {
+        lastError = "No hubo conexion con Netlify.";
+      }
+      await waitForStateSave(180 * (attempt + 1));
+    }
+    return { ok: false, error: lastError };
+  });
 }
 
 async function sendStateImportRequest(payload) {
@@ -1947,27 +2003,15 @@ async function resetOpeningOverride(dateKey, locationId = activeLocationId) {
 }
 
 async function persistStoreHoursChange(action, date, values, locationId) {
-  if (!sharedStateEnabled) return { ok: true, local: true };
-  try {
-    const response = await fetch("/api/store-hours", {
-      method: "PUT",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        locationId,
-        date,
-        ...(values || {}),
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) {
-      return { ok: false, error: payload.error || `Netlify respondio ${response.status}.` };
-    }
-    return { ok: true, persistedAt: payload.persistedAt || null };
-  } catch (_) {
-    return { ok: false, error: "No hubo conexion con Netlify." };
-  }
+  const result = await sendSharedMutation("/api/store-hours", {
+    action,
+    locationId,
+    date,
+    ...(values || {}),
+  }, "No se pudo guardar el horario en Netlify.");
+  return result.ok
+    ? { ok: true, local: result.local, persistedAt: result.payload?.persistedAt || null }
+    : result;
 }
 
 function renderStoreHoursEditor() {
@@ -2617,16 +2661,16 @@ async function flushSharedState() {
   sharedStatePending = false;
   sharedStateSaving = true;
   try {
-    const response = await fetch('/api/state', {
+    const response = await enqueueSharedMutation(() => fetch('/api/state', {
       method: 'PUT',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ state }),
-    });
+    }));
     if (response.status === 403 && appRole === 'employee') {
       sharedStatePending = false;
       alert('Tu acceso fue dado de baja por el administrador.');
-      exitToRoleScreen();
+      exitToRoleScreen({ savePending: false });
       return;
     }
     if (!response.ok) {
@@ -2776,7 +2820,7 @@ async function refreshSharedState() {
     const response = await fetch('/api/state', { credentials: 'same-origin', cache: 'no-store' });
     if (response.status === 403 && appRole === 'employee') {
       alert('Tu acceso fue dado de baja por el administrador.');
-      exitToRoleScreen();
+      exitToRoleScreen({ savePending: false });
       return;
     }
     if (!response.ok) return;
@@ -2795,12 +2839,15 @@ async function refreshSharedState() {
   }
 }
 
-function disconnectSharedState() {
+async function disconnectSharedState(options = {}) {
   clearInterval(sharedStatePollTimer);
   sharedStatePollTimer = null;
   if (sharedStateEnabled) {
-    flushSharedState();
-    fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+    if (options.savePending !== false) {
+      await persistSharedStateNow();
+      await sharedMutationQueue.catch(() => {});
+    }
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
   }
   sharedStateEnabled = false;
 }
@@ -3499,9 +3546,9 @@ function setVisitMode(locationId = DEFAULT_LOCATION_ID) {
   setActiveTab("schedule");
 }
 
-function exitToRoleScreen() {
+async function exitToRoleScreen(options = {}) {
   stopShiftNotifications();
-  disconnectSharedState();
+  await disconnectSharedState(options);
   appRole = null;
   activeEmployeeId = null;
   activeLocationId = DEFAULT_LOCATION_ID;
@@ -3976,11 +4023,25 @@ function applyProfileData(employeeId, data) {
   if (!state.baseSchedules?.[employeeId]) saveEmployeeBaseSchedule(employeeId, createBlankBaseSchedule());
 }
 
-function saveProfileData(employeeId, data) {
+async function saveProfileData(employeeId, data) {
+  const previousEmployee = structuredClone((state.employees || []).find((item) => item.id === employeeId) || {});
+  const previousProfile = structuredClone(getProfile(employeeId));
   applyProfileData(employeeId, data);
-  saveState();
+  saveState({ shared: false });
+  const result = await sendSharedMutation(
+    "/api/employee-profile",
+    { profile: data },
+    "No se pudo guardar la ficha en Netlify.",
+  );
+  if (!result.ok) {
+    const employee = (state.employees || []).find((item) => item.id === employeeId);
+    if (employee) Object.assign(employee, previousEmployee);
+    state.profiles[employeeId] = previousProfile;
+    saveState({ shared: false });
+  }
   populateSelectors();
   renderEmployeeChoiceButtons();
+  return result;
 }
 
 function renderEmpProfile() {
@@ -4009,7 +4070,7 @@ function renderEmpProfile() {
   if (note) note.textContent = "";
 }
 
-function handleEmpProfileForm(event) {
+async function handleEmpProfileForm(event) {
   event.preventDefault();
   const data = {
     fullName: document.querySelector("#profFullName").value.trim(),
@@ -4025,8 +4086,12 @@ function handleEmpProfileForm(event) {
     emergencyName: document.querySelector("#profEmergencyName").value.trim(),
     emergencyPhone: document.querySelector("#profEmergencyPhone").value.trim(),
   };
-  saveProfileData(activeEmployeeId, data);
-  document.querySelector("#profSaveNote").textContent = "Ficha guardada correctamente.";
+  const note = document.querySelector("#profSaveNote");
+  note.textContent = "Guardando en Netlify...";
+  const result = await saveProfileData(activeEmployeeId, data);
+  note.textContent = result.ok
+    ? "Ficha guardada correctamente en Netlify."
+    : `${result.error || "No se pudo guardar la ficha."} Volvé a intentarlo.`;
 }
 
 // ===========================
@@ -4080,20 +4145,16 @@ function setTeamPersistenceStatus(message, status = '') {
 async function persistTeamMemberPayload(employee, profile = {}, baseSchedule = null, contract = null) {
   setTeamPersistenceStatus(`Guardando a ${employee.label} en Netlify...`, 'saving');
   try {
-    const response = await fetch('/api/team', {
-      method: 'PUT',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employee, profile, baseSchedule, contract }),
-    });
-    if (!response.ok) {
-      const detail = await parseApiError(response, 'No se pudo guardar el empleado en Netlify.');
-      throw new Error(`${detail} (HTTP ${response.status})`);
-    }
-    const payload = await response.json();
-    if (!payload.ok || !payload.employee) throw new Error('Netlify no confirmó el registro del empleado.');
+    const result = await sendSharedMutation(
+      '/api/team',
+      { employee, profile, baseSchedule, contract },
+      'No se pudo guardar el empleado en Netlify.',
+    );
+    if (!result.ok) throw new Error(result.error);
+    const payload = result.payload;
+    if (!result.local && (!payload?.ok || !payload.employee)) throw new Error('Netlify no confirmó el registro del empleado.');
     setTeamPersistenceStatus(
-      `${employee.label} quedó guardado en Netlify${payload.persistedAt ? ` · ${formatDateTime(new Date(payload.persistedAt))}` : ''}.`,
+      `${employee.label} quedó guardado en Netlify${payload?.persistedAt ? ` · ${formatDateTime(new Date(payload.persistedAt))}` : ''}.`,
       'success',
     );
     return true;
@@ -4499,15 +4560,26 @@ function renderContratosPanelLegacy() {
 
   // Save contract settings on change (after user leaves the field)
   container.querySelectorAll('.contratos-input').forEach((input) => {
-    input.addEventListener('change', () => {
-      const id    = input.dataset.contract;
-      const field = input.dataset.field;
-      if (!state.contracts[id]) state.contracts[id] = {};
-      state.contracts[id][field] = parseFloat(input.value) || 0;
-      saveState();
-      renderContratosPanel();
-    });
+    input.addEventListener('change', () => saveContractInput(input));
   });
+}
+
+async function saveContractInput(input) {
+  const id = input.dataset.contract;
+  const field = input.dataset.field;
+  const previousContract = structuredClone(state.contracts?.[id] || {});
+  if (!state.contracts) state.contracts = {};
+  if (!state.contracts[id]) state.contracts[id] = {};
+  state.contracts[id][field] = parseFloat(input.value) || 0;
+  saveState({ shared: false });
+  input.disabled = true;
+  const persisted = await persistTeamMemberNow(id);
+  if (!persisted) {
+    state.contracts[id] = previousContract;
+    saveState({ shared: false });
+    alert('El contrato no se modificó porque Netlify no confirmó el guardado. Volvé a intentarlo.');
+  }
+  renderContratosPanel();
 }
 
 function renderContratosPanel() {
@@ -4637,13 +4709,7 @@ function renderContratosPanel() {
     </section>`;
 
   container.querySelectorAll('.contratos-input').forEach((input) => {
-    input.addEventListener('change', () => {
-      const id = input.dataset.contract;
-      if (!state.contracts[id]) state.contracts[id] = {};
-      state.contracts[id][input.dataset.field] = parseFloat(input.value) || 0;
-      saveState();
-      renderContratosPanel();
-    });
+    input.addEventListener('change', () => saveContractInput(input));
   });
   container.querySelectorAll('.settlement-input').forEach((input) => {
     input.addEventListener('change', () => {
@@ -5005,7 +5071,7 @@ function readFichaForm(form) {
   return data;
 }
 
-function handleEmpChangeForm(event) {
+async function handleEmpChangeForm(event) {
   event.preventDefault();
   const reason = document.querySelector("#empChangeReason").value;
   const leave = isLeaveReason(reason);
@@ -5015,7 +5081,7 @@ function handleEmpChangeForm(event) {
     alert("La fecha hasta debe ser igual o posterior a la fecha desde.");
     return;
   }
-  state.changes.push({
+  const change = {
     id: createId(),
     locationId: activeLocationId,
     date,
@@ -5030,10 +5096,22 @@ function handleEmpChangeForm(event) {
     note: document.querySelector("#empChangeNote").value.trim(),
     status: "pending",
     createdAt: new Date().toISOString(),
-  });
-  document.querySelector("#empChangeNote").value = "";
-  saveState();
+  };
+  const submitButton = event.submitter || event.currentTarget.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
+  state.changes.push(change);
+  saveState({ shared: false });
   renderEmpChanges();
+  const result = await persistChangeMutation({ action: "create", change });
+  if (submitButton) submitButton.disabled = false;
+  if (!result.ok) {
+    state.changes = state.changes.filter((item) => item.id !== change.id);
+    saveState({ shared: false });
+    renderEmpChanges();
+    alert(`${result.error || "No se pudo guardar la solicitud."} Volvé a intentarlo.`);
+    return;
+  }
+  document.querySelector("#empChangeNote").value = "";
 }
 
 // ===========================

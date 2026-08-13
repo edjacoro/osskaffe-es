@@ -12,13 +12,13 @@ assert.doesNotMatch(
   /(?:openInput|closeInput)\.addEventListener\("change", persist\)/,
   "No debe validar mientras el usuario todavia esta completando la hora.",
 );
-assert.match(appSource, /fetch\("\/api\/store-hours"/, "El horario debe usar una escritura pequena y especifica.");
+assert.match(appSource, /sendSharedMutation\("\/api\/store-hours"/, "El horario debe usar una escritura pequena y especifica.");
 assert.match(appSource, /saveState\(\{ shared: false \}\);/, "El horario no debe reenviar toda la base por cada dia.");
 assert.match(appSource, /Guardado en Netlify/, "Debe confirmar visualmente la persistencia.");
 assert.match(appSource, /const editorLocationId = activeLocationId;/, "El editor debe conservar la tienda que se esta modificando.");
 assert.match(appSource, /getLocationSettings\(locationId\)/, "Los horarios deben guardarse por separado para cada tienda.");
 assert.match(html, /presioná GUARDAR en cada día modificado/);
-assert.match(html, /app\.js\?v=54/);
+assert.match(html, /app\.js\?v=55/);
 
 const initial = {
   sales: [{ id: "venta-historica", items: [{ name: "Flat White", qty: 1 }] }],
