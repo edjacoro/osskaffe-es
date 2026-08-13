@@ -127,7 +127,9 @@ personalizados y los turnos aprobados.
 El editor mensual de apertura permite completar la hora sin validar mientras se
 esta escribiendo. Cada dia modificado se confirma con **Guardar**; la pantalla
 indica cuando hay cambios pendientes y cuando Netlify confirmo el guardado. El
-mismo flujo se aplica de forma independiente a Barcelona y Madrid.
+mismo flujo se aplica de forma independiente a Barcelona y Madrid. Cada dia se
+guarda mediante una escritura puntual que no reenvia el historial de Bistrosoft,
+para evitar demoras y errores por el tamano de la base.
 
 En **Cambios**, los motivos **Vacaciones** y **Licencia** habilitan fecha desde
 y fecha hasta. Al aprobarse se consideran ausencias de jornada completa y se

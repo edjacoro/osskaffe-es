@@ -1926,24 +1926,48 @@ async function saveOpeningOverride(dateKey, values, locationId = activeLocationI
       [dateKey]: values,
     },
   }, locationId);
-  saveState();
+  saveState({ shared: false });
   if (locationId === activeLocationId && dateKey.startsWith(monthInputValue(activeMonth))) {
     renderSchedule();
     renderMetrics();
   }
-  return !sharedStateEnabled || persistSharedStateNow();
+  return persistStoreHoursChange("save", dateKey, values, locationId);
 }
 
 async function resetOpeningOverride(dateKey, locationId = activeLocationId) {
   const monthlyOpeningHours = { ...(getLocationSettings(locationId).monthlyOpeningHours || {}) };
   delete monthlyOpeningHours[dateKey];
   updateLocationSettings({ monthlyOpeningHours }, locationId);
-  saveState();
+  saveState({ shared: false });
   if (locationId === activeLocationId && dateKey.startsWith(monthInputValue(activeMonth))) {
     renderSchedule();
     renderMetrics();
   }
-  return !sharedStateEnabled || persistSharedStateNow();
+  return persistStoreHoursChange("reset", dateKey, null, locationId);
+}
+
+async function persistStoreHoursChange(action, date, values, locationId) {
+  if (!sharedStateEnabled) return { ok: true, local: true };
+  try {
+    const response = await fetch("/api/store-hours", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        locationId,
+        date,
+        ...(values || {}),
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      return { ok: false, error: payload.error || `Netlify respondio ${response.status}.` };
+    }
+    return { ok: true, persistedAt: payload.persistedAt || null };
+  } catch (_) {
+    return { ok: false, error: "No hubo conexion con Netlify." };
+  }
 }
 
 function renderStoreHoursEditor() {
@@ -2019,7 +2043,7 @@ function renderStoreHoursEditor() {
       resetButton.disabled = true;
       saveButton.textContent = "Guardando...";
       setFeedback("Guardando en Netlify...", "saving");
-      const persisted = await saveOpeningOverride(dateKey, {
+      const result = await saveOpeningOverride(dateKey, {
         open: openInput.value || getDefaultOpeningForDate(dateKey).open,
         close: closeInput.value || getDefaultOpeningForDate(dateKey).close,
         closed,
@@ -2027,8 +2051,8 @@ function renderStoreHoursEditor() {
       saveButton.textContent = defaultSaveLabel;
       saveButton.disabled = false;
       resetButton.disabled = false;
-      if (!persisted) {
-        setFeedback("No se pudo confirmar en Netlify. Reintentá guardar.", "error");
+      if (!result.ok) {
+        setFeedback(`${result.error || "No se pudo confirmar en Netlify."} Reintentá guardar.`, "error");
         return;
       }
       row.classList.remove("is-dirty");
@@ -2048,11 +2072,11 @@ function renderStoreHoursEditor() {
       resetButton.disabled = true;
       saveButton.disabled = true;
       setFeedback("Restaurando...", "saving");
-      const persisted = await resetOpeningOverride(dateKey, editorLocationId);
-      if (!persisted) {
+      const result = await resetOpeningOverride(dateKey, editorLocationId);
+      if (!result.ok) {
         resetButton.disabled = false;
         saveButton.disabled = false;
-        setFeedback("No se pudo confirmar en Netlify. Reintentá.", "error");
+        setFeedback(`${result.error || "No se pudo confirmar en Netlify."} Reintentá.`, "error");
         return;
       }
       renderStoreHoursEditor();

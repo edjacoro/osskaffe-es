@@ -4,6 +4,7 @@
 /api/auth/logout        /.netlify/functions/auth-logout     200
 /api/state/import       /.netlify/functions/state-import    200
 /api/state              /.netlify/functions/state           200
+/api/store-hours        /.netlify/functions/store-hours     200
 /api/team               /.netlify/functions/team-list       200
 /api/bistrosoft/status  /.netlify/functions/bistro-status   200
 /api/bistrosoft/sales   /.netlify/functions/bistro-sales    200

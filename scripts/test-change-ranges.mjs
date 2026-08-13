@@ -54,7 +54,7 @@ assert.deepEqual(
 assert.match(html, /id="changeDateEnd"/);
 assert.match(html, /id="empChangeDateEnd"/);
 assert.equal((html.match(/<option>Licencia<\/option>/g) || []).length, 2);
-assert.match(html, /app\.js\?v=53/);
+assert.match(html, /app\.js\?v=54/);
 assert.match(appSource, /change\.status === "approved" && changeAppliesToDate\(change, dateKey\)/);
 assert.match(appSource, /function updateChangeStatus[\s\S]*?saveState\(\);[\s\S]*?render\(\);/);
 
