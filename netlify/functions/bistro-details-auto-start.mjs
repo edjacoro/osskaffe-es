@@ -15,7 +15,9 @@ import {
   triggerDetailWorker,
 } from "./_bistro-detail-queue.mjs";
 
-const AUTO_MISSING_VERSION = "2026-08-13-v1";
+// Nueva pasada unica: completa cualquier dia historico que todavia no tenga
+// articulos antes de recalcular la relacion cafe / pasteleria.
+const AUTO_MISSING_VERSION = "2026-08-13-v2-cross-selling";
 
 export default async (request) => {
   const session = requireSession(request, "admin");

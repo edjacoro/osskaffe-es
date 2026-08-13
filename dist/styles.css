@@ -3404,7 +3404,7 @@ textarea {
 }
 .store-hours-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) minmax(120px, .7fr) minmax(120px, .7fr) minmax(105px, .55fr) minmax(155px, .8fr);
+  grid-template-columns: minmax(180px, 1.5fr) minmax(120px, .7fr) minmax(120px, .7fr) minmax(105px, .55fr) minmax(220px, 1fr);
   align-items: end;
   gap: 10px;
   padding: 10px 12px;
@@ -3415,6 +3415,10 @@ textarea {
 .store-hours-row.is-custom {
   border-color: #8db6c3;
   background: #f3f9fb;
+}
+.store-hours-row.is-dirty {
+  border-color: #d59a45;
+  box-shadow: inset 3px 0 0 #d59a45;
 }
 .store-hours-row.is-closed {
   background: #f4f4f4;
@@ -3451,6 +3455,38 @@ textarea {
   width: 18px;
   height: 18px;
 }
+.store-hours-actions {
+  align-self: end;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.store-hours-actions .mini-button {
+  min-width: 0;
+  padding-inline: 7px;
+}
+.store-hours-save {
+  border-color: var(--blue-dark);
+  background: var(--blue-dark);
+  color: #fff;
+}
+.store-hours-feedback {
+  grid-column: 1 / -1;
+  min-height: 15px;
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.store-hours-feedback[data-status="success"] {
+  color: var(--success);
+}
+.store-hours-feedback[data-status="error"] {
+  color: var(--danger);
+}
+.store-hours-feedback[data-status="pending"] {
+  color: #9a5a12;
+}
 
 @media (max-width: 900px) {
   .store-hours-heading {
@@ -3460,6 +3496,9 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .store-hours-date {
+    grid-column: 1 / -1;
+  }
+  .store-hours-actions {
     grid-column: 1 / -1;
   }
 }

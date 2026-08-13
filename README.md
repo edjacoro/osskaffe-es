@@ -124,6 +124,17 @@ de apertura configuradas para el mes y **H. Libres** muestra las horas de apertu
 sin ningun empleado asignado. El calculo respeta cierres, festivos, horarios
 personalizados y los turnos aprobados.
 
+El editor mensual de apertura permite completar la hora sin validar mientras se
+esta escribiendo. Cada dia modificado se confirma con **Guardar**; la pantalla
+indica cuando hay cambios pendientes y cuando Netlify confirmo el guardado. El
+mismo flujo se aplica de forma independiente a Barcelona y Madrid.
+
+En **Cambios**, los motivos **Vacaciones** y **Licencia** habilitan fecha desde
+y fecha hasta. Al aprobarse se consideran ausencias de jornada completa y se
+eliminan de la grilla todos los turnos del empleado dentro del intervalo,
+incluidos los turnos de tarde. La solicitud y su aprobacion se guardan en el
+estado compartido de Netlify.
+
 La pestana **Finanzas > IA** permite consultar con lenguaje natural ventas,
 productos, comparaciones, rankings y cobertura de la grilla. Procesa localmente
 los datos ya sincronizados y no requiere una clave de IA externa. Las cantidades
@@ -190,6 +201,9 @@ empezar a registrar desde ahora con datos importados y mantener historial.
   tickets con detalle. Un resultado inferior al 100% queda identificado como cobertura parcial:
   la app no inventa articulos para los tickets que Bistrosoft no entregue aun despues de los
   reintentos. Esta cobertura alimenta cross-selling, articulos/ticket, rankings y consultas de IA.
+- El cross-selling se define para cualquier rango como `cafes vendidos / productos de pasteleria
+  dulces o salados vendidos`. Los productos no necesitan compartir ticket con el cafe: por
+  ejemplo, 120 cafes y 30 productos muestran `1 producto cada 4 cafes`.
 - Las escrituras completas de navegadores antiguos ya no pueden reemplazar las ventas con
   detalle que el proceso de fondo haya guardado en Netlify.
 - Los renglones diarios de **Finanzas > Auditoria** usan la misma funcion de calculo que la vista

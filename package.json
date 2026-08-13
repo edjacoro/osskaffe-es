@@ -9,7 +9,9 @@
     "test:team": "node scripts/test-team-persistence.mjs",
     "test:bistro-details": "node scripts/test-bistro-detail-model.mjs",
     "test:pastry": "node scripts/test-pastry-recipes.mjs",
-    "test:finance": "node scripts/test-finance-audit-consistency.mjs"
+    "test:finance": "node scripts/test-finance-audit-consistency.mjs",
+    "test:store-hours": "node scripts/test-store-hours-editor.mjs",
+    "test:changes": "node scripts/test-change-ranges.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "10.7.9"

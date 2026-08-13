@@ -164,18 +164,21 @@
             <h3>Solicitar cambio</h3>
             <form id="empChangeForm">
               <div class="form-grid">
-                <label>Fecha<input id="empChangeDate" type="date" required /></label>
+                <label>Fecha desde<input id="empChangeDate" type="date" required /></label>
+                <label data-emp-change-end-date hidden>Fecha hasta<input id="empChangeDateEnd" type="date" /></label>
                 <label>Motivo
                   <select id="empChangeReason">
                     <option>Franco</option>
                     <option>Enfermedad</option>
                     <option>Cambio de turno</option>
                     <option>Vacaciones</option>
+                    <option>Licencia</option>
                   </select>
                 </label>
-                <label>Desde<input id="empChangeStart" type="time" value="08:00" required /></label>
-                <label>Hasta<input id="empChangeEnd" type="time" value="14:00" required /></label>
+                <label data-emp-change-time>Desde<input id="empChangeStart" type="time" value="08:00" required /></label>
+                <label data-emp-change-time>Hasta<input id="empChangeEnd" type="time" value="14:00" required /></label>
               </div>
+              <p class="form-note" data-emp-change-range-note hidden>VACACIONES y LICENCIA se aplican a jornada completa durante todo el intervalo.</p>
               <label>Nota<textarea id="empChangeNote" rows="2" placeholder="Detalle breve (opcional)"></textarea></label>
               <button class="primary-button" type="submit">Enviar solicitud</button>
             </form>
@@ -337,7 +340,7 @@
               <div>
                 <p class="eyebrow">Horario estacional</p>
                 <h3>Apertura de la tienda por día</h3>
-                <p class="form-note">Elegí un mes y modificá únicamente los días que necesites. Los demás conservan el horario predeterminado.</p>
+                <p class="form-note">Elegí un mes, completá apertura y cierre, y presioná GUARDAR en cada día modificado. Los demás conservan el horario predeterminado.</p>
               </div>
               <div class="store-hours-month-control">
                 <button class="icon-button" id="storeHoursPrevMonth" type="button" aria-label="Mes anterior de horarios">&#8249;</button>
@@ -404,8 +407,12 @@
             <form class="form-surface" id="changeForm">
               <div class="form-grid">
                 <label>
-                  Fecha
+                  Fecha desde
                   <input id="changeDate" type="date" required />
+                </label>
+                <label data-change-end-date hidden>
+                  Fecha hasta
+                  <input id="changeDateEnd" type="date" />
                 </label>
                 <label>
                   Team
@@ -418,12 +425,13 @@
                     <option>Enfermedad</option>
                     <option>Cambio de turno</option>
                     <option>Vacaciones</option>
+                    <option>Licencia</option>
                     <option>Reemplazo</option>
                     <option>Extra</option>
                     <option>Otro</option>
                   </select>
                 </label>
-                <label>
+                <label data-change-action-field>
                   Accion
                   <select id="changeAction">
                     <option value="absence">Quitar turno</option>
@@ -431,19 +439,20 @@
                     <option value="extra">Agregar extra</option>
                   </select>
                 </label>
-                <label>
+                <label data-change-time-field>
                   Desde
                   <input id="changeStart" type="time" value="08:00" required />
                 </label>
-                <label>
+                <label data-change-time-field>
                   Hasta
                   <input id="changeEnd" type="time" value="14:00" required />
                 </label>
-                <label>
+                <label data-change-replacement-field>
                   Reemplaza
                   <select id="replacementEmployee"></select>
                 </label>
               </div>
+              <p class="form-note" data-change-range-note hidden>VACACIONES y LICENCIA se aplican a jornada completa durante todo el intervalo.</p>
               <label>
                 Nota
                 <textarea id="changeNote" rows="3" placeholder="Detalle breve"></textarea>
@@ -881,6 +890,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=50"></script>
+    <script src="app.js?v=53"></script>
   </body>
 </html>

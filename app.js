@@ -518,6 +518,7 @@ const els = {
   emailLateReport: document.querySelector("#emailLateReport"),
   changeForm: document.querySelector("#changeForm"),
   changeDate: document.querySelector("#changeDate"),
+  changeDateEnd: document.querySelector("#changeDateEnd"),
   changeEmployee: document.querySelector("#changeEmployee"),
   changeReason: document.querySelector("#changeReason"),
   changeAction: document.querySelector("#changeAction"),
@@ -708,6 +709,8 @@ function bindEvents() {
   els.mockOnTime.addEventListener("click", createMockPunches);
   els.emailLateReport.addEventListener("click", sendLateReport);
   els.changeForm.addEventListener("submit", handleChangeRequest);
+  els.changeReason.addEventListener("change", syncAdminChangeForm);
+  els.changeDate.addEventListener("change", syncAdminChangeForm);
   els.trafficForm.addEventListener("submit", handleTrafficImport);
   els.loadTrafficSample.addEventListener("click", loadTrafficSample);
   els.trafficPrevMonth?.addEventListener("click", () => {
@@ -745,12 +748,53 @@ function populateSelectors() {
 function setTodayDefaults() {
   const today = toDateInput(new Date());
   els.changeDate.value = today;
+  els.changeDateEnd.value = today;
   els.holidayDate.value = today;
   document.querySelector('#finExpDate').value = today;
   const manualSaleDate = document.querySelector('#finManualSaleDate');
   if (manualSaleDate) manualSaleDate.value = today;
   const teamActiveFrom = document.querySelector('#teamMemberActiveFrom');
   if (teamActiveFrom) teamActiveFrom.value = today;
+  syncAdminChangeForm();
+}
+
+function syncAdminChangeForm() {
+  const leave = isLeaveReason(els.changeReason?.value);
+  const dateEndField = document.querySelector("[data-change-end-date]");
+  const rangeNote = document.querySelector("[data-change-range-note]");
+  if (!els.changeDateEnd) return;
+  els.changeDateEnd.min = els.changeDate.value || "";
+  if (!els.changeDateEnd.value || els.changeDateEnd.value < els.changeDate.value) {
+    els.changeDateEnd.value = els.changeDate.value;
+  }
+  els.changeDateEnd.required = leave;
+  dateEndField.hidden = !leave;
+  rangeNote.hidden = !leave;
+  document.querySelectorAll("[data-change-time-field]").forEach((field) => {
+    field.hidden = leave;
+    field.querySelector("input").disabled = leave;
+  });
+  document.querySelector("[data-change-action-field]").hidden = leave;
+  document.querySelector("[data-change-replacement-field]").hidden = leave;
+  els.replacementEmployee.disabled = leave;
+  if (leave) els.changeAction.value = "absence";
+}
+
+function syncEmployeeChangeForm() {
+  const reason = document.querySelector("#empChangeReason");
+  const date = document.querySelector("#empChangeDate");
+  const dateEnd = document.querySelector("#empChangeDateEnd");
+  if (!reason || !date || !dateEnd) return;
+  const leave = isLeaveReason(reason.value);
+  dateEnd.min = date.value || "";
+  if (!dateEnd.value || dateEnd.value < date.value) dateEnd.value = date.value;
+  dateEnd.required = leave;
+  document.querySelector("[data-emp-change-end-date]").hidden = !leave;
+  document.querySelector("[data-emp-change-range-note]").hidden = !leave;
+  document.querySelectorAll("[data-emp-change-time]").forEach((field) => {
+    field.hidden = leave;
+    field.querySelector("input").disabled = leave;
+  });
 }
 
 function normalizedAccessText(value) {
@@ -1106,7 +1150,7 @@ function renderChanges() {
             <span class="status-pill ${statusClass}">${statusLabel(change.status)}</span>
           </div>
           <div class="event-meta">
-            ${formatHumanDate(change.date)} · ${change.start}-${change.end} · ${change.reason}
+            ${formatChangeDateRange(change)} · ${isFullDayChange(change) ? "Jornada completa" : `${change.start}-${change.end}`} · ${change.reason}
             ${replacement ? ` · Reemplaza ${replacement}` : ""}
             ${change.note ? ` · ${escapeHtml(change.note)}` : ""}
           </div>
@@ -1349,22 +1393,33 @@ function createMockPunches() {
 
 function handleChangeRequest(event) {
   event.preventDefault();
+  const reason = els.changeReason.value;
+  const leave = isLeaveReason(reason);
+  const date = els.changeDate.value;
+  const endDate = leave ? els.changeDateEnd.value : date;
+  if (!date || !endDate || endDate < date) {
+    alert("La fecha hasta debe ser igual o posterior a la fecha desde.");
+    return;
+  }
   state.changes.push({
     id: createId(),
     locationId: activeLocationId,
-    date: els.changeDate.value,
+    date,
+    endDate,
     employeeId: els.changeEmployee.value,
-    replacementEmployeeId: els.replacementEmployee.value,
-    reason: els.changeReason.value,
-    action: els.changeAction.value,
-    start: els.changeStart.value,
-    end: els.changeEnd.value,
+    replacementEmployeeId: leave ? "" : els.replacementEmployee.value,
+    reason,
+    action: leave ? "absence" : els.changeAction.value,
+    start: leave ? "00:00" : els.changeStart.value,
+    end: leave ? "23:59" : els.changeEnd.value,
+    fullDay: leave,
     note: els.changeNote.value.trim(),
     status: "pending",
     createdAt: new Date().toISOString(),
   });
 
   els.changeNote.value = "";
+  saveState();
   render();
 }
 
@@ -1372,6 +1427,7 @@ function updateChangeStatus(id, status) {
   state.changes = state.changes.map((change) => {
     return change.id === id ? { ...change, status, reviewedAt: new Date().toISOString(), reviewedBy: "Administrador" } : change;
   });
+  saveState();
   render();
 }
 
@@ -1656,6 +1712,67 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
+function isLeaveReason(reason) {
+  const normalized = normalizedAccessText(reason);
+  return normalized === "vacaciones" || normalized === "licencia";
+}
+
+function getChangeEndDate(change) {
+  const candidate = change?.endDate || change?.dateEnd || change?.dateTo || change?.until;
+  return isDateKey(candidate) ? candidate : change?.date;
+}
+
+function changeAppliesToDate(change, dateKey) {
+  if (!isDateKey(change?.date) || !isDateKey(dateKey)) return false;
+  const endDate = getChangeEndDate(change) || change.date;
+  return dateKey >= change.date && dateKey <= endDate;
+}
+
+function isFullDayChange(change) {
+  return change?.fullDay === true || isLeaveReason(change?.reason);
+}
+
+function formatChangeDateRange(change) {
+  const endDate = getChangeEndDate(change);
+  if (!endDate || endDate === change.date) return formatHumanDate(change.date);
+  return `${formatHumanDate(change.date)} al ${formatHumanDate(endDate)}`;
+}
+
+function applyApprovedChangesToShifts(initialShifts, approvedChanges) {
+  let shifts = [...initialShifts];
+  approvedChanges.forEach((change) => {
+    const start = timeToDecimal(change.start);
+    const end = timeToDecimal(change.end);
+    if (change.action === "absence") {
+      if (isFullDayChange(change)) {
+        shifts = shifts.filter((shift) => shift.employeeId !== change.employeeId);
+        return;
+      }
+      shifts = shifts.filter((shift) => {
+        const sameEmployee = shift.employeeId === change.employeeId;
+        const overlaps = shift.start < end && shift.end > start;
+        return !(sameEmployee && overlaps);
+      });
+    }
+
+    if (change.action === "replace") {
+      shifts = shifts.filter((shift) => {
+        const sameEmployee = shift.employeeId === change.employeeId;
+        const overlaps = shift.start < end && shift.end > start;
+        return !(sameEmployee && overlaps);
+      });
+      if (change.replacementEmployeeId) {
+        shifts.push(makeShift(change.replacementEmployeeId, start, end, "reemplazo"));
+      }
+    }
+
+    if (change.action === "extra") {
+      shifts.push(makeShift(change.employeeId, start, end, "extra"));
+    }
+  });
+  return shifts;
+}
+
 function getBaseShifts(dateKey) {
   const date = parseDateKey(dateKey);
   const day = date.getDay();
@@ -1682,35 +1799,10 @@ function getBaseShifts(dateKey) {
 
 function getShiftsForDate(dateKey) {
   let shifts = getBaseShifts(dateKey);
-  const approved = getLocationChanges().filter((change) => change.date === dateKey && change.status === "approved");
-
-  approved.forEach((change) => {
-    const start = timeToDecimal(change.start);
-    const end = timeToDecimal(change.end);
-    if (change.action === "absence") {
-      shifts = shifts.filter((shift) => {
-        const sameEmployee = shift.employeeId === change.employeeId;
-        const overlaps = shift.start < end && shift.end > start;
-        return !(sameEmployee && overlaps);
-      });
-    }
-
-    if (change.action === "replace") {
-      shifts = shifts.filter((shift) => {
-        const sameEmployee = shift.employeeId === change.employeeId;
-        const overlaps = shift.start < end && shift.end > start;
-        return !(sameEmployee && overlaps);
-      });
-      if (change.replacementEmployeeId) {
-        shifts.push(makeShift(change.replacementEmployeeId, start, end, "reemplazo"));
-      }
-    }
-
-    if (change.action === "extra") {
-      shifts.push(makeShift(change.employeeId, start, end, "extra"));
-    }
-
-  });
+  const approved = getLocationChanges().filter((change) =>
+    change.status === "approved" && changeAppliesToDate(change, dateKey)
+  );
+  shifts = applyApprovedChangesToShifts(shifts, approved);
 
   return shifts
     .filter((shift) => getEmployeeLocationId(shift.employeeId) === activeLocationId)
@@ -1826,30 +1918,32 @@ function getMonthlyStoreCoverage(monthDate = activeMonth) {
   return getStoreCoverageForRange(toDateInput(first), toDateInput(last));
 }
 
-function saveOpeningOverride(dateKey, values) {
-  const settings = getLocationSettings();
+async function saveOpeningOverride(dateKey, values, locationId = activeLocationId) {
+  const settings = getLocationSettings(locationId);
   updateLocationSettings({
     monthlyOpeningHours: {
       ...(settings.monthlyOpeningHours || {}),
       [dateKey]: values,
     },
-  });
+  }, locationId);
   saveState();
-  if (dateKey.startsWith(monthInputValue(activeMonth))) {
+  if (locationId === activeLocationId && dateKey.startsWith(monthInputValue(activeMonth))) {
     renderSchedule();
     renderMetrics();
   }
+  return !sharedStateEnabled || persistSharedStateNow();
 }
 
-function resetOpeningOverride(dateKey) {
-  const monthlyOpeningHours = { ...(getLocationSettings().monthlyOpeningHours || {}) };
+async function resetOpeningOverride(dateKey, locationId = activeLocationId) {
+  const monthlyOpeningHours = { ...(getLocationSettings(locationId).monthlyOpeningHours || {}) };
   delete monthlyOpeningHours[dateKey];
-  updateLocationSettings({ monthlyOpeningHours });
+  updateLocationSettings({ monthlyOpeningHours }, locationId);
   saveState();
-  if (dateKey.startsWith(monthInputValue(activeMonth))) {
+  if (locationId === activeLocationId && dateKey.startsWith(monthInputValue(activeMonth))) {
     renderSchedule();
     renderMetrics();
   }
+  return !sharedStateEnabled || persistSharedStateNow();
 }
 
 function renderStoreHoursEditor() {
@@ -1857,6 +1951,7 @@ function renderStoreHoursEditor() {
   const canEdit = appRole === "admin";
   els.storeHoursEditor.hidden = !canEdit;
   if (!canEdit) return;
+  const editorLocationId = activeLocationId;
   const monthKey = monthInputValue(storeHoursActiveMonth);
   els.storeHoursMonth.value = monthKey;
   const rows = getMonthDays(storeHoursActiveMonth).map((date) => {
@@ -1881,7 +1976,11 @@ function renderStoreHoursEditor() {
           <input type="checkbox" data-store-closed${closed ? " checked" : ""} />
           <span>Cerrado</span>
         </label>
-        <button class="mini-button" type="button" data-store-reset${override ? "" : " disabled"}>Usar predeterminado</button>
+        <div class="store-hours-actions">
+          <button class="mini-button store-hours-save" type="button" data-store-save>Guardar</button>
+          <button class="mini-button" type="button" data-store-reset${override ? "" : " disabled"}>Predeterminado</button>
+          <small class="store-hours-feedback" data-store-feedback aria-live="polite"></small>
+        </div>
       </div>`;
   }).join("");
   els.storeHoursDays.innerHTML = `<div class="store-hours-list">${rows}</div>`;
@@ -1891,25 +1990,71 @@ function renderStoreHoursEditor() {
     const openInput = row.querySelector("[data-store-open]");
     const closeInput = row.querySelector("[data-store-close]");
     const closedInput = row.querySelector("[data-store-closed]");
-    const persist = () => {
+    const saveButton = row.querySelector("[data-store-save]");
+    const resetButton = row.querySelector("[data-store-reset]");
+    const feedback = row.querySelector("[data-store-feedback]");
+    const dateStatus = row.querySelector(".store-hours-date small");
+    const defaultSaveLabel = saveButton.textContent;
+
+    const setFeedback = (message = "", status = "") => {
+      feedback.textContent = message;
+      feedback.dataset.status = status;
+    };
+    const syncClosedInputs = () => {
+      openInput.disabled = closedInput.checked;
+      closeInput.disabled = closedInput.checked;
+      row.classList.toggle("is-closed", closedInput.checked);
+    };
+    const markPending = () => {
+      row.classList.add("is-dirty");
+      setFeedback("Cambios sin guardar", "pending");
+    };
+    const persist = async () => {
       const closed = closedInput.checked;
       if (!closed && (!openInput.value || !closeInput.value || openInput.value >= closeInput.value)) {
-        alert("La hora de cierre debe ser posterior a la apertura.");
-        renderStoreHoursEditor();
+        setFeedback("El cierre debe ser posterior a la apertura.", "error");
         return;
       }
-      saveOpeningOverride(dateKey, {
+      saveButton.disabled = true;
+      resetButton.disabled = true;
+      saveButton.textContent = "Guardando...";
+      setFeedback("Guardando en Netlify...", "saving");
+      const persisted = await saveOpeningOverride(dateKey, {
         open: openInput.value || getDefaultOpeningForDate(dateKey).open,
         close: closeInput.value || getDefaultOpeningForDate(dateKey).close,
         closed,
-      });
-      renderStoreHoursEditor();
+      }, editorLocationId);
+      saveButton.textContent = defaultSaveLabel;
+      saveButton.disabled = false;
+      resetButton.disabled = false;
+      if (!persisted) {
+        setFeedback("No se pudo confirmar en Netlify. Reintentá guardar.", "error");
+        return;
+      }
+      row.classList.remove("is-dirty");
+      row.classList.add("is-custom");
+      dateStatus.textContent = "Horario personalizado";
+      setFeedback("Guardado en Netlify", "success");
     };
-    openInput.addEventListener("change", persist);
-    closeInput.addEventListener("change", persist);
-    closedInput.addEventListener("change", persist);
-    row.querySelector("[data-store-reset]").addEventListener("click", () => {
-      resetOpeningOverride(dateKey);
+
+    openInput.addEventListener("input", markPending);
+    closeInput.addEventListener("input", markPending);
+    closedInput.addEventListener("change", () => {
+      syncClosedInputs();
+      markPending();
+    });
+    saveButton.addEventListener("click", persist);
+    resetButton.addEventListener("click", async () => {
+      resetButton.disabled = true;
+      saveButton.disabled = true;
+      setFeedback("Restaurando...", "saving");
+      const persisted = await resetOpeningOverride(dateKey, editorLocationId);
+      if (!persisted) {
+        resetButton.disabled = false;
+        saveButton.disabled = false;
+        setFeedback("No se pudo confirmar en Netlify. Reintentá.", "error");
+        return;
+      }
       renderStoreHoursEditor();
     });
   });
@@ -3365,6 +3510,8 @@ function bindEmployeeEvents() {
   document.querySelector("#cancelWaste").addEventListener("click", closeWasteModal);
   document.querySelector("#confirmWaste").addEventListener("click", confirmWasteAndPunch);
   document.querySelector("#empChangeForm").addEventListener("submit", handleEmpChangeForm);
+  document.querySelector("#empChangeReason").addEventListener("change", syncEmployeeChangeForm);
+  document.querySelector("#empChangeDate").addEventListener("change", syncEmployeeChangeForm);
 
   document.querySelector("#empPrevMonth").addEventListener("click", () => {
     activeMonth = addMonths(activeMonth, -1);
@@ -3383,7 +3530,10 @@ function bindEmployeeEvents() {
     renderEmpHours();
   });
 
-  document.querySelector("#empChangeDate").value = toDateInput(new Date());
+  const today = toDateInput(new Date());
+  document.querySelector("#empChangeDate").value = today;
+  document.querySelector("#empChangeDateEnd").value = today;
+  syncEmployeeChangeForm();
   document.querySelector("#empProfileForm").addEventListener("submit", handleEmpProfileForm);
   bindPastryEvents(document.querySelector("#empPastryContent"));
 }
@@ -3603,10 +3753,10 @@ function renderEmpChanges() {
       return `
         <article class="event-item">
           <div class="event-topline">
-            <span>${actionLabel(c.action)} · ${formatHumanDate(c.date)}</span>
+            <span>${actionLabel(c.action)} · ${formatChangeDateRange(c)}</span>
             <span class="status-pill ${statusClass}">${statusLabel(c.status)}</span>
           </div>
-          <div class="event-meta">${c.start}–${c.end} · ${c.reason}${c.note ? " · " + escapeHtml(c.note) : ""}</div>
+          <div class="event-meta">${isFullDayChange(c) ? "Jornada completa" : `${c.start}–${c.end}`} · ${c.reason}${c.note ? " · " + escapeHtml(c.note) : ""}</div>
         </article>`;
     })
     .join("");
@@ -4833,16 +4983,26 @@ function readFichaForm(form) {
 
 function handleEmpChangeForm(event) {
   event.preventDefault();
+  const reason = document.querySelector("#empChangeReason").value;
+  const leave = isLeaveReason(reason);
+  const date = document.querySelector("#empChangeDate").value;
+  const endDate = leave ? document.querySelector("#empChangeDateEnd").value : date;
+  if (!date || !endDate || endDate < date) {
+    alert("La fecha hasta debe ser igual o posterior a la fecha desde.");
+    return;
+  }
   state.changes.push({
     id: createId(),
     locationId: activeLocationId,
-    date: document.querySelector("#empChangeDate").value,
+    date,
+    endDate,
     employeeId: activeEmployeeId,
     replacementEmployeeId: "",
-    reason: document.querySelector("#empChangeReason").value,
+    reason,
     action: "absence",
-    start: document.querySelector("#empChangeStart").value,
-    end: document.querySelector("#empChangeEnd").value,
+    start: leave ? "00:00" : document.querySelector("#empChangeStart").value,
+    end: leave ? "23:59" : document.querySelector("#empChangeEnd").value,
+    fullDay: leave,
     note: document.querySelector("#empChangeNote").value.trim(),
     status: "pending",
     createdAt: new Date().toISOString(),
@@ -5931,7 +6091,7 @@ function renderFinHoy() {
     <div class="fin-kpi-card">
       <span>Cross-selling</span>
       <strong>${formatCrossSelling(m.crossSelling)}</strong>
-      <small>Café + alimento en el mismo ticket</small>
+      <small>Total cafés ÷ total pastelería del período</small>
     </div>
     <div class="fin-kpi-card">
       <span>Gastos ${dayText}</span>
@@ -5966,7 +6126,7 @@ function renderFinHoy() {
     crossEl.innerHTML = `
       <div class="fin-cross-result">
         <strong>${formatCrossSelling(m.crossSelling)}</strong>
-        <span>${formatQuantity(m.crossSelling.coffeeQty)} cafés · ${formatQuantity(m.crossSelling.pairedFoodQty)} alimentos vendidos junto con café</span>
+        <span>${formatQuantity(m.crossSelling.coffeeQty)} cafés · ${formatQuantity(m.crossSelling.foodQty)} productos de pastelería dulces o salados</span>
         <small>${m.crossSelling.ticketsWithDetail} de ${m.ticketCount} tickets con detalle de artículos</small>
       </div>
     `;
@@ -8199,9 +8359,9 @@ function renderFinAi() {
 
 // -------- METRICS --------
 
-const COFFEE_ITEM_PATTERN = /\b(cafe|coffee|espresso|ristretto|americano|cortado|macchiato|capuccino|cappuccino|latte|flat\s*white|mocca|mocha|cold\s*brew|nitro|frappe|frappuccino|affogato|v60|chemex|aeropress|batch\s*brew|filter\s*coffee|cafe\s*filtrado|cafe\s*con\s*hielo|iced\s*(coffee|latte|americano|mocha|cappuccino)|freddo)\b/i;
+const COFFEE_ITEM_PATTERN = /\b(cafe|coffee|espresso|ristretto|americano|cortado|macchiato|capuccino|cappuccino|latte|flat\s*white|mocca|mocha|cold\s*brew|nitro|frappe|frappuccino|affogato|v60|chemex|aeropress|batch\s*brew|filter\s*coffee|cafe\s*filtrado|cafe\s*con\s*hielo|iced\s*(coffee|latte|americano|mocha|cappuccino)|freddo|shakerato|mazagran|bombon|carajillo|long\s*black|red\s*eye|black\s*eye|piccolo|cafe\s*au\s*lait|irish\s*coffee)\b/i;
 const NON_FOOD_ITEM_PATTERN = /\b(agua|water|refresco|soda|cola|fanta|sprite|zumo|jugo|juice|cerveza|beer|vino|wine|te|matcha|chai|leche|milk|bebida|drink|kombucha|limonada)\b/i;
-const FOOD_ITEM_PATTERN = /\b(croissant|cruasan|medialuna|tostad[ao]|toast|sandwich|bocadillo|bagel|cookie|galleta|brownie|muffin|cake|tarta|pastel|bizcocho|boll|roll|rollo|pan|bread|empanada|quiche|ensalada|salad|yogur|yogurt|granola|avocado|aguacate|jamon|queso|cheese|comida|food|brunch|desayuno|breakfast|pasteleria|bakery|dulce|salado|focaccia|pizza|tortilla|huevo|egg|waffle|gofre|pancake|crepe|donut|dona|alfajor|barrita|snack|fruta|fruit|banana|platano|palmera|napolitana|scone|babka|chipa|cheesecake|tiramis|carrot|zanahoria|canela|cinnamon|pain\s*au\s*chocolat)\b/i;
+const FOOD_ITEM_PATTERN = /\b(croissant|cruasan|medialuna|tostad[ao]|toast|sandwich|bocadillo|bagel|cookie|galleta|brownie|muffin|cake|tarta|pastel|pastelito|bizcocho|budin|boll|roll|rollo|pan|bread|empanada|quiche|ensalada|salad|yogur|yogurt|granola|avocado|aguacate|jamon|queso|cheese|comida|food|brunch|desayuno|breakfast|pasteleria|bakery|dulce|salado|focaccia|pizza|tortilla|huevo|egg|waffle|gofre|pancake|crepe|donut|dona|alfajor|barrita|snack|fruta|fruit|banana|platano|datil|date|palmera|napolitana|scone|babka|brioche|financier|canele|churro|torrija|cupcake|macaron|merengue|flan|chipa|cheesecake|tiramis|carrot|zanahoria|canela|cinnamon|pain\s*suisse|pain\s*au\s*chocolat)\b/i;
 
 function normalizeItemText(item) {
   return itemName(item).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -8219,24 +8379,24 @@ function isFoodItem(item) {
 
 function calculateCrossSelling(sales) {
   let coffeeQty = 0;
-  let pairedFoodQty = 0;
+  let foodQty = 0;
   let ticketsWithDetail = 0;
 
+  // Compara los totales del periodo completo: cafe y pasteleria no necesitan
+  // estar dentro del mismo ticket.
   sales.forEach((sale) => {
     const items = Array.isArray(sale.items) ? sale.items : [];
     if (!items.length) return;
-    ticketsWithDetail += 1;
-    const ticketCoffeeQty = items.filter(isCoffeeItem).reduce((sum, item) => sum + itemQuantity(item), 0);
-    if (ticketCoffeeQty <= 0) return;
-    coffeeQty += ticketCoffeeQty;
-    pairedFoodQty += items.filter(isFoodItem).reduce((sum, item) => sum + itemQuantity(item), 0);
+    ticketsWithDetail += Number(sale.count || 1);
+    coffeeQty += items.filter(isCoffeeItem).reduce((sum, item) => sum + itemQuantity(item), 0);
+    foodQty += items.filter(isFoodItem).reduce((sum, item) => sum + itemQuantity(item), 0);
   });
 
   return {
     coffeeQty,
-    pairedFoodQty,
+    foodQty,
     ticketsWithDetail,
-    coffeesPerFood: pairedFoodQty > 0 ? coffeeQty / pairedFoodQty : 0,
+    coffeesPerFood: foodQty > 0 ? coffeeQty / foodQty : 0,
   };
 }
 
@@ -8279,10 +8439,10 @@ function formatItemCoverage(metric) {
 function formatCrossSelling(metric) {
   if (!metric?.ticketsWithDetail) return '—';
   if (!metric.coffeeQty) return '0 cafés';
-  if (!metric.pairedFoodQty) return '0 alimentos';
+  if (!metric.foodQty) return '0 productos';
   const ratio = metric.coffeesPerFood;
   const value = ratio >= 10 ? ratio.toFixed(0) : ratio.toFixed(1).replace('.', ',');
-  return `1 cada ${value} cafés`;
+  return `1 producto cada ${value} cafés`;
 }
 
 function calcDayMetricsForLocation(date, locationId = activeLocationId) {
