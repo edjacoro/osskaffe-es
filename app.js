@@ -4947,6 +4947,7 @@ let finBistroSync = {
   historyProgress: null,
   detailJobs: {},
   detailStarting: false,
+  autoMissingBackfillRequested: false,
   dayJobs: {},
   dayPollTimers: {},
   timer: null,
@@ -5094,11 +5095,13 @@ async function initBistrosoftSync() {
     await syncBistrosoftMonth(true);
     await refreshBistroDetailStatus();
     await syncBistrosoftRecent();
+    startBistrosoftMissingBackfillOnce();
 
     if (!finBistroSync.timer) {
       finBistroSync.timer = setInterval(() => {
         syncBistrosoftRecent();
         refreshBistroDetailStatus();
+        startBistrosoftMissingBackfillOnce();
       }, BISTROSOFT_SYNC_INTERVAL_MS);
     }
   } catch (_) {
@@ -5127,6 +5130,32 @@ function detailJobStatusText(locationId, job) {
   }
   const coverage = Number(job.coveragePercent || 0).toLocaleString('es-ES', { maximumFractionDigits: 1 });
   return `${code}: ${coverage}% de cobertura (${job.detailTickets || 0}/${job.totalTickets || 0} tickets)`;
+}
+
+async function startBistrosoftMissingBackfillOnce() {
+  if (finBistroSync.autoMissingBackfillRequested || finBistroSync.available === false) return;
+  finBistroSync.autoMissingBackfillRequested = true;
+  try {
+    const response = await fetch('/api/bistrosoft/details-auto-start', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || 'No se pudo iniciar la carga automatica de productos faltantes.');
+    }
+    if (payload.jobs && Object.keys(payload.jobs).length) {
+      finBistroSync.detailJobs = { ...(finBistroSync.detailJobs || {}), ...payload.jobs };
+      renderFinSyncStatus();
+    }
+    if (Array.isArray(payload.errors) && payload.errors.length) {
+      finBistroSync.autoMissingBackfillRequested = false;
+    }
+  } catch (_) {
+    // Se vuelve a intentar en el siguiente control automatico sin frenar la app.
+    finBistroSync.autoMissingBackfillRequested = false;
+  }
 }
 
 function bistroDayJobKey(locationId, date) {
@@ -5616,6 +5645,8 @@ function renderFinSyncStatus() {
   button.textContent = finBistroSync.available === false ? 'Reintentar conexion' : 'Sincronizar ahora';
   const detailEntries = Object.entries(finBistroSync.detailJobs || {}).filter(([, job]) => job);
   const detailActive = detailEntries.some(([, job]) => detailJobIsActive(job));
+  const missingBackfillActive = detailEntries.some(([, job]) => job.mode === 'missing' && detailJobIsActive(job));
+  const missingBackfillPresent = detailEntries.some(([, job]) => job.mode === 'missing');
   historyButton.textContent = detailActive ? 'Productos en proceso' : 'Completar productos';
   historyButton.title = detailEntries
     .flatMap(([locationId, job]) => (job.partialMonths || []).map((month) =>
@@ -5660,13 +5691,17 @@ function renderFinSyncStatus() {
   }
 
   if (detailActive) {
-    title.textContent = 'Completando productos historicos en segundo plano';
+    title.textContent = missingBackfillActive
+      ? 'Completando productos faltantes de meses pasados'
+      : 'Completando productos historicos en segundo plano';
     detail.textContent = `${detailEntries.map(([locationId, job]) => detailJobStatusText(locationId, job)).join(' | ')} | Podes seguir usando la app.`;
     return;
   }
 
   if (detailEntries.length && detailEntries.every(([, job]) => ['complete', 'complete_partial'].includes(job.status))) {
-    title.textContent = 'Historial de productos verificado';
+    title.textContent = missingBackfillPresent
+      ? 'Carga unica de productos pasados finalizada'
+      : 'Historial de productos verificado';
     detail.textContent = detailEntries.map(([locationId, job]) => detailJobStatusText(locationId, job)).join(' | ');
     return;
   }

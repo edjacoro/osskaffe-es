@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { datesForMonths, nextDateKey, summarizeDetailJob } from "../netlify/functions/_bistro-detail-queue.mjs";
+import { datesForMonths, missingBistroDetailDates, nextDateKey, summarizeDetailJob } from "../netlify/functions/_bistro-detail-queue.mjs";
 import { isValidBistroDay, nextBistroDay, summarizeDayDetailJob } from "../netlify/functions/_bistro-detail-day.mjs";
 import { bistroDetailFetchOptions, mergeAdminState } from "../netlify/functions/_shared.mjs";
 
@@ -9,6 +9,16 @@ assert.deepEqual(
   datesForMonths(["2026-07", "2026-08"], "2026-08-02").slice(-3),
   ["2026-07-31", "2026-08-01", "2026-08-02"],
 );
+
+const missingDates = missingBistroDetailDates([
+  { _source: "bistrosoft", locationId: "barcelona", date: "2026-06-29", items: [] },
+  { _source: "bistrosoft", locationId: "barcelona", date: "2026-06-29" },
+  { _source: "bistrosoft", locationId: "barcelona", date: "2026-06-30", items: [{ name: "Cafe" }] },
+  { _source: "bistrosoft", locationId: "madrid", date: "2026-06-28", items: [] },
+  { _source: "manual", locationId: "barcelona", date: "2026-06-27", items: [] },
+  { _source: "bistrosoft", locationId: "barcelona", date: "2026-07-01", items: [] },
+], "barcelona", "2026-07-01");
+assert.deepEqual(missingDates, ["2026-06-29"]);
 
 assert.deepEqual(
   bistroDetailFetchOptions("2026-06-29", "2026-06-30", true),

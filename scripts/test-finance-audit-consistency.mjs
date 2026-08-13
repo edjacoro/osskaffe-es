@@ -45,6 +45,16 @@ assert.match(
   /details-day-start/,
   "La reparacion puntual debe usar su propio trabajo de fondo.",
 );
+assert.match(
+  appSource,
+  /startBistrosoftMissingBackfillOnce\(\)/,
+  "La apertura como administrador debe iniciar la carga unica de dias pasados incompletos.",
+);
+assert.match(
+  appSource,
+  /details-auto-start/,
+  "La carga unica debe quedar controlada por Netlify y no por el navegador.",
+);
 
 const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 assert.match(html, /class="role-back-button" id="backToStep1a"/);

@@ -6,11 +6,16 @@ import {
 } from "./_shared.mjs";
 
 const JOB_PREFIX = "bistro-detail-backfill";
+const AUTO_MISSING_PREFIX = "bistro-detail-auto-missing";
 const WORKER_SCOPE = "bistro-details";
 const LOCK_MS = 11 * 60 * 1000;
 
 function jobKey(locationId) {
   return `${JOB_PREFIX}-${normalizeLocationId(locationId)}`;
+}
+
+function autoMissingKey(locationId) {
+  return `${AUTO_MISSING_PREFIX}-${normalizeLocationId(locationId)}`;
 }
 
 function isoNow() {
@@ -34,6 +39,43 @@ export function datesForMonths(months = [], today = new Date().toISOString().sli
     }
   });
   return [...dates].sort();
+}
+
+export function missingBistroDetailDates(
+  sales = [],
+  locationId,
+  beforeDate = new Date().toISOString().slice(0, 10),
+) {
+  const id = normalizeLocationId(locationId);
+  return [...new Set(
+    sales
+      .filter((sale) =>
+        sale?._source === "bistrosoft"
+        && normalizeLocationId(sale.locationId) === id
+        && /^\d{4}-\d{2}-\d{2}$/.test(String(sale.date || ""))
+        && sale.date < beforeDate
+        && (!Array.isArray(sale.items) || sale.items.length === 0)
+      )
+      .map((sale) => sale.date),
+  )].sort();
+}
+
+export async function readAutoMissingVersion(locationId) {
+  return await stateStore().get(autoMissingKey(locationId), {
+    type: "json",
+    consistency: "strong",
+  }) || null;
+}
+
+export async function markAutoMissingVersion(locationId, version, values = {}) {
+  const record = {
+    version,
+    locationId: normalizeLocationId(locationId),
+    markedAt: isoNow(),
+    ...values,
+  };
+  await stateStore().setJSON(autoMissingKey(locationId), record);
+  return record;
 }
 
 export async function readDetailJob(locationId) {
@@ -95,6 +137,53 @@ export async function createHistoricalDetailJob(locationId, { forceRetry = false
         ? Object.fromEntries(Object.entries(current.dateAttempts || {}).filter(([date]) => current.results?.[date]?.status === "complete"))
         : { ...(current.dateAttempts || {}) },
       totalDays: Object.keys(current.results || {}).length,
+    };
+  });
+  return { job, reused };
+}
+
+export async function createMissingDetailJob(locationId, dates = []) {
+  const requestedDates = [...new Set(
+    dates.filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))),
+  )].sort();
+  let reused = false;
+  const job = await updateDetailJob(locationId, (current) => {
+    if (current && ["queued", "running"].includes(current.status)) {
+      reused = true;
+      const pendingSet = new Set(current.pendingDates || []);
+      const pendingDates = [...(current.pendingDates || [])];
+      requestedDates.forEach((date) => {
+        if (!pendingSet.has(date) && current.currentDate !== date) {
+          pendingSet.add(date);
+          pendingDates.push(date);
+        }
+      });
+      const results = { ...(current.results || {}) };
+      const dateAttempts = { ...(current.dateAttempts || {}) };
+      requestedDates.forEach((date) => {
+        if (results[date]) results[date] = { ...results[date], status: "retrying" };
+        delete dateAttempts[date];
+      });
+      return {
+        ...current,
+        forceRetry: true,
+        pendingDates,
+        results,
+        dateAttempts,
+        totalDays: Math.max(
+          Number(current.totalDays || 0),
+          new Set([...Object.keys(results), ...pendingDates, ...(current.currentDate ? [current.currentDate] : [])]).size,
+        ),
+        completedAt: null,
+        lastError: null,
+        updatedAt: isoNow(),
+      };
+    }
+
+    return {
+      ...baseJob(locationId, { mode: "missing", forceRetry: true }),
+      pendingDates: requestedDates,
+      totalDays: requestedDates.length,
     };
   });
   return { job, reused };

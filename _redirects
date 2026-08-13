@@ -11,5 +11,6 @@
 /api/bistrosoft/details /.netlify/functions/bistro-details-background 200
 /api/bistrosoft/details-start /.netlify/functions/bistro-details-start 200
 /api/bistrosoft/details-status /.netlify/functions/bistro-details-status 200
+/api/bistrosoft/details-auto-start /.netlify/functions/bistro-details-auto-start 200
 /api/bistrosoft/details-day-start /.netlify/functions/bistro-details-day-start 200
 /api/bistrosoft/details-day-status /.netlify/functions/bistro-details-day-status 200
