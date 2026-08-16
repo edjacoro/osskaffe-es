@@ -494,10 +494,19 @@
               <form class="form-surface" id="teamMemberForm">
                 <h3>Agregar personal</h3>
                 <p class="form-note">El empleado completará su ficha y contraseña en el primer acceso.</p>
+                <label class="payroll-toggle team-test-toggle">
+                  <span>
+                    <strong>Empleado de prueba</strong>
+                    <small>Para armar grillas futuras. Se puede borrar definitivamente desde Fichas.</small>
+                  </span>
+                  <input id="teamMemberIsTest" type="checkbox" />
+                  <span class="payroll-toggle-ui" data-on="Sí" data-off="No"></span>
+                </label>
+                <p class="form-note" id="teamMemberTestNote" hidden>Solo necesita nombre, sucursal y fecha de alta. Después podés armar sus días y horarios desde la ficha.</p>
                 <label>Nombre visible<input id="teamMemberName" type="text" placeholder="Nombre" required /></label>
                 <div class="form-grid">
-                  <label>Rol<input id="teamMemberRole" type="text" placeholder="Barista" required /></label>
-                  <label>Área
+                  <label data-standard-team-field>Rol<input id="teamMemberRole" type="text" placeholder="Barista" required /></label>
+                  <label data-standard-team-field>Área
                     <select id="teamMemberArea">
                       <option value="Barista">Barista</option>
                       <option value="Pasteleria">Pastelería</option>
@@ -512,7 +521,7 @@
                   <label>Alta desde
                     <input id="teamMemberActiveFrom" type="date" required />
                   </label>
-                  <label>Color<input id="teamMemberColor" type="color" value="#416877" /></label>
+                  <label data-standard-team-field>Color<input id="teamMemberColor" type="color" value="#416877" /></label>
                 </div>
                 <button class="primary-button" type="submit">Agregar al Team</button>
                 <p class="team-save-status" id="teamMemberSaveStatus" role="status">Los cambios de personal se guardarán en Netlify.</p>
@@ -891,6 +900,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=57"></script>
+    <script src="app.js?v=58"></script>
   </body>
 </html>

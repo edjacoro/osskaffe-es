@@ -577,6 +577,7 @@ async function refreshTeamDirectory() {
     const serverIds = new Set(payload.employees.map((employee) => employee.id));
     const localOnlyEmployees = (state.employees || []).filter((employee) =>
       employee.id !== 'pablo'
+      && employee.testEmployee !== true
       && !serverIds.has(employee.id)
       && !DEFAULT_EMPLOYEES.some((defaultEmployee) => defaultEmployee.id === employee.id)
     );
@@ -1006,7 +1007,7 @@ function render() {
 function renderLegend() {
   const hidden = getHiddenGridEmployees();
   const monthDays = getMonthDays(activeMonth).map(toDateInput);
-  els.employeeLegend.innerHTML = getEmployees().map((employee) => {
+  els.employeeLegend.innerHTML = getEmployeesForMonth(activeMonth).map((employee) => {
     const monthlyHours = monthDays.reduce((total, dateKey) =>
       total + getShiftsForDate(dateKey)
         .filter((shift) => shift.employeeId === employee.id)
@@ -1595,14 +1596,14 @@ function enqueueSharedMutation(task) {
   return run;
 }
 
-async function sendSharedMutation(url, body, fallback) {
+async function sendSharedMutation(url, body, fallback, method = "PUT") {
   if (!sharedStateEnabled) return { ok: true, local: true, payload: null };
   return enqueueSharedMutation(async () => {
     let lastError = fallback;
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
         const response = await fetch(url, {
-          method: "PUT",
+          method,
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -2290,6 +2291,22 @@ function getAllEmployees(includeInactive = false) {
   return includeInactive ? employees : employees.filter((employee) => isEmployeeActiveOnDate(employee));
 }
 
+function isEmployeeActiveDuringMonth(employee, monthDate) {
+  if (!employee) return false;
+  const monthKey = monthInputValue(monthDate);
+  const monthStart = `${monthKey}-01`;
+  const monthEnd = toDateInput(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0));
+  if (employee.activeFrom && employee.activeFrom > monthEnd) return false;
+  if (employee.active === false) {
+    return Boolean(employee.inactiveFrom && employee.inactiveFrom > monthStart);
+  }
+  return !employee.inactiveFrom || employee.inactiveFrom > monthStart;
+}
+
+function getEmployeesForMonth(monthDate = activeMonth) {
+  return getEmployees(true).filter((employee) => isEmployeeActiveDuringMonth(employee, monthDate));
+}
+
 function isEmployeeActiveOnDate(employee, dateKey = toDateInput(new Date())) {
   if (!employee) return false;
   if (employee.activeFrom && dateKey < employee.activeFrom) return false;
@@ -2788,6 +2805,7 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
       const recoverableEmployees = role === "admin"
         ? [...recoveryById.values()].filter((employee) =>
             employee.id !== "pablo"
+            && employee.testEmployee !== true
             && !serverIds.has(employee.id)
             && !DEFAULT_EMPLOYEES.some((defaultEmployee) => defaultEmployee.id === employee.id)
           )
@@ -3552,6 +3570,8 @@ function setAdminMode(locationId = DEFAULT_LOCATION_ID) {
     render();
     initBistrosoftSync();
   }
+  const teamLocation = document.querySelector('#teamMemberLocation');
+  if (teamLocation) teamLocation.value = activeLocationId;
 }
 
 async function enterEmployeeMode(employeeId) {
@@ -4173,7 +4193,20 @@ function initFichasContratos() {
       if (activeFichasTab === 'personal') renderPersonnelPanel();
     });
   });
+  document.querySelector('#teamMemberIsTest')?.addEventListener('change', updateTeamMemberFormMode);
+  updateTeamMemberFormMode();
   document.querySelector('#teamMemberForm').addEventListener('submit', handleTeamMemberForm);
+}
+
+function updateTeamMemberFormMode() {
+  const isTest = document.querySelector('#teamMemberIsTest')?.checked === true;
+  document.querySelectorAll('[data-standard-team-field]').forEach((field) => {
+    field.hidden = isTest;
+  });
+  const roleInput = document.querySelector('#teamMemberRole');
+  if (roleInput) roleInput.required = !isTest;
+  const note = document.querySelector('#teamMemberTestNote');
+  if (note) note.hidden = !isTest;
 }
 
 function teamMemberId(name) {
@@ -4236,11 +4269,41 @@ function persistTeamMemberNow(employeeId) {
   );
 }
 
+function removeTestEmployeeFromLocalState(employeeId) {
+  const employee = (state.employees || []).find((item) => item.id === employeeId);
+  if (!employee?.testEmployee) return false;
+  state.employees = (state.employees || []).filter((item) => item.id !== employeeId);
+  state.punches = (state.punches || []).filter((item) => item.employeeId !== employeeId);
+  state.wasteRecords = (state.wasteRecords || []).filter((item) => item.employeeId !== employeeId);
+  state.changes = (state.changes || []).filter((item) =>
+    item.employeeId !== employeeId && item.replacementEmployeeId !== employeeId
+  );
+  ['profiles', 'baseSchedules', 'contracts'].forEach((key) => {
+    if (state[key]) delete state[key][employeeId];
+    if (pendingTeamRecoverySnapshot[key]) delete pendingTeamRecoverySnapshot[key][employeeId];
+  });
+  Object.values(state.payrollSettlements || {}).forEach((locationMonths) => {
+    Object.values(locationMonths || {}).forEach((month) => {
+      if (month) delete month[employeeId];
+    });
+  });
+  pendingTeamRecoverySnapshot.employees = pendingTeamRecoverySnapshot.employees
+    .filter((item) => item.id !== employeeId);
+  hiddenGridEmployees.forEach((hidden) => hidden.delete(employeeId));
+  if (activeAdminFichaEditId === employeeId) {
+    activeAdminFichaEditId = null;
+    adminFichaEditDraft = null;
+    adminBaseScheduleEditDraft = null;
+  }
+  return true;
+}
+
 async function handleTeamMemberForm(event) {
   event.preventDefault();
+  const isTest = document.querySelector('#teamMemberIsTest')?.checked === true;
   const label = document.querySelector('#teamMemberName').value.trim();
-  const role = document.querySelector('#teamMemberRole').value.trim();
-  const area = document.querySelector('#teamMemberArea').value;
+  const role = isTest ? 'Prueba' : document.querySelector('#teamMemberRole').value.trim();
+  const area = isTest ? 'Prueba' : document.querySelector('#teamMemberArea').value;
   const locationId = normalizeLocationId(document.querySelector('#teamMemberLocation')?.value || activeLocationId);
   const activeFrom = document.querySelector('#teamMemberActiveFrom')?.value || toDateInput(new Date());
   const color = document.querySelector('#teamMemberColor').value || '#416877';
@@ -4254,7 +4317,8 @@ async function handleTeamMemberForm(event) {
     color,
     locationId,
     active: true,
-    canLogin: true,
+    canLogin: !isTest,
+    testEmployee: isTest,
     activeFrom,
   };
   const profile = { area, locationId };
@@ -4275,6 +4339,7 @@ async function handleTeamMemberForm(event) {
   document.querySelector('#teamMemberLocation').value = activeLocationId;
   document.querySelector('#teamMemberActiveFrom').value = toDateInput(new Date());
   document.querySelector('#teamMemberColor').value = '#416877';
+  updateTeamMemberFormMode();
   populateSelectors();
   renderEmployeeChoiceButtons();
   render();
@@ -4302,7 +4367,7 @@ function renderPersonnelPanel() {
         <div class="event-topline">
           <span><span class="legend-swatch" style="background:${color}"></span>${escapeHtml(employee.label)}</span>
           <span class="status-pill ${former ? 'status-rejected' : upcoming ? 'status-pending' : 'status-approved'}">
-            ${former ? 'Baja' : upcoming ? 'Alta futura' : scheduledEnd ? 'Baja programada' : 'Activo'}
+            ${employee.testEmployee ? 'Prueba' : former ? 'Baja' : upcoming ? 'Alta futura' : scheduledEnd ? 'Baja programada' : 'Activo'}
           </span>
         </div>
         <div class="event-meta">
@@ -4835,10 +4900,11 @@ function renderAdminFichas() {
       <div class="ficha-card${emp.active === false ? ' is-inactive' : ''}${isEditing ? ' is-editing' : ''}" data-ficha-card="${emp.id}">
         <div class="ficha-header" style="background:${emp.color}">
           <div class="ficha-name">${escapeHtml(emp.label)}</div>
-          <div class="ficha-role">${escapeHtml(emp.role)}${emp.active === false ? ' · Baja' : ''}</div>
+          <div class="ficha-role">${escapeHtml(emp.role)}${emp.testEmployee ? ' · Empleado de prueba' : emp.active === false ? ' · Baja' : ''}</div>
         </div>
         <div class="ficha-card-actions">
           <button class="mini-button" type="button" data-edit-ficha="${emp.id}"${isEditing ? ' hidden' : ''}>Editar ficha</button>
+          ${emp.testEmployee ? `<button class="mini-button danger" type="button" data-delete-test-employee="${emp.id}"${isEditing ? ' hidden' : ''}>Borrar prueba</button>` : ''}
         </div>
         <div class="ficha-body" data-ficha-view="${emp.id}"${isEditing ? ' hidden' : ''}>
           ${rows}
@@ -4943,6 +5009,32 @@ function renderAdminFichas() {
       adminFichaEditDraft = null;
       adminBaseScheduleEditDraft = null;
       renderAdminFichas();
+    });
+  });
+
+  container.querySelectorAll("[data-delete-test-employee]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const employeeId = button.dataset.deleteTestEmployee;
+      const employee = state.employees.find((item) => item.id === employeeId);
+      if (!employee?.testEmployee) return;
+      if (!confirm(`¿Borrar definitivamente a ${employee.label}? Se eliminarán su ficha, su grilla y todos sus datos de prueba.`)) return;
+      button.disabled = true;
+      const result = await sendSharedMutation(
+        '/api/team',
+        { employeeId },
+        'No se pudo borrar el empleado de prueba en Netlify.',
+        'DELETE',
+      );
+      if (!result.ok) {
+        button.disabled = false;
+        alert(result.error || 'No se pudo borrar el empleado de prueba.');
+        return;
+      }
+      removeTestEmployeeFromLocalState(employeeId);
+      saveState({ shared: false });
+      populateSelectors();
+      renderEmployeeChoiceButtons();
+      render();
     });
   });
 

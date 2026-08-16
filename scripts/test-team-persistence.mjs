@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
+  deleteTestTeamMemberState,
   mergeFullStatePreservingTeam,
   publicTeamEmployees,
   upsertTeamMemberState,
@@ -79,4 +81,58 @@ const afterStaleSave = mergeFullStatePreservingTeam(incognitoState, staleBrowser
 assert(afterStaleSave.employees.some((employee) => employee.id === "lucia-madrid"),
   "Una copia completa antigua no debe borrar empleados ya guardados en Netlify.");
 
-console.log("OK: altas, bajas programadas, historial y lectura sin cache persisten correctamente.");
+persistedState = upsertTeamMemberState(persistedState, {
+  employee: {
+    id: "mock-septiembre",
+    label: "Mock",
+    role: "Prueba",
+    color: "#416877",
+    locationId: "madrid",
+    active: true,
+    canLogin: false,
+    testEmployee: true,
+    activeFrom: "2026-09-01",
+  },
+  profile: { area: "Prueba" },
+  baseSchedule: { mode: "weekly", weeks: { a: { 2: [{ start: "08:00", end: "14:00" }] }, b: {} } },
+  contract: { hoursPerWeek: 0 },
+});
+persistedState.punches = [{ id: "p-mock", employeeId: "mock-septiembre" }];
+persistedState.changes = [{ id: "c-mock", employeeId: "mock-septiembre" }];
+persistedState.wasteRecords = [{ id: "w-mock", employeeId: "mock-septiembre" }];
+persistedState.payrollSettlements = { madrid: { "2026-09": { "mock-septiembre": { advance: 20 } } } };
+assert.equal(persistedState.employees.find((employee) => employee.id === "mock-septiembre")?.testEmployee, true,
+  "El alta de prueba debe conservar su marca especial.");
+assert(!publicTeamEmployees(persistedState, "2026-09-02").some((employee) => employee.id === "mock-septiembre"),
+  "Un empleado de prueba no debe aparecer en el ingreso del Team.");
+
+persistedState = deleteTestTeamMemberState(persistedState, "mock-septiembre");
+assert(!persistedState.employees.some((employee) => employee.id === "mock-septiembre"),
+  "El empleado de prueba debe borrarse definitivamente.");
+assert.equal(persistedState.profiles["mock-septiembre"], undefined);
+assert.equal(persistedState.baseSchedules["mock-septiembre"], undefined);
+assert.equal(persistedState.contracts["mock-septiembre"], undefined);
+assert.equal(persistedState.punches.length, 0);
+assert.equal(persistedState.changes.length, 0);
+assert.equal(persistedState.wasteRecords.length, 0);
+assert.equal(persistedState.payrollSettlements.madrid["2026-09"]["mock-septiembre"], undefined);
+persistedState = upsertTeamMemberState(persistedState, {
+  employee: { ...persistedState.employees.find((employee) => employee.id === "ana-prueba"), testEmployee: true },
+});
+assert.equal(persistedState.employees.find((employee) => employee.id === "ana-prueba")?.testEmployee, false,
+  "Un empleado real no debe poder convertirse en prueba para habilitar su borrado.");
+assert.throws(() => deleteTestTeamMemberState(persistedState, "ana-prueba"), /Solo se pueden borrar/,
+  "Un empleado real nunca debe borrarse definitivamente desde esta función.");
+
+const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+const htmlSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+assert.match(appSource, /getEmployeesForMonth\(activeMonth\)/,
+  "La leyenda debe usar los empleados activos durante el mes visible, no solo hoy.");
+assert.match(appSource, /employee\.testEmployee !== true/,
+  "Una copia vieja del navegador no debe resucitar pruebas ya borradas.");
+assert.match(appSource, /data-delete-test-employee/,
+  "Fichas debe ofrecer borrado definitivo solo para empleados de prueba.");
+assert.match(htmlSource, /id="teamMemberIsTest"/);
+assert.match(htmlSource, /app\.js\?v=58/);
+
+console.log("OK: altas, bajas, empleados de prueba y borrado definitivo persisten correctamente.");

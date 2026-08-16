@@ -46,6 +46,7 @@ function cleanEmployee(input = {}, existing = {}) {
     active: typeof input.active === "boolean" ? input.active : existing.active !== false,
     canLogin: typeof input.canLogin === "boolean" ? input.canLogin : existing.canLogin !== false,
     system: input.system === true || existing.system === true,
+    testEmployee: existing.id ? existing.testEmployee === true : input.testEmployee === true,
     activeFrom,
     inactiveFrom,
   };
@@ -94,6 +95,40 @@ export function upsertTeamMemberState(current, body = {}) {
   return next;
 }
 
+export function deleteTestTeamMemberState(current, employeeId) {
+  const id = String(employeeId || "").trim();
+  if (!validEmployeeId(id)) throw new Error("Empleado invalido.");
+  const employees = Array.isArray(current?.employees) ? current.employees : [];
+  const employee = employees.find((item) => item.id === id);
+  if (!employee) throw new Error("El empleado de prueba no existe.");
+  if (employee.system || employee.testEmployee !== true) {
+    throw new Error("Solo se pueden borrar definitivamente los empleados de prueba.");
+  }
+
+  const next = {
+    ...(current || {}),
+    employees: employees.filter((item) => item.id !== id),
+    punches: (current?.punches || []).filter((item) => item.employeeId !== id),
+    wasteRecords: (current?.wasteRecords || []).filter((item) => item.employeeId !== id),
+    changes: (current?.changes || []).filter((item) =>
+      item.employeeId !== id && item.replacementEmployeeId !== id
+    ),
+    profiles: { ...(current?.profiles || {}) },
+    baseSchedules: { ...(current?.baseSchedules || {}) },
+    contracts: { ...(current?.contracts || {}) },
+    payrollSettlements: JSON.parse(JSON.stringify(current?.payrollSettlements || {})),
+  };
+  delete next.profiles[id];
+  delete next.baseSchedules[id];
+  delete next.contracts[id];
+  Object.values(next.payrollSettlements).forEach((locationMonths) => {
+    Object.values(locationMonths || {}).forEach((month) => {
+      if (month) delete month[id];
+    });
+  });
+  return next;
+}
+
 export function publicTeamEmployees(state, today = new Date().toISOString().slice(0, 10)) {
   const storedEmployees = Array.isArray(state?.employees) && state.employees.length
     ? state.employees
@@ -122,6 +157,7 @@ export function publicTeamEmployees(state, today = new Date().toISOString().slic
       active: true,
       canLogin: employee.canLogin !== false,
       system: !!employee.system,
+      testEmployee: !!employee.testEmployee,
       activeFrom: employee.activeFrom || null,
     }));
 }

@@ -113,6 +113,6 @@ assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
 assert.match(html, /styles\.css\?v=31/);
-assert.match(html, /app\.js\?v=57/);
+assert.match(html, /app\.js\?v=58/);
 
 console.log("OK: Finanzas conserva Auditoria y calcula cafes / pasteleria sin exigir el mismo ticket.");
