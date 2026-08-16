@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=30" />
+    <link rel="stylesheet" href="styles.css?v=31" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -39,22 +39,23 @@
         </div>
 
         <div id="roleStepAdmin" hidden>
+          <button class="role-back-button" id="backToStep1b" type="button" aria-label="Volver al menú anterior">&#8249; Volver</button>
           <p class="role-subtitle">PIN de administrador</p>
           <input id="adminPinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" />
           <p id="pinError" class="pin-error" hidden>PIN incorrecto. Intentá de nuevo.</p>
           <button class="role-btn" id="submitPin" type="button">Entrar como admin</button>
-          <button class="role-link" id="backToStep1b" type="button">← Volver</button>
         </div>
 
         <div id="roleStepEmployeeLogin" hidden>
+          <button class="role-back-button" id="backFromEmployeeLogin" type="button" aria-label="Volver a empleados">&#8249; Volver</button>
           <p class="role-subtitle" id="employeeLoginTitle">Acceso del empleado</p>
           <input class="role-password-input" id="employeePasswordInput" type="password" minlength="4" placeholder="Contraseña" autocomplete="current-password" />
           <p id="employeeLoginError" class="pin-error" hidden></p>
           <button class="role-btn" id="submitEmployeeLogin" type="button">Entrar</button>
-          <button class="role-link" id="backFromEmployeeLogin" type="button">Volver</button>
         </div>
 
         <div id="roleStepEmployeeSetup" class="role-setup-step" hidden>
+          <button class="role-back-button" id="backFromEmployeeSetup" type="button" aria-label="Volver a empleados">&#8249; Volver</button>
           <p class="role-subtitle" id="employeeSetupTitle">Configura tu acceso</p>
           <div class="role-setup-grid">
             <label>Nombre completo<input id="setupFullName" type="text" required /></label>
@@ -67,24 +68,23 @@
           </div>
           <p id="employeeSetupError" class="pin-error" hidden></p>
           <button class="role-btn" id="submitEmployeeSetup" type="button">Guardar y entrar</button>
-          <button class="role-link" id="backFromEmployeeSetup" type="button">Volver</button>
         </div>
 
         <div id="roleStepVisit" hidden>
+          <button class="role-back-button" id="backFromVisit" type="button" aria-label="Volver al menú anterior">&#8249; Volver</button>
           <p class="role-subtitle">Acceso de visita</p>
           <input class="role-password-input" id="visitPasswordInput" type="password" minlength="4" placeholder="Contraseña" autocomplete="current-password" />
           <p id="visitLoginError" class="pin-error" hidden></p>
           <button class="role-btn role-btn-muted" id="submitVisitLogin" type="button">Entrar como visita</button>
-          <button class="role-link" id="backFromVisit" type="button">Volver</button>
         </div>
 
         <div id="roleStepLocation" hidden>
+          <button class="role-back-button" id="backFromLocation" type="button" aria-label="Volver al paso anterior">&#8249; Volver</button>
           <p class="role-subtitle">Elegí sucursal</p>
           <div class="role-btn-group">
             <button class="role-btn" data-location-choice="barcelona" type="button">Barcelona</button>
             <button class="role-btn role-btn-muted" data-location-choice="madrid" type="button">Madrid</button>
           </div>
-          <button class="role-link" id="backFromLocation" type="button">Volver</button>
         </div>
       </div>
     </div>
@@ -173,6 +173,7 @@
                     <option>Cambio de turno</option>
                     <option>Vacaciones</option>
                     <option>Licencia</option>
+                    <option>Extra</option>
                   </select>
                 </label>
                 <label data-emp-change-time>Desde<input id="empChangeStart" type="time" value="08:00" required /></label>
@@ -630,8 +631,8 @@
 
           <!-- IMPORTAR -->
           <div class="fin-panel" data-fin-panel="import">
-            <div class="two-column" style="padding:20px">
-              <form class="form-surface" id="finImportForm">
+            <div class="two-column fin-import-layout" style="padding:20px">
+              <form class="form-surface fin-import-file-form" id="finImportForm">
                 <h3>Importar ventas manualmente</h3>
 
                 <!-- Zona de selección de archivo -->
@@ -890,6 +891,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=55"></script>
+    <script src="app.js?v=57"></script>
   </body>
 </html>

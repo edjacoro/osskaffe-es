@@ -12,6 +12,10 @@ function validTime(value) {
   return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
+function normalizedText(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 function employeeLocation(current, employeeId, fallback = "barcelona") {
   const employee = (current?.employees || []).find((item) => item.id === employeeId);
   return normalizeLocationId(employee?.locationId || fallback);
@@ -33,10 +37,15 @@ function cleanChange(current, input = {}, session = {}) {
   }
 
   const reason = String(input.reason || "Otro").trim().slice(0, 80);
-  const fullDay = input.fullDay === true || ["vacaciones", "licencia"].includes(reason.toLowerCase());
-  const action = fullDay ? "absence" : ["absence", "replace", "extra"].includes(input.action)
-    ? input.action
-    : "absence";
+  const normalizedReason = normalizedText(reason);
+  const fullDay = input.fullDay === true || ["vacaciones", "licencia"].includes(normalizedReason);
+  const action = fullDay
+    ? "absence"
+    : normalizedReason === "extra"
+      ? "extra"
+      : ["absence", "replace", "extra"].includes(input.action)
+        ? input.action
+        : "absence";
   const start = fullDay ? "00:00" : String(input.start || "");
   const end = fullDay ? "23:59" : String(input.end || "");
   if (!validTime(start) || !validTime(end) || (!fullDay && start >= end)) {

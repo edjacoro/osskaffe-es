@@ -472,6 +472,7 @@ let appRole = null;
 let activeEmployeeId = null;
 let activeLocationId = DEFAULT_LOCATION_ID;
 let pendingLocationRole = null;
+let pendingEmployeeLocationId = null;
 let activePastryRecipeId = PASTRY_RECIPES[0].id;
 const pastryRecipeQuantities = Object.fromEntries(PASTRY_RECIPES.map((recipe) => [recipe.id, 1]));
 let adminInited = false;
@@ -761,6 +762,8 @@ function setTodayDefaults() {
 
 function syncAdminChangeForm() {
   const leave = isLeaveReason(els.changeReason?.value);
+  const extra = isExtraReason(els.changeReason?.value);
+  const ranged = isRangeChangeReason(els.changeReason?.value);
   const dateEndField = document.querySelector("[data-change-end-date]");
   const rangeNote = document.querySelector("[data-change-range-note]");
   if (!els.changeDateEnd) return;
@@ -768,17 +771,21 @@ function syncAdminChangeForm() {
   if (!els.changeDateEnd.value || els.changeDateEnd.value < els.changeDate.value) {
     els.changeDateEnd.value = els.changeDate.value;
   }
-  els.changeDateEnd.required = leave;
-  dateEndField.hidden = !leave;
-  rangeNote.hidden = !leave;
+  els.changeDateEnd.required = ranged;
+  dateEndField.hidden = !ranged;
+  rangeNote.hidden = !ranged;
+  rangeNote.textContent = leave
+    ? "VACACIONES y LICENCIA se aplican a jornada completa durante todo el intervalo."
+    : "El horario extra se repetirá en cada día del intervalo elegido.";
   document.querySelectorAll("[data-change-time-field]").forEach((field) => {
     field.hidden = leave;
     field.querySelector("input").disabled = leave;
   });
-  document.querySelector("[data-change-action-field]").hidden = leave;
-  document.querySelector("[data-change-replacement-field]").hidden = leave;
-  els.replacementEmployee.disabled = leave;
+  document.querySelector("[data-change-action-field]").hidden = leave || extra;
+  document.querySelector("[data-change-replacement-field]").hidden = leave || extra;
+  els.replacementEmployee.disabled = leave || extra;
   if (leave) els.changeAction.value = "absence";
+  if (extra) els.changeAction.value = "extra";
 }
 
 function syncEmployeeChangeForm() {
@@ -787,11 +794,17 @@ function syncEmployeeChangeForm() {
   const dateEnd = document.querySelector("#empChangeDateEnd");
   if (!reason || !date || !dateEnd) return;
   const leave = isLeaveReason(reason.value);
+  const extra = isExtraReason(reason.value);
+  const ranged = isRangeChangeReason(reason.value);
   dateEnd.min = date.value || "";
   if (!dateEnd.value || dateEnd.value < date.value) dateEnd.value = date.value;
-  dateEnd.required = leave;
-  document.querySelector("[data-emp-change-end-date]").hidden = !leave;
-  document.querySelector("[data-emp-change-range-note]").hidden = !leave;
+  dateEnd.required = ranged;
+  document.querySelector("[data-emp-change-end-date]").hidden = !ranged;
+  const rangeNote = document.querySelector("[data-emp-change-range-note]");
+  rangeNote.hidden = !ranged;
+  rangeNote.textContent = leave
+    ? "VACACIONES y LICENCIA se aplican a jornada completa durante todo el intervalo."
+    : "El horario extra se repetirá en cada día del intervalo elegido.";
   document.querySelectorAll("[data-emp-change-time]").forEach((field) => {
     field.hidden = leave;
     field.querySelector("input").disabled = leave;
@@ -1400,8 +1413,10 @@ async function handleChangeRequest(event) {
   event.preventDefault();
   const reason = els.changeReason.value;
   const leave = isLeaveReason(reason);
+  const extra = isExtraReason(reason);
+  const ranged = isRangeChangeReason(reason);
   const date = els.changeDate.value;
-  const endDate = leave ? els.changeDateEnd.value : date;
+  const endDate = ranged ? els.changeDateEnd.value : date;
   if (!date || !endDate || endDate < date) {
     alert("La fecha hasta debe ser igual o posterior a la fecha desde.");
     return;
@@ -1412,9 +1427,9 @@ async function handleChangeRequest(event) {
     date,
     endDate,
     employeeId: els.changeEmployee.value,
-    replacementEmployeeId: leave ? "" : els.replacementEmployee.value,
+    replacementEmployeeId: leave || extra ? "" : els.replacementEmployee.value,
     reason,
-    action: leave ? "absence" : els.changeAction.value,
+    action: leave ? "absence" : extra ? "extra" : els.changeAction.value,
     start: leave ? "00:00" : els.changeStart.value,
     end: leave ? "23:59" : els.changeEnd.value,
     fullDay: leave,
@@ -1773,6 +1788,14 @@ function isLeaveReason(reason) {
   return normalized === "vacaciones" || normalized === "licencia";
 }
 
+function isExtraReason(reason) {
+  return normalizedAccessText(reason) === "extra";
+}
+
+function isRangeChangeReason(reason) {
+  return isLeaveReason(reason) || isExtraReason(reason);
+}
+
 function getChangeEndDate(change) {
   const candidate = change?.endDate || change?.dateEnd || change?.dateTo || change?.until;
   return isDateKey(candidate) ? candidate : change?.date;
@@ -1859,11 +1882,30 @@ function getShiftsForDate(dateKey) {
     change.status === "approved" && changeAppliesToDate(change, dateKey)
   );
   shifts = applyApprovedChangesToShifts(shifts, approved);
+  shifts = constrainShiftsToOpeningPeriods(shifts, getOpeningPeriodsForDate(dateKey));
 
   return shifts
     .filter((shift) => getEmployeeLocationId(shift.employeeId) === activeLocationId)
     .filter((shift) => isEmployeeActiveOnDate(getEmployee(shift.employeeId, dateKey), dateKey))
     .sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function constrainShiftsToOpeningPeriods(shifts, openingPeriods) {
+  if (!Array.isArray(openingPeriods) || !openingPeriods.length) return [];
+  const periods = openingPeriods
+    .filter((period) => Number.isFinite(period?.open) && Number.isFinite(period?.close) && period.close > period.open)
+    .slice()
+    .sort((a, b) => a.open - b.open);
+
+  return shifts.flatMap((shift) => periods.flatMap((period, index) => {
+    // El turno debe tocar el horario real de atención. El margen no permite
+    // conservar un turno que esté completamente antes o después de la tienda.
+    if (shift.end <= period.open || shift.start >= period.close) return [];
+    const preparationMargin = index === 0 ? 0.5 : 0;
+    const start = Math.max(shift.start, period.open - preparationMargin);
+    const end = Math.min(shift.end, period.close + 0.5);
+    return end > start ? [{ ...shift, start, end }] : [];
+  }));
 }
 
 function getOpenLabel(day) {
@@ -1984,8 +2026,10 @@ async function saveOpeningOverride(dateKey, values, locationId = activeLocationI
   }, locationId);
   saveState({ shared: false });
   if (locationId === activeLocationId && dateKey.startsWith(monthInputValue(activeMonth))) {
+    renderLegend();
     renderSchedule();
     renderMetrics();
+    renderContratosPanel();
   }
   return persistStoreHoursChange("save", dateKey, values, locationId);
 }
@@ -1996,8 +2040,10 @@ async function resetOpeningOverride(dateKey, locationId = activeLocationId) {
   updateLocationSettings({ monthlyOpeningHours }, locationId);
   saveState({ shared: false });
   if (locationId === activeLocationId && dateKey.startsWith(monthInputValue(activeMonth))) {
+    renderLegend();
     renderSchedule();
     renderMetrics();
+    renderContratosPanel();
   }
   return persistStoreHoursChange("reset", dateKey, null, locationId);
 }
@@ -3266,8 +3312,8 @@ function initRoleScreen() {
 
   document.querySelector("#chooseEmployee").addEventListener("click", async () => {
     await refreshTeamDirectory();
-    renderEmployeeChoiceButtons();
-    showRoleStep("roleStepEmployee");
+    pendingEmployeeLocationId = null;
+    showLocationStep("employee");
   });
 
   document.querySelector("#chooseAdmin").addEventListener("click", () => {
@@ -3285,7 +3331,7 @@ function initRoleScreen() {
     if (e.key === "Enter") tryAdminPin();
   });
 
-  document.querySelector("#backToStep1a").addEventListener("click", () => showRoleStep("roleStep1"));
+  document.querySelector("#backToStep1a").addEventListener("click", () => showLocationStep("employee"));
   document.querySelector("#backToStep1b").addEventListener("click", () => {
     showRoleStep("roleStep1");
     document.querySelector("#adminPinInput").value = "";
@@ -3295,7 +3341,12 @@ function initRoleScreen() {
   document.querySelector("#backFromEmployeeSetup").addEventListener("click", () => showRoleStep("roleStepEmployee"));
   document.querySelector("#backFromVisit").addEventListener("click", () => showRoleStep("roleStep1"));
   document.querySelector("#backFromLocation").addEventListener("click", () => {
-    showRoleStep(pendingLocationRole === "visitor" ? "roleStepVisit" : "roleStepAdmin");
+    if (pendingLocationRole === "employee") {
+      pendingLocationRole = null;
+      pendingEmployeeLocationId = null;
+      showRoleStep("roleStep1");
+    }
+    else showRoleStep(pendingLocationRole === "visitor" ? "roleStepVisit" : "roleStepAdmin");
   });
   document.querySelectorAll("[data-location-choice]").forEach((button) => {
     button.addEventListener("click", () => chooseLocation(button.dataset.locationChoice));
@@ -3319,6 +3370,7 @@ function renderEmployeeChoiceButtons() {
   if (!empButtons) return;
   empButtons.innerHTML = getAllEmployees()
     .filter((employee) => employee.canLogin !== false)
+    .filter((employee) => !pendingEmployeeLocationId || normalizeLocationId(employee.locationId) === pendingEmployeeLocationId)
     .map(
       (employee) =>
         `<button class="role-btn" data-emp-id="${employee.id}" style="background:${employee.color}" type="button">${escapeHtml(employee.label)}<small>${getLocation(employee.locationId).label}</small></button>`,
@@ -3341,9 +3393,17 @@ function showLocationStep(role) {
 
 function chooseLocation(locationId) {
   activeLocationId = normalizeLocationId(locationId);
+  if (pendingLocationRole === "employee") {
+    pendingEmployeeLocationId = activeLocationId;
+    pendingLocationRole = null;
+    renderEmployeeChoiceButtons();
+    showRoleStep("roleStepEmployee");
+    return;
+  }
   if (pendingLocationRole === "visitor") setVisitMode(activeLocationId);
   else setAdminMode(activeLocationId);
   pendingLocationRole = null;
+  pendingEmployeeLocationId = null;
 }
 
 function updateAdminStoreSwitch() {
@@ -3554,6 +3614,7 @@ async function exitToRoleScreen(options = {}) {
   activeLocationId = DEFAULT_LOCATION_ID;
   pendingEmployeeId = null;
   pendingLocationRole = null;
+  pendingEmployeeLocationId = null;
   updateAdminStoreSwitch();
   document.body.classList.remove("visit-mode");
   document.querySelector(".app-shell").hidden = true;
@@ -5075,8 +5136,10 @@ async function handleEmpChangeForm(event) {
   event.preventDefault();
   const reason = document.querySelector("#empChangeReason").value;
   const leave = isLeaveReason(reason);
+  const extra = isExtraReason(reason);
+  const ranged = isRangeChangeReason(reason);
   const date = document.querySelector("#empChangeDate").value;
-  const endDate = leave ? document.querySelector("#empChangeDateEnd").value : date;
+  const endDate = ranged ? document.querySelector("#empChangeDateEnd").value : date;
   if (!date || !endDate || endDate < date) {
     alert("La fecha hasta debe ser igual o posterior a la fecha desde.");
     return;
@@ -5089,7 +5152,7 @@ async function handleEmpChangeForm(event) {
     employeeId: activeEmployeeId,
     replacementEmployeeId: "",
     reason,
-    action: "absence",
+    action: extra ? "extra" : "absence",
     start: leave ? "00:00" : document.querySelector("#empChangeStart").value,
     end: leave ? "23:59" : document.querySelector("#empChangeEnd").value,
     fullDay: leave,
@@ -5194,6 +5257,7 @@ let finEditingExpenseId = null; // id del gasto en edición (null = modo creaci�
 let finAnalysisFilters = null;
 let finAiQuestion = '';
 let finAiResult = null;
+let finAiDateRange = null;
 const BISTROSOFT_SYNC_INTERVAL_MS = 30000;
 const BISTROSOFT_RECENT_DAYS = 0;
 let finBistroSync = {
@@ -6125,7 +6189,7 @@ function renderFinanzas() {
   else if (activeFinTab === 'audit') renderFinAudit();
   else if (activeFinTab === 'analysis') renderFinAnalysis();
   else if (activeFinTab === 'ai') {
-    if (finAiQuestion) finAiResult = answerFinAiQuestion(finAiQuestion);
+    if (finAiQuestion) finAiResult = answerFinAiQuestion(finAiQuestion, null, null, getFinAiSelectedPeriod());
     renderFinAi();
   }
 }
@@ -7883,6 +7947,41 @@ function printFinAnalysis() {
   window.print();
 }
 
+function getAnalysisFilterSummary(filters) {
+  const weekdays = getAnalysisSelectedWeekdays(filters);
+  const dayLabel = weekdays.length
+    ? weekdays.map((day) => DAY_NAMES[Number(day)]).join(', ')
+    : 'Todos los días';
+  const baristaLabel = filters.barista === 'all' ? 'Todos los baristas' : filters.barista;
+  return `${formatHumanDate(filters.dateFrom)} al ${formatHumanDate(filters.dateTo)} · ${dayLabel} · ${String(filters.hourFrom).padStart(2, '0')}:00–${String(filters.hourTo).padStart(2, '0')}:59 · ${baristaLabel}`;
+}
+
+function exportFinAnalysisCsv(filters, groups) {
+  const rows = [
+    ['ANÁLISIS DE VENTAS', getLocation().label],
+    ['Filtros', getAnalysisFilterSummary(filters)],
+    [],
+    ['Segmento', 'Venta', 'Pedidos', 'Unidades', 'Ticket promedio'],
+    ...groups.map((row) => [
+      row.label,
+      Number(row.sales || 0).toFixed(2),
+      String(row.tickets || 0),
+      String(row.quantity || 0),
+      row.tickets ? Number(row.sales / row.tickets).toFixed(2) : '',
+    ]),
+  ];
+  const csv = `\uFEFF${rows.map((row) => row.map(csvEscape).join(',')).join('\n')}`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `analisis-${activeLocationId}-${filters.dateFrom}-${filters.dateTo}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function getAnalysisSelectedWeekdays(filters) {
   if (Array.isArray(filters?.weekdays)) {
     return [...new Set(filters.weekdays.map(String).filter((value) => /^[0-6]$/.test(value)))];
@@ -7957,7 +8056,10 @@ function renderFinAnalysis() {
     <section class="analysis-report" id="analysisPrintable">
       <div class="fin-table-header analysis-heading">
         <div><h3>Análisis de ventas · ${getLocation().label}</h3><p class="form-note">Filtrá la información de Bistrosoft y la grilla para auditar ventas, pedidos, productos y cobertura.</p></div>
-        <button type="button" class="ghost-button" id="analysisPrint">Exportar PDF</button>
+        <div class="analysis-export-actions">
+          <button type="button" class="ghost-button" id="analysisExportCsv">Exportar CSV</button>
+          <button type="button" class="ghost-button" id="analysisPrint">Exportar PDF</button>
+        </div>
       </div>
       <form class="analysis-filters" id="analysisFilters">
         <label>Informe<select name="type">
@@ -7988,6 +8090,7 @@ function renderFinAnalysis() {
           <option value="quantity"${filters.metric === 'quantity' ? ' selected' : ''}>Unidades</option>
         </select></label>
       </form>
+      <p class="analysis-filter-summary">${escapeHtml(getAnalysisFilterSummary(filters))}</p>
       <div class="fin-kpi-grid analysis-kpis">
         <div class="fin-kpi-card"><span>Venta filtrada</span><strong>${formatEur(totalSales)}</strong></div>
         <div class="fin-kpi-card"><span>Pedidos</span><strong>${totalTickets}</strong></div>
@@ -8015,6 +8118,7 @@ function renderFinAnalysis() {
     };
     renderFinAnalysis();
   });
+  document.querySelector('#analysisExportCsv')?.addEventListener('click', () => exportFinAnalysisCsv(filters, groups));
   document.querySelector('#analysisPrint')?.addEventListener('click', printFinAnalysis);
 }
 
@@ -8069,6 +8173,26 @@ function getFinAiMonthKeys(dateFrom, dateTo) {
     cursor.setMonth(cursor.getMonth() + 1);
   }
   return keys;
+}
+
+function getFinAiSelectedPeriod() {
+  if (!finAiDateRange) {
+    const now = new Date();
+    finAiDateRange = {
+      dateFrom: toDateInput(new Date(now.getFullYear(), now.getMonth(), 1)),
+      dateTo: toDateInput(now),
+    };
+  }
+  const { dateFrom, dateTo } = finAiDateRange;
+  if (!isDateKey(dateFrom) || !isDateKey(dateTo) || dateFrom > dateTo) return null;
+  return {
+    dateFrom,
+    dateTo,
+    label: dateFrom === dateTo
+      ? formatHumanDate(dateFrom)
+      : `${formatHumanDate(dateFrom)} al ${formatHumanDate(dateTo)}`,
+    monthKeys: getFinAiMonthKeys(dateFrom, dateTo),
+  };
 }
 
 function getFinAiPeriod(question, sales = getLocationSales()) {
@@ -8364,10 +8488,10 @@ function buildFinAiCoverageResult(period) {
   };
 }
 
-function answerFinAiQuestion(question, salesOverride = null, expensesOverride = null) {
+function answerFinAiQuestion(question, salesOverride = null, expensesOverride = null, periodOverride = null) {
   const allSales = Array.isArray(salesOverride) ? salesOverride : getLocationSales();
   const allExpenses = Array.isArray(expensesOverride) ? expensesOverride : getLocationExpenses();
-  const period = getFinAiPeriod(question, allSales);
+  const period = periodOverride || getFinAiPeriod(question, allSales);
   const sales = allSales.filter((sale) => sale.date >= period.dateFrom && sale.date <= period.dateTo);
   const expenses = allExpenses.filter((expense) => expense.date >= period.dateFrom && expense.date <= period.dateTo);
   const normalized = normalizeFinAiText(question);
@@ -8412,12 +8536,13 @@ function renderFinAiResult(result) {
 function renderFinAi() {
   const container = document.querySelector('#finAiContent');
   if (!container) return;
+  const selectedPeriod = getFinAiSelectedPeriod();
   const examples = [
-    '¿Cuántos Pan de queso se vendieron en Agosto?',
-    '¿Cuántos Cold Brew se vendieron entre Julio y Agosto?',
-    'Comparar Pan de queso y Croissant en Agosto',
-    'Top 10 productos de Agosto',
-    '¿Cuántas horas libres hay en Agosto?',
+    '¿Cuántos Pan de queso se vendieron?',
+    '¿Cuántos Cold Brew se vendieron?',
+    'Comparar Pan de queso y Croissant',
+    'Top 10 productos',
+    '¿Cuántas horas libres hay?',
   ];
   container.innerHTML = `
     <section class="fin-ai-shell">
@@ -8430,11 +8555,17 @@ function renderFinAi() {
         <span class="fin-ai-private-badge">DATOS LOCALES</span>
       </div>
       <form class="fin-ai-form" id="finAiForm">
+        <div class="fin-ai-period">
+          <label>Desde<input id="finAiDateFrom" type="date" value="${selectedPeriod?.dateFrom || ''}" required></label>
+          <label>Hasta<input id="finAiDateTo" type="date" value="${selectedPeriod?.dateTo || ''}" required></label>
+          <span>La respuesta usará exclusivamente este intervalo. Por defecto se muestra el mes en curso.</span>
+        </div>
         <label for="finAiQuestion">Tu pregunta</label>
         <div class="fin-ai-compose">
-          <textarea id="finAiQuestion" rows="3" placeholder="Ejemplo: ¿Cuántos Cold Brew se vendieron entre Julio y Agosto?">${escapeHtml(finAiQuestion)}</textarea>
+          <textarea id="finAiQuestion" rows="3" placeholder="Ejemplo: ¿Cuántos Cold Brew se vendieron?">${escapeHtml(finAiQuestion)}</textarea>
           <button class="primary-button" type="submit">Consultar</button>
         </div>
+        <p class="pin-error" id="finAiDateError" hidden>La fecha “Hasta” debe ser igual o posterior a “Desde”.</p>
       </form>
       <div class="fin-ai-examples" aria-label="Preguntas de ejemplo">
         ${examples.map((example) => `<button type="button" class="mini-button" data-ai-example="${escapeHtml(example)}">${escapeHtml(example)}</button>`).join('')}
@@ -8446,14 +8577,42 @@ function renderFinAi() {
     event.preventDefault();
     const question = document.querySelector('#finAiQuestion')?.value.trim() || '';
     if (!question) return;
+    const dateFrom = document.querySelector('#finAiDateFrom')?.value || '';
+    const dateTo = document.querySelector('#finAiDateTo')?.value || '';
+    const error = document.querySelector('#finAiDateError');
+    if (!isDateKey(dateFrom) || !isDateKey(dateTo) || dateFrom > dateTo) {
+      if (error) error.hidden = false;
+      return;
+    }
+    if (error) error.hidden = true;
+    finAiDateRange = { dateFrom, dateTo };
     finAiQuestion = question;
-    finAiResult = answerFinAiQuestion(question);
+    finAiResult = answerFinAiQuestion(question, null, null, getFinAiSelectedPeriod());
     renderFinAi();
+  });
+  ['finAiDateFrom', 'finAiDateTo'].forEach((id) => {
+    document.querySelector(`#${id}`)?.addEventListener('change', () => {
+      const dateFrom = document.querySelector('#finAiDateFrom')?.value || '';
+      const dateTo = document.querySelector('#finAiDateTo')?.value || '';
+      if (isDateKey(dateFrom) && isDateKey(dateTo) && dateFrom <= dateTo) {
+        finAiDateRange = { dateFrom, dateTo };
+        const error = document.querySelector('#finAiDateError');
+        if (error) error.hidden = true;
+      }
+    });
   });
   container.querySelectorAll('[data-ai-example]').forEach((button) => {
     button.addEventListener('click', () => {
+      const dateFrom = document.querySelector('#finAiDateFrom')?.value || '';
+      const dateTo = document.querySelector('#finAiDateTo')?.value || '';
+      if (!isDateKey(dateFrom) || !isDateKey(dateTo) || dateFrom > dateTo) {
+        const error = document.querySelector('#finAiDateError');
+        if (error) error.hidden = false;
+        return;
+      }
+      finAiDateRange = { dateFrom, dateTo };
       finAiQuestion = button.dataset.aiExample;
-      finAiResult = answerFinAiQuestion(finAiQuestion);
+      finAiResult = answerFinAiQuestion(finAiQuestion, null, null, getFinAiSelectedPeriod());
       renderFinAi();
     });
   });

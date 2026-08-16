@@ -58,6 +58,17 @@ assert.equal(ownChange.locationId, "madrid");
 assert.equal(ownChange.fullDay, true);
 assert.equal(ownChange.action, "absence");
 
+const withExtra = applyChangeMutation(created, {
+  action: "create",
+  change: {
+    id: "extra-3", employeeId: "ana", date: "2026-08-20", endDate: "2026-08-24",
+    reason: "Extra", action: "absence", start: "16:00", end: "20:00",
+  },
+}, { role: "admin" });
+const extraChange = withExtra.changes.find((change) => change.id === "extra-3");
+assert.equal(extraChange.action, "extra", "El servidor debe tratar Extra como horas agregadas en todo el intervalo.");
+assert.equal(extraChange.endDate, "2026-08-24");
+
 const reviewed = applyChangeMutation(created, { action: "review", id: "lic-2", status: "approved" }, { role: "admin" });
 assert.equal(reviewed.changes.find((change) => change.id === "lic-2").status, "approved");
 

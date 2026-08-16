@@ -13,7 +13,7 @@ const buildHelpers = new Function(
   "formatHumanDate",
   "timeToDecimal",
   "makeShift",
-  `${appSource.slice(helperStart, helperEnd)}\nreturn { isLeaveReason, getChangeEndDate, changeAppliesToDate, isFullDayChange, applyApprovedChangesToShifts };`,
+  `${appSource.slice(helperStart, helperEnd)}\nreturn { isLeaveReason, isExtraReason, isRangeChangeReason, getChangeEndDate, changeAppliesToDate, isFullDayChange, applyApprovedChangesToShifts };`,
 );
 const helpers = buildHelpers(
   (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(),
@@ -40,6 +40,24 @@ assert.equal(helpers.changeAppliesToDate(guillermoVacation, "2026-08-01"), true)
 assert.equal(helpers.changeAppliesToDate(guillermoVacation, "2026-08-16"), true);
 assert.equal(helpers.changeAppliesToDate(guillermoVacation, "2026-08-17"), false);
 assert.equal(helpers.isFullDayChange(guillermoVacation), true, "Vacaciones heredadas deben cubrir la jornada completa.");
+assert.equal(helpers.isRangeChangeReason("Extra"), true, "Los extras deben admitir un intervalo de fechas.");
+
+const multiDayExtra = {
+  employeeId: "micaela",
+  date: "2026-08-20",
+  endDate: "2026-08-23",
+  reason: "Extra",
+  action: "extra",
+  start: "16:00",
+  end: "20:00",
+  status: "approved",
+};
+assert.equal(helpers.changeAppliesToDate(multiDayExtra, "2026-08-22"), true);
+assert.equal(helpers.changeAppliesToDate(multiDayExtra, "2026-08-24"), false);
+assert.deepEqual(
+  helpers.applyApprovedChangesToShifts([], [multiDayExtra]),
+  [{ employeeId: "micaela", start: 16, end: 20, source: "extra" }],
+);
 
 const shifts = [
   { employeeId: "guillermo", start: 16, end: 20 },
@@ -54,8 +72,11 @@ assert.deepEqual(
 assert.match(html, /id="changeDateEnd"/);
 assert.match(html, /id="empChangeDateEnd"/);
 assert.equal((html.match(/<option>Licencia<\/option>/g) || []).length, 2);
-assert.match(html, /app\.js\?v=55/);
+assert.equal((html.match(/<option>Extra<\/option>/g) || []).length, 2);
+assert.match(html, /app\.js\?v=57/);
+assert.match(appSource, /const endDate = ranged \? els\.changeDateEnd\.value : date/);
+assert.match(appSource, /action: extra \? "extra" : "absence"/);
 assert.match(appSource, /change\.status === "approved" && changeAppliesToDate\(change, dateKey\)/);
 assert.match(appSource, /async function updateChangeStatus[\s\S]*?persistChangeMutation\(\{ action: "review", id, status \}\)/);
 
-console.log("OK: vacaciones y licencias aprobadas admiten rangos y quitan todos los turnos del intervalo.");
+console.log("OK: vacaciones, licencias y extras admiten intervalos y se aplican a cada fecha.");

@@ -91,8 +91,28 @@ assert.equal(crossSelling.coffeesPerFood, 3, "Se esperan 6 cafes / 2 productos =
 assert.equal("pairedFoodQty" in crossSelling, false, "La formula ya no debe depender de pares por ticket.");
 
 const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 assert.match(html, /class="role-back-button" id="backToStep1a"/);
 assert.match(html, /id="finSyncDay"[^>]*>CARGAR PRODUCTOS DEL DÍA<\/button>/);
 assert.equal((html.match(/id="backToStep1a"/g) || []).length, 1, "El botón Volver debe tener un ID único.");
+assert.equal((html.match(/class="role-back-button"/g) || []).length, 6, "Cada paso posterior del ingreso debe ofrecer Volver.");
+assert.match(appSource, /chooseEmployee"\)\.addEventListener\("click", async \(\) => \{[\s\S]*?showLocationStep\("employee"\)/);
+assert.match(appSource, /normalizeLocationId\(employee\.locationId\) === pendingEmployeeLocationId/);
+assert.match(appSource, /pendingLocationRole === "employee"[\s\S]*?showRoleStep\("roleStepEmployee"\)/);
+
+assert.match(html, /class="two-column fin-import-layout"/);
+assert.match(html, /class="form-surface fin-import-file-form" id="finImportForm"/);
+assert.match(styles, /\.fin-sync-actions \.ghost-button \{[\s\S]*?min-height: 34px/);
+assert.match(styles, /\.fin-import-layout \{[\s\S]*?0\.72fr[\s\S]*?1\.45fr/);
+
+assert.match(appSource, /id="analysisExportCsv">Exportar CSV/);
+assert.match(appSource, /function exportFinAnalysisCsv\(filters, groups\)/);
+assert.match(appSource, /getAnalysisFilterSummary\(filters\)/);
+assert.match(appSource, /id="finAiDateFrom" type="date"/);
+assert.match(appSource, /id="finAiDateTo" type="date"/);
+assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
+assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
+assert.match(html, /styles\.css\?v=31/);
+assert.match(html, /app\.js\?v=57/);
 
 console.log("OK: Finanzas conserva Auditoria y calcula cafes / pasteleria sin exigir el mismo ticket.");

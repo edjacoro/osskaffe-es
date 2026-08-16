@@ -18,7 +18,48 @@ assert.match(appSource, /Guardado en Netlify/, "Debe confirmar visualmente la pe
 assert.match(appSource, /const editorLocationId = activeLocationId;/, "El editor debe conservar la tienda que se esta modificando.");
 assert.match(appSource, /getLocationSettings\(locationId\)/, "Los horarios deben guardarse por separado para cada tienda.");
 assert.match(html, /presioná GUARDAR en cada día modificado/);
-assert.match(html, /app\.js\?v=55/);
+assert.match(html, /app\.js\?v=57/);
+
+const constraintStart = appSource.indexOf("function constrainShiftsToOpeningPeriods");
+const constraintEnd = appSource.indexOf("function getOpenLabel", constraintStart);
+assert.ok(constraintStart >= 0 && constraintEnd > constraintStart, "Debe existir el ajuste de turnos al horario de tienda.");
+const constrainShiftsToOpeningPeriods = new Function(
+  `${appSource.slice(constraintStart, constraintEnd)}\nreturn constrainShiftsToOpeningPeriods;`,
+)();
+
+const shortened = constrainShiftsToOpeningPeriods([
+  { employeeId: "apertura", start: 8, end: 14, source: "manual" },
+  { employeeId: "cierre", start: 12, end: 20, source: "manual" },
+  { employeeId: "tarde", start: 16, end: 20, source: "base" },
+], [{ open: 8.5, close: 14 }]);
+assert.deepEqual(shortened, [
+  { employeeId: "apertura", start: 8, end: 14, source: "manual" },
+  { employeeId: "cierre", start: 12, end: 14.5, source: "manual" },
+], "Debe conservar media hora de apertura/cierre y anular los turnos posteriores.");
+assert.deepEqual(
+  constrainShiftsToOpeningPeriods([{ employeeId: "ana", start: 8, end: 20 }], []),
+  [],
+  "Un dia cerrado no puede conservar horas cargadas.",
+);
+assert.deepEqual(
+  constrainShiftsToOpeningPeriods(
+    [{ employeeId: "ana", start: 8, end: 20.5 }],
+    [{ open: 8.5, close: 14 }, { open: 16, close: 20 }],
+  ),
+  [
+    { employeeId: "ana", start: 8, end: 14.5 },
+    { employeeId: "ana", start: 16, end: 20.5 },
+  ],
+  "El horario partido debe quitar el tramo en que la tienda permanece cerrada.",
+);
+assert.deepEqual(
+  constrainShiftsToOpeningPeriods(
+    [{ employeeId: "tarde", start: 15.5, end: 20 }],
+    [{ open: 8.5, close: 14 }, { open: 16, close: 20 }],
+  ),
+  [{ employeeId: "tarde", start: 16, end: 20 }],
+  "La reapertura de la tarde no debe agregar media hora de preparacion.",
+);
 
 const initial = {
   sales: [{ id: "venta-historica", items: [{ name: "Flat White", qty: 1 }] }],
