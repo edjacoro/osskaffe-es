@@ -7,7 +7,8 @@ export const DEFAULT_TEAM = [
   { id: "bonnie", label: "Bonnie", role: "Barista", color: "#6f7f46", active: true, canLogin: true, locationId: "madrid" },
   { id: "micaela", label: "Micaela", role: "Encargada", color: "#8d5a73", active: true, canLogin: true, locationId: "madrid" },
   { id: "perla", label: "Perla", role: "Barista", color: "#547f87", active: true, canLogin: true, locationId: "madrid" },
-  { id: "guillermo", label: "Guillermo", role: "Barista", color: "#9a7041", active: true, canLogin: true, locationId: "madrid" },
+  { id: "guillermo", label: "Guillermina", role: "Barista", color: "#9a7041", active: true, canLogin: true, locationId: "madrid" },
+  { id: "mechi", label: "Mechi", role: "Pastelera", color: "#ff942f", active: true, canLogin: true, activeFrom: "2026-08-31", locationId: "madrid" },
 ];
 
 function normalizeLocationId(value) {
@@ -26,6 +27,7 @@ function cleanEmployee(input = {}, existing = {}) {
   const id = String(input.id || existing.id || "").trim();
   const label = String(input.label || existing.label || "").trim().slice(0, 80);
   const role = String(input.role || existing.role || "Barista").trim().slice(0, 80);
+  const preferredName = String(input.preferredName || existing.preferredName || "").trim().slice(0, 80);
   const color = /^#[0-9a-f]{6}$/i.test(String(input.color || ""))
     ? String(input.color).toLowerCase()
     : existing.color || "#416877";
@@ -40,6 +42,7 @@ function cleanEmployee(input = {}, existing = {}) {
     ...existing,
     id,
     label,
+    preferredName,
     role,
     color,
     locationId: normalizeLocationId(input.locationId || existing.locationId),
@@ -116,11 +119,19 @@ export function deleteTestTeamMemberState(current, employeeId) {
     profiles: { ...(current?.profiles || {}) },
     baseSchedules: { ...(current?.baseSchedules || {}) },
     contracts: { ...(current?.contracts || {}) },
+    schedulePlans: JSON.parse(JSON.stringify(current?.schedulePlans || {})),
     payrollSettlements: JSON.parse(JSON.stringify(current?.payrollSettlements || {})),
   };
   delete next.profiles[id];
   delete next.baseSchedules[id];
   delete next.contracts[id];
+  Object.values(next.schedulePlans).forEach((plans) => {
+    (plans || []).forEach((plan) => {
+      (plan.weeks || []).forEach((week) => {
+        week.shifts = (week.shifts || []).filter((shift) => shift.employeeId !== id);
+      });
+    });
+  });
   Object.values(next.payrollSettlements).forEach((locationMonths) => {
     Object.values(locationMonths || {}).forEach((month) => {
       if (month) delete month[id];
@@ -143,6 +154,9 @@ export function publicTeamEmployees(state, today = new Date().toISOString().slic
   });
 
   return [...byId.values()]
+    .map((employee) => employee.id === "guillermo"
+      ? { ...employee, label: employee.preferredName || "Guillermina" }
+      : employee)
     .filter((employee) => {
       if (employee.canLogin === false) return false;
       if (employee.activeFrom && employee.activeFrom > today) return false;

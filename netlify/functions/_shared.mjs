@@ -196,7 +196,7 @@ export async function replaceStateFromJsonText(stateJson) {
 }
 
 export function isActiveEmployee(fullState, employeeId) {
-  const employees = Array.isArray(fullState?.employees) ? fullState.employees : [
+  const defaults = [
     { id: "chelo", active: true, canLogin: true, locationId: "barcelona" },
     { id: "sebastian", active: true, canLogin: true, locationId: "barcelona" },
     { id: "third", active: true, canLogin: true, locationId: "barcelona" },
@@ -204,7 +204,13 @@ export function isActiveEmployee(fullState, employeeId) {
     { id: "micaela", active: true, canLogin: true, locationId: "madrid" },
     { id: "perla", active: true, canLogin: true, locationId: "madrid" },
     { id: "guillermo", active: true, canLogin: true, locationId: "madrid" },
+    { id: "mechi", active: true, canLogin: true, activeFrom: "2026-08-31", locationId: "madrid" },
   ];
+  const byId = new Map(defaults.map((employee) => [employee.id, employee]));
+  (Array.isArray(fullState?.employees) ? fullState.employees : []).forEach((employee) => {
+    if (employee?.id) byId.set(employee.id, { ...(byId.get(employee.id) || {}), ...employee });
+  });
+  const employees = [...byId.values()];
   const today = new Date().toISOString().slice(0, 10);
   return employees.some((employee) => {
     if (employee.id !== employeeId || employee.canLogin === false) return false;

@@ -1489,7 +1489,7 @@ textarea {
   color: var(--blue-dark);
 }
 
-.visit-mode .nav-item:not([data-tab="schedule"]):not([data-tab="finanzas"]),
+.visit-mode .nav-item:not([data-tab="schedule"]):not([data-tab="finanzas"]):not([data-tab="reports"]),
 .visit-mode .topbar-actions,
 .visit-mode #finBistroSync,
 .visit-mode .fin-tab[data-fin-tab="import"],
@@ -1830,6 +1830,37 @@ textarea {
 }
 
 #financiasPanel .fin-tab {
+  min-width: max-content;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+#reportsPanel > .reports-heading {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  grid-template-areas:
+    "title month"
+    "tabs tabs";
+  align-items: center;
+  gap: 12px 18px;
+}
+
+#reportsPanel > .reports-heading > :first-child {
+  grid-area: title;
+}
+
+#reportsMonthNav {
+  grid-area: month;
+  justify-self: end;
+  flex-wrap: nowrap;
+}
+
+#reportsPanel .fin-subnav {
+  grid-area: tabs;
+  width: 100%;
+}
+
+#reportsPanel .fin-tab {
   min-width: max-content;
   flex: 0 0 auto;
   white-space: nowrap;
@@ -2646,6 +2677,18 @@ textarea {
     padding: 0 8px;
     font-size: 0.8rem;
   }
+
+  #reportsPanel > .reports-heading {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "month"
+      "tabs";
+  }
+
+  #reportsMonthNav {
+    justify-self: start;
+  }
 }
 
 /* ── File picker zone ──────────────────────────────────────────── */
@@ -2693,6 +2736,113 @@ textarea {
   font-size: 0.74rem;
 }
 
+.fin-expense-entry-column {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fin-expense-category-summary {
+  padding: 12px;
+}
+
+.fin-expense-category-summary .list-heading {
+  margin-bottom: 8px;
+}
+
+.fin-expense-category-summary .list-heading h3 {
+  font-size: 0.94rem;
+}
+
+.fin-expense-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fin-expense-category-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.fin-expense-category-item span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+}
+
+.fin-expense-category-item strong {
+  color: var(--blue-dark);
+  font-size: 0.86rem;
+  line-height: 1.15;
+}
+
+.fin-expense-category-item.is-zero {
+  opacity: 0.58;
+}
+
+.fin-expense-list {
+  gap: 7px;
+}
+
+.fin-expense-item {
+  padding: 8px 9px;
+  border-radius: 7px;
+}
+
+.fin-expense-item .event-topline {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.fin-expense-item .event-topline > span:first-child {
+  min-width: 0;
+}
+
+.fin-expense-item .event-meta {
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.fin-expense-item .status-pill {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 0.76rem;
+}
+
+.fin-expense-item .fin-tc-badge,
+.fin-expense-item .fin-local-category-badge {
+  padding: 1px 5px;
+  font-size: 0.64rem;
+}
+
+.fin-expense-item .event-actions {
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.fin-expense-item .event-actions:empty {
+  display: none;
+}
+
+.fin-expense-item .mini-button {
+  min-height: 25px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+}
+
 @media (max-width: 900px) {
   .fin-import-layout {
     grid-template-columns: 1fr;
@@ -2700,6 +2850,12 @@ textarea {
 
   .fin-import-layout > .list-surface {
     grid-column: auto;
+  }
+}
+
+@media (max-width: 440px) {
+  .fin-expense-category-grid {
+    grid-template-columns: 1fr;
   }
 }
 .file-drop-zone:hover {
@@ -4184,6 +4340,10 @@ canvas {
   body.print-analysis .analysis-filters,
   body.print-analysis .analysis-export-actions,
   body.print-analysis #analysisPrint {
+    display: none !important;
+  }
+  body.print-analysis #financiasPanel,
+  body.print-analysis #reportsPanel > .reports-heading {
     display: none !important;
   }
   body.print-analysis .main-content,

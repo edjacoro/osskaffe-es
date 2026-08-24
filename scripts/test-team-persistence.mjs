@@ -101,6 +101,9 @@ persistedState.punches = [{ id: "p-mock", employeeId: "mock-septiembre" }];
 persistedState.changes = [{ id: "c-mock", employeeId: "mock-septiembre" }];
 persistedState.wasteRecords = [{ id: "w-mock", employeeId: "mock-septiembre" }];
 persistedState.payrollSettlements = { madrid: { "2026-09": { "mock-septiembre": { advance: 20 } } } };
+persistedState.schedulePlans = {
+  madrid: [{ id: "plan-prueba", weeks: [{ shifts: [{ employeeId: "mock-septiembre", day: 2, start: "08:00", end: "14:00" }] }] }],
+};
 assert.equal(persistedState.employees.find((employee) => employee.id === "mock-septiembre")?.testEmployee, true,
   "El alta de prueba debe conservar su marca especial.");
 assert(!publicTeamEmployees(persistedState, "2026-09-02").some((employee) => employee.id === "mock-septiembre"),
@@ -116,6 +119,8 @@ assert.equal(persistedState.punches.length, 0);
 assert.equal(persistedState.changes.length, 0);
 assert.equal(persistedState.wasteRecords.length, 0);
 assert.equal(persistedState.payrollSettlements.madrid["2026-09"]["mock-septiembre"], undefined);
+assert.equal(persistedState.schedulePlans.madrid[0].weeks[0].shifts.length, 0,
+  "Al borrar una prueba tampoco deben quedar turnos fantasma en una programación fechada.");
 persistedState = upsertTeamMemberState(persistedState, {
   employee: { ...persistedState.employees.find((employee) => employee.id === "ana-prueba"), testEmployee: true },
 });
@@ -133,6 +138,6 @@ assert.match(appSource, /employee\.testEmployee !== true/,
 assert.match(appSource, /data-delete-test-employee/,
   "Fichas debe ofrecer borrado definitivo solo para empleados de prueba.");
 assert.match(htmlSource, /id="teamMemberIsTest"/);
-assert.match(htmlSource, /app\.js\?v=58/);
+assert.match(htmlSource, /app\.js\?v=61/);
 
 console.log("OK: altas, bajas, empleados de prueba y borrado definitivo persisten correctamente.");

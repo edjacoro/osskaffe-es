@@ -6,14 +6,16 @@ import {
 } from "./_shared.mjs";
 
 const PROFILE_FIELDS = [
-  "fullName", "phone", "email", "dni", "area", "ssNumber", "iban",
+  "fullName", "preferredName", "phone", "email", "dni", "area", "ssNumber", "iban",
   "contractType", "startDate", "address", "emergencyName", "emergencyPhone",
 ];
 
-function cleanProfile(input = {}) {
+function cleanProfile(input = {}, existing = {}) {
   return Object.fromEntries(PROFILE_FIELDS.map((field) => [
     field,
-    String(input[field] || "").trim().slice(0, field === "address" ? 200 : 120),
+    String(Object.hasOwn(input, field) ? input[field] || "" : existing[field] || "")
+      .trim()
+      .slice(0, field === "address" ? 200 : 120),
   ]));
 }
 
@@ -22,9 +24,16 @@ export function applyEmployeeProfileUpdate(current, employeeId, input = {}) {
   const employees = Array.isArray(current?.employees) ? [...current.employees] : [];
   const index = employees.findIndex((employee) => employee.id === employeeId);
   if (index < 0) throw new Error("El empleado no existe.");
-  const profile = cleanProfile(input);
+  const profile = cleanProfile(input, current?.profiles?.[employeeId] || {});
   const firstName = profile.fullName.replace(/\s+/g, " ").split(" ")[0];
-  if (firstName) employees[index] = { ...employees[index], label: firstName };
+  const preferredName = profile.preferredName.replace(/\s+/g, " ").trim();
+  if (preferredName || firstName) {
+    employees[index] = {
+      ...employees[index],
+      preferredName,
+      label: preferredName || firstName,
+    };
+  }
   return {
     ...(current || {}),
     employees,

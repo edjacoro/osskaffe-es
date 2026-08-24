@@ -124,6 +124,15 @@ de apertura configuradas para el mes y **H. Libres** muestra las horas de apertu
 sin ningun empleado asignado. El calculo respeta cierres, festivos, horarios
 personalizados y los turnos aprobados.
 
+Madrid conserva su grilla historica hasta el domingo 30/08/2026 inclusive. Desde
+el lunes 31/08/2026 usa un ciclo fechado de ocho semanas tomado del PDF operativo;
+al finalizar la semana 8 vuelve a la semana 1 hasta que se cargue otra programacion
+con una fecha de vigencia posterior. Mechi suma turnos de 09:00 a 13:00 los martes
+y viernes por fuera de las 124 horas semanales del documento. `Barista Tarde` es
+un empleado de prueba: cubre horas en Grilla, pero no puede ingresar al Team ni
+participa en contratos o liquidaciones. La ficha legal conserva `Guillermo` y el
+nombre visible en la operacion es `Guillermina`.
+
 El editor mensual de apertura permite completar la hora sin validar mientras se
 esta escribiendo. Cada dia modificado se confirma con **Guardar**; la pantalla
 indica cuando hay cambios pendientes y cuando Netlify confirmo el guardado. El

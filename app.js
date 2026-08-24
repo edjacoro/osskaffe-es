@@ -89,14 +89,38 @@ const DEFAULT_EMPLOYEES = [
   },
   {
     id: "guillermo",
-    label: "Guillermo",
+    label: "Guillermina",
     role: "Barista",
     color: "#9a7041",
     active: true,
     canLogin: true,
     locationId: "madrid",
   },
+  {
+    id: "mechi",
+    label: "Mechi",
+    role: "Pastelera",
+    color: "#ff942f",
+    active: true,
+    canLogin: true,
+    activeFrom: "2026-08-31",
+    locationId: "madrid",
+  },
 ];
+
+const DEFAULT_PROFILES = {
+  guillermo: {
+    fullName: "Guillermo",
+    preferredName: "Guillermina",
+    area: "Barista",
+    locationId: "madrid",
+  },
+  mechi: {
+    preferredName: "Mechi",
+    area: "Pastelería",
+    locationId: "madrid",
+  },
+};
 
 const SCHEDULE_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const DEFAULT_SCHEDULE_ANCHOR = "2026-01-05";
@@ -163,6 +187,142 @@ const DEFAULT_BASE_SCHEDULES = {
     6: ["16:00", "20:00"],
     0: ["10:00", "15:00"],
   }),
+  mechi: baseSchedule({}),
+};
+
+const MADRID_SCHEDULE_SEED_VERSION = 1;
+const MADRID_SCHEDULE_PLAN_ID = "madrid-2026-08-31-8-semanas";
+
+function buildMadridScheduleWeek({ tuesdayEmployee = "perla", saturday = [], sunday = [] } = {}) {
+  const shifts = [];
+  const add = (day, employeeId, start, end) => shifts.push({ day, employeeId, start, end });
+
+  [1, 2, 3, 4].forEach((day) => add(day, "micaela", "07:30", "14:30"));
+  [1, 4, 5].forEach((day) => add(day, "guillermo", "09:00", "14:00"));
+  [1, 2, 3, 4, 5].forEach((day) => add(day, "barista-tarde", "14:30", "19:30"));
+  add(2, tuesdayEmployee, "09:00", "14:00");
+  add(5, "perla", "07:30", "14:30");
+
+  // Mechi trabaja con un régimen por horas, por fuera de las 124 h del PDF.
+  add(2, "mechi", "09:00", "13:00");
+  add(5, "mechi", "09:00", "13:00");
+
+  add(6, "bonnie", "09:30", "16:30");
+  add(0, "bonnie", "09:30", "16:30");
+  saturday.forEach(([employeeId, start, end]) => add(6, employeeId, start, end));
+  sunday.forEach(([employeeId, start, end]) => add(0, employeeId, start, end));
+  return { shifts };
+}
+
+const MADRID_SCHEDULE_PLAN_2026_08_31 = {
+  id: MADRID_SCHEDULE_PLAN_ID,
+  locationId: "madrid",
+  effectiveFrom: "2026-08-31",
+  cycleLength: 8,
+  sourceLabel: "Ciclo 8 semanas",
+  weeks: [
+    buildMadridScheduleWeek({
+      saturday: [
+        ["perla", "09:30", "15:30"],
+        ["micaela", "15:30", "20:30"],
+        ["guillermo", "16:30", "20:30"],
+      ],
+      sunday: [
+        ["perla", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+    }),
+    buildMadridScheduleWeek({
+      saturday: [
+        ["perla", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+      sunday: [
+        ["micaela", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+    }),
+    buildMadridScheduleWeek({
+      saturday: [
+        ["micaela", "09:30", "15:30"],
+        ["perla", "15:30", "20:30"],
+        ["guillermo", "16:30", "20:30"],
+      ],
+      sunday: [
+        ["perla", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+    }),
+    buildMadridScheduleWeek({
+      saturday: [
+        ["perla", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+      sunday: [
+        ["perla", "09:30", "15:30"],
+        ["micaela", "15:30", "20:30"],
+        ["guillermo", "16:30", "20:30"],
+      ],
+    }),
+    buildMadridScheduleWeek({
+      saturday: [
+        ["perla", "09:30", "15:30"],
+        ["micaela", "15:30", "20:30"],
+        ["guillermo", "16:30", "20:30"],
+      ],
+      sunday: [
+        ["perla", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+    }),
+    buildMadridScheduleWeek({
+      saturday: [
+        ["perla", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+      sunday: [
+        ["micaela", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+    }),
+    buildMadridScheduleWeek({
+      saturday: [
+        ["micaela", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+      sunday: [
+        ["perla", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+    }),
+    buildMadridScheduleWeek({
+      tuesdayEmployee: "bonnie",
+      saturday: [
+        ["perla", "09:30", "15:30"],
+        ["guillermo", "15:30", "20:30"],
+        ["perla", "16:30", "20:30"],
+      ],
+      sunday: [
+        ["perla", "09:30", "15:30"],
+        ["micaela", "15:30", "20:30"],
+        ["guillermo", "16:30", "20:30"],
+      ],
+    }),
+  ],
+};
+
+const DEFAULT_SCHEDULE_PLANS = {
+  madrid: [MADRID_SCHEDULE_PLAN_2026_08_31],
 };
 
 const HOLIDAY_SEED_VERSION = 1;
@@ -449,13 +609,15 @@ const DEFAULT_STATE = {
   changes: [],
   trafficData: [],
   employees: DEFAULT_EMPLOYEES,
-  profiles: {},
+  profiles: DEFAULT_PROFILES,
   sales: [],
   expenses: [],
   expenseCategoryOverrides: {},
   wasteRecords: [],
   contracts: {},
   baseSchedules: DEFAULT_BASE_SCHEDULES,
+  schedulePlans: DEFAULT_SCHEDULE_PLANS,
+  madridScheduleSeedVersion: 0,
   budgets: {},
   payrollSettlements: {},
   locations: LOCATIONS,
@@ -980,6 +1142,7 @@ function setActiveTab(tab) {
   const topbar = document.querySelector(".topbar");
   if (topbar) topbar.style.display = isSchedule ? "" : "none";
   if (tab === "finanzas") renderFinanzas();
+  if (tab === "reports") setActiveFinTab(activeReportTab);
 }
 
 function render() {
@@ -1853,7 +2016,42 @@ function applyApprovedChangesToShifts(initialShifts, approvedChanges) {
   return shifts;
 }
 
+function dateKeyToUtcDay(dateKey) {
+  if (!isDateKey(dateKey)) return NaN;
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+}
+
+function getSchedulePlanShiftsForDate(schedulePlans, locationId, dateKey) {
+  const plans = Array.isArray(schedulePlans?.[locationId]) ? schedulePlans[locationId] : [];
+  const plan = plans
+    .filter((candidate) => isDateKey(candidate?.effectiveFrom) && candidate.effectiveFrom <= dateKey)
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+  if (!plan) return null;
+
+  const elapsedDays = dateKeyToUtcDay(dateKey) - dateKeyToUtcDay(plan.effectiveFrom);
+  if (!Number.isFinite(elapsedDays) || elapsedDays < 0) return null;
+  const cycleLength = Math.max(1, Math.floor(Number(plan.cycleLength || plan.weeks?.length || 1)));
+  const weekIndex = ((Math.floor(elapsedDays / 7) % cycleLength) + cycleLength) % cycleLength;
+  const day = new Date(`${dateKey}T12:00:00Z`).getUTCDay();
+  const shifts = (plan.weeks?.[weekIndex]?.shifts || []).filter((shift) => Number(shift.day) === day);
+  return { plan, weekIndex, shifts };
+}
+
 function getBaseShifts(dateKey) {
+  const planned = getSchedulePlanShiftsForDate(state.schedulePlans, activeLocationId, dateKey);
+  if (planned) {
+    const employeeIds = new Set(getAllEmployees(true).map((employee) => employee.id));
+    return planned.shifts
+      .filter((shift) => employeeIds.has(shift.employeeId))
+      .map((shift) => makeShift(
+        shift.employeeId,
+        timeToDecimal(shift.start),
+        timeToDecimal(shift.end),
+        `${planned.plan.sourceLabel || "Grilla programada"} · S${planned.weekIndex + 1}`,
+      ));
+  }
+
   const date = parseDateKey(dateKey);
   const day = date.getDay();
   const shifts = [];
@@ -2250,6 +2448,29 @@ function getBaseScheduleSummary(employeeId) {
 
   if (!weekADays) return "Sin grilla base fija";
   return `Semanal fija · ${weekADays} dias / ${formatHours(weekAHours)}`;
+}
+
+function getEmployeeSchedulePlanSummary(employeeId) {
+  const employee = getEmployee(employeeId);
+  const plans = state.schedulePlans?.[normalizeLocationId(employee.locationId)] || [];
+  const plan = plans
+    .filter((candidate) => (candidate.weeks || []).some((week) =>
+      (week.shifts || []).some((shift) => shift.employeeId === employeeId)
+    ))
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+  if (!plan) return null;
+  const weeklyHours = (plan.weeks || []).map((week) =>
+    (week.shifts || [])
+      .filter((shift) => shift.employeeId === employeeId)
+      .reduce((total, shift) => total + timeToDecimal(shift.end) - timeToDecimal(shift.start), 0)
+  );
+  const totalHours = weeklyHours.reduce((total, hours) => total + hours, 0);
+  return {
+    plan,
+    weeklyHours,
+    totalHours,
+    averageHours: weeklyHours.length ? totalHours / weeklyHours.length : 0,
+  };
 }
 
 function layoutShifts(shifts) {
@@ -2851,6 +3072,9 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
             .map((employee) => [employee.id, structuredClone(state[key][employee.id])])
         );
       });
+      const madridScheduleSeed = role === "admin"
+        ? await persistMadridScheduleSeedToServer(payload.state || {})
+        : { updated: 0, failed: 0, stateSaved: false };
       if (role !== 'visitor') saveLocalStateSnapshot();
       clearInterval(sharedStatePollTimer);
       sharedStatePollTimer = setInterval(refreshSharedState, 15000);
@@ -2860,6 +3084,7 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
         error: null,
         recoveredTeamMembers,
         failedTeamRecoveries: failedRecoveryIds.size,
+        madridScheduleSeed,
       };
     } else {
       scheduleSharedStateSave();
@@ -2952,6 +3177,7 @@ function mergeState(base, saved) {
     expenseCategoryOverrides,
     wasteRecords: saved.wasteRecords || base.wasteRecords,
     baseSchedules: mergeBaseSchedules(base.baseSchedules || DEFAULT_BASE_SCHEDULES, saved.baseSchedules, migratedEmployees),
+    schedulePlans: mergeSchedulePlans(base.schedulePlans || DEFAULT_SCHEDULE_PLANS, saved.schedulePlans),
     profiles: { ...base.profiles, ...(saved.profiles || {}) },
     locationSettings,
     settings: legacySettings,
@@ -2963,8 +3189,112 @@ function mergeState(base, saved) {
   merged.expenses = (merged.expenses || []).map((expense) =>
     applyExpenseCategoryOverride(expense, expenseCategoryOverrides)
   );
+  applyMadridScheduleSeed(merged);
   removePabloFromState(merged);
   return merged;
+}
+
+function normalizeSchedulePlan(plan = {}) {
+  const cycleLength = Math.max(1, Math.floor(Number(plan.cycleLength || plan.weeks?.length || 1)));
+  const weeks = Array.from({ length: cycleLength }, (_, index) => ({
+    shifts: (Array.isArray(plan.weeks?.[index]?.shifts) ? plan.weeks[index].shifts : [])
+      .map((shift) => ({
+        day: Number(shift?.day),
+        employeeId: String(shift?.employeeId || "").trim(),
+        start: normalizeTimeValue(shift?.start),
+        end: normalizeTimeValue(shift?.end),
+      }))
+      .filter((shift) =>
+        Number.isInteger(shift.day)
+        && shift.day >= 0
+        && shift.day <= 6
+        && shift.employeeId
+        && shift.start
+        && shift.end
+        && timeToDecimal(shift.end) > timeToDecimal(shift.start)
+      ),
+  }));
+  return {
+    id: String(plan.id || "").trim(),
+    locationId: normalizeLocationId(plan.locationId),
+    effectiveFrom: isDateKey(plan.effectiveFrom) ? plan.effectiveFrom : "9999-12-31",
+    cycleLength,
+    sourceLabel: String(plan.sourceLabel || "Grilla programada").trim(),
+    weeks,
+  };
+}
+
+function mergeSchedulePlans(defaultPlans = {}, savedPlans = {}) {
+  const locationIds = new Set([
+    ...Object.keys(defaultPlans || {}),
+    ...Object.keys(savedPlans || {}),
+  ]);
+  return Object.fromEntries([...locationIds].map((locationId) => {
+    const byId = new Map();
+    (defaultPlans?.[locationId] || []).forEach((plan) => {
+      const normalized = normalizeSchedulePlan(plan);
+      if (normalized.id) byId.set(normalized.id, normalized);
+    });
+    (savedPlans?.[locationId] || []).forEach((plan) => {
+      const normalized = normalizeSchedulePlan(plan);
+      if (normalized.id) byId.set(normalized.id, normalized);
+    });
+    return [normalizeLocationId(locationId), [...byId.values()].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))];
+  }));
+}
+
+function applyMadridScheduleSeed(nextState) {
+  if (!nextState || Number(nextState.madridScheduleSeedVersion || 0) >= MADRID_SCHEDULE_SEED_VERSION) return nextState;
+  if (!Array.isArray(nextState.employees)) nextState.employees = [];
+  if (!nextState.profiles) nextState.profiles = {};
+  if (!nextState.baseSchedules) nextState.baseSchedules = {};
+
+  const guillermina = nextState.employees.find((employee) => employee.id === "guillermo");
+  if (guillermina) {
+    guillermina.label = "Guillermina";
+    guillermina.preferredName = "Guillermina";
+  }
+  nextState.profiles.guillermo = {
+    fullName: "Guillermo",
+    ...nextState.profiles.guillermo,
+    preferredName: "Guillermina",
+    locationId: "madrid",
+  };
+
+  const mechi = nextState.employees.find((employee) => employee.id === "mechi");
+  if (mechi && !mechi.label) mechi.label = "Mechi";
+  nextState.profiles.mechi = {
+    area: "Pastelería",
+    ...nextState.profiles.mechi,
+    preferredName: nextState.profiles.mechi?.preferredName || "Mechi",
+    locationId: "madrid",
+  };
+
+  if (!nextState.employees.some((employee) => employee.id === "barista-tarde")) {
+    nextState.employees.push({
+      id: "barista-tarde",
+      label: "Barista Tarde",
+      role: "Barista",
+      color: "#111111",
+      active: true,
+      canLogin: false,
+      testEmployee: true,
+      activeFrom: "2026-08-31",
+      locationId: "madrid",
+    });
+  }
+  nextState.profiles["barista-tarde"] = {
+    ...(nextState.profiles["barista-tarde"] || {}),
+    preferredName: "Barista Tarde",
+    area: "Barista",
+    locationId: "madrid",
+  };
+  nextState.baseSchedules["barista-tarde"] = normalizeBaseSchedule(
+    nextState.baseSchedules["barista-tarde"] || createBlankBaseSchedule()
+  );
+  nextState.schedulePlans = mergeSchedulePlans(DEFAULT_SCHEDULE_PLANS, nextState.schedulePlans);
+  nextState.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
+  return nextState;
 }
 
 function mergeDefaultEmployees(savedEmployees) {
@@ -3544,6 +3874,9 @@ async function tryAdminPin() {
     if (sharedLogin.failedTeamRecoveries) {
       alert(`No se pudieron recuperar ${sharedLogin.failedTeamRecoveries} empleado(s). Siguen visibles en este navegador; revisÃ¡ la conexiÃ³n y volvÃ© a guardar sus fichas.`);
     }
+    if (sharedLogin.madridScheduleSeed?.failed || sharedLogin.madridScheduleSeed?.stateSaved === false) {
+      alert("La nueva grilla de Madrid se ve localmente, pero Netlify no confirmó todavía todos sus datos. Cerrá y volvé a ingresar como administrador para reintentar el guardado.");
+    }
   } else {
     pinError.textContent = sharedLogin.error || "PIN incorrecto. Intentá de nuevo.";
     pinError.hidden = false;
@@ -4096,11 +4429,13 @@ function getEmployeeDisplayName(fullName, fallback = "") {
 function applyProfileData(employeeId, data) {
   const normalizedLocation = data.locationId ? normalizeLocationId(data.locationId) : getEmployeeLocationId(employeeId);
   const employee = (state.employees || []).find((item) => item.id === employeeId);
+  const nextProfile = { ...getProfile(employeeId), ...data, locationId: normalizedLocation };
   if (employee) {
     employee.locationId = normalizedLocation;
-    employee.label = getEmployeeDisplayName(data.fullName, employee.label);
+    employee.preferredName = String(nextProfile.preferredName || "").trim();
+    employee.label = employee.preferredName || getEmployeeDisplayName(nextProfile.fullName, employee.label);
   }
-  state.profiles[employeeId] = { ...getProfile(employeeId), ...data, locationId: normalizedLocation };
+  state.profiles[employeeId] = nextProfile;
   if (!state.baseSchedules?.[employeeId]) saveEmployeeBaseSchedule(employeeId, createBlankBaseSchedule());
 }
 
@@ -4155,6 +4490,7 @@ async function handleEmpProfileForm(event) {
   event.preventDefault();
   const data = {
     fullName: document.querySelector("#profFullName").value.trim(),
+    preferredName: getProfile(activeEmployeeId).preferredName || "",
     phone: document.querySelector("#profPhone").value.trim(),
     email: document.querySelector("#profEmail").value.trim(),
     dni: document.querySelector("#profDni").value.trim(),
@@ -4269,6 +4605,47 @@ function persistTeamMemberNow(employeeId) {
   );
 }
 
+async function persistMadridScheduleSeedToServer(remoteState = {}) {
+  const remoteEmployees = new Map((remoteState.employees || []).map((employee) => [employee.id, employee]));
+  const remoteProfiles = remoteState.profiles || {};
+  const requiredIds = ["guillermo", "mechi", "barista-tarde"];
+  const needsTeamUpdate = (employeeId) => {
+    const localEmployee = state.employees.find((employee) => employee.id === employeeId);
+    const remoteEmployee = remoteEmployees.get(employeeId);
+    if (!localEmployee || !remoteEmployee) return Boolean(localEmployee);
+    if (remoteEmployee.label !== localEmployee.label) return true;
+    if (remoteEmployee.canLogin !== localEmployee.canLogin) return true;
+    if (Boolean(remoteEmployee.testEmployee) !== Boolean(localEmployee.testEmployee)) return true;
+    return String(remoteProfiles?.[employeeId]?.preferredName || "")
+      !== String(state.profiles?.[employeeId]?.preferredName || "");
+  };
+
+  let updated = 0;
+  let failed = 0;
+  for (const employeeId of requiredIds.filter(needsTeamUpdate)) {
+    const employee = state.employees.find((item) => item.id === employeeId);
+    if (!employee) continue;
+    const persisted = await persistTeamMemberPayload(
+      structuredClone(employee),
+      structuredClone(state.profiles?.[employeeId] || {}),
+      structuredClone(state.baseSchedules?.[employeeId] || createBlankBaseSchedule()),
+      structuredClone(state.contracts?.[employeeId] || {}),
+    );
+    if (persisted) updated += 1;
+    else failed += 1;
+  }
+
+  const remotePlan = (remoteState.schedulePlans?.madrid || []).find((plan) => plan.id === MADRID_SCHEDULE_PLAN_ID);
+  const needsStateSave = Number(remoteState.madridScheduleSeedVersion || 0) < MADRID_SCHEDULE_SEED_VERSION
+    || !remotePlan;
+  if (failed) state.madridScheduleSeedVersion = 0;
+  if (needsStateSave || updated || failed) {
+    sharedStatePending = true;
+  }
+  const stateSaved = sharedStatePending ? await persistSharedStateNow() : true;
+  return { updated, failed, stateSaved };
+}
+
 function removeTestEmployeeFromLocalState(employeeId) {
   const employee = (state.employees || []).find((item) => item.id === employeeId);
   if (!employee?.testEmployee) return false;
@@ -4281,6 +4658,13 @@ function removeTestEmployeeFromLocalState(employeeId) {
   ['profiles', 'baseSchedules', 'contracts'].forEach((key) => {
     if (state[key]) delete state[key][employeeId];
     if (pendingTeamRecoverySnapshot[key]) delete pendingTeamRecoverySnapshot[key][employeeId];
+  });
+  Object.values(state.schedulePlans || {}).forEach((plans) => {
+    (plans || []).forEach((plan) => {
+      (plan.weeks || []).forEach((week) => {
+        week.shifts = (week.shifts || []).filter((shift) => shift.employeeId !== employeeId);
+      });
+    });
   });
   Object.values(state.payrollSettlements || {}).forEach((locationMonths) => {
     Object.values(locationMonths || {}).forEach((month) => {
@@ -4722,6 +5106,7 @@ function renderContratosPanel() {
   const monthEnd = toDateInput(new Date(year, month + 1, 0));
   const contractEmployees = getAllEmployees(true).filter((employee) =>
     !employee.system
+    && employee.testEmployee !== true
     && normalizeLocationId(employee.locationId) === activeLocationId
     && (!employee.activeFrom || employee.activeFrom <= monthEnd)
     && (!employee.inactiveFrom || employee.inactiveFrom > monthStart)
@@ -4863,6 +5248,7 @@ function renderAdminFichas() {
 
   const fields = [
     { key: "fullName", label: "Nombre completo" },
+    { key: "preferredName", label: "Nombre visible" },
     { key: "phone", label: "Teléfono" },
     { key: "email", label: "Email" },
     { key: "address", label: "Dirección" },
@@ -4886,6 +5272,7 @@ function renderAdminFichas() {
     const formSchedule = isEditing && adminBaseScheduleEditDraft
       ? normalizeBaseSchedule(adminBaseScheduleEditDraft)
       : getEmployeeBaseSchedule(emp.id);
+    const schedulePlanSummary = getEmployeeSchedulePlanSummary(emp.id);
     const rows = fields
       .map((f) => {
         const val = profile[f.key];
@@ -4912,6 +5299,11 @@ function renderAdminFichas() {
             <span class="ficha-label">Grilla base</span>
             <strong>${escapeHtml(getBaseScheduleSummary(emp.id))}</strong>
           </div>
+          ${schedulePlanSummary ? `
+            <div class="ficha-schedule-summary">
+              <span class="ficha-label">Programación desde ${formatHumanDate(schedulePlanSummary.plan.effectiveFrom)}</span>
+              <strong>Ciclo de ${schedulePlanSummary.weeklyHours.length} semanas · ${formatHours(schedulePlanSummary.averageHours)} promedio semanal · ${formatHours(schedulePlanSummary.totalHours)} por ciclo</strong>
+            </div>` : ''}
         </div>
         <form class="ficha-edit-form" data-ficha-form="${emp.id}"${isEditing ? '' : ' hidden'}>
           <label class="payroll-toggle">
@@ -4925,6 +5317,9 @@ function renderAdminFichas() {
           <div class="ficha-edit-grid">
             <label>Nombre completo
               <input name="fullName" type="text" value="${escapeHtml(formProfile.fullName || '')}" />
+            </label>
+            <label>Nombre visible en la app
+              <input name="preferredName" type="text" value="${escapeHtml(formProfile.preferredName || '')}" placeholder="Si queda vacío se usa el primer nombre legal" />
             </label>
             <label>Teléfono
               <input name="phone" type="tel" value="${escapeHtml(formProfile.phone || '')}" />
@@ -5083,12 +5478,16 @@ function renderAdminFichas() {
 
 function renderBaseScheduleEditor(employee, schedule) {
   const normalized = normalizeBaseSchedule(schedule);
+  const schedulePlanSummary = getEmployeeSchedulePlanSummary(employee.id);
+  const locked = Boolean(schedulePlanSummary);
   return `
-    <section class="base-schedule-editor" data-base-schedule-editor>
+    <section class="base-schedule-editor" data-base-schedule-editor${locked ? ' data-schedule-locked="true"' : ''}>
       <div class="base-schedule-head">
         <div>
-          <h4>Grilla base</h4>
-          <p class="form-note">Define los turnos recurrentes. Para excepciones puntuales segui usando Cambios.</p>
+          <h4>${locked ? 'Grilla histórica' : 'Grilla base'}</h4>
+          <p class="form-note">${locked
+            ? `Se conserva para las fechas anteriores al ${formatHumanDate(schedulePlanSummary.plan.effectiveFrom)}. La nueva programación usa un ciclo de ${schedulePlanSummary.weeklyHours.length} semanas.`
+            : 'Define los turnos recurrentes. Para excepciones puntuales segui usando Cambios.'}</p>
         </div>
         <label>
           Tipo de grilla
@@ -5162,7 +5561,14 @@ function readBaseScheduleForm(form) {
 }
 
 function bindBaseScheduleEditor(form) {
-  if (!form.querySelector("[data-base-schedule-editor]")) return;
+  const editor = form.querySelector("[data-base-schedule-editor]");
+  if (!editor) return;
+  if (editor.dataset.scheduleLocked === "true") {
+    editor.querySelectorAll("input, select, button").forEach((control) => {
+      control.disabled = true;
+    });
+    return;
+  }
   syncBaseScheduleMode(form);
   syncBaseScheduleRows(form);
 
@@ -5341,6 +5747,7 @@ function applyExpenseCategoryOverride(expense, overrides = state?.expenseCategor
 }
 
 let activeFinTab = 'hoy';
+let activeReportTab = 'audit';
 let finActiveMonth = firstDayOfMonth(new Date()); // mes propio de Finanzas (independiente de la grilla)
 let finTodayDate = toDateInput(new Date());
 let finPnlYear = new Date().getFullYear();
@@ -5348,6 +5755,7 @@ let finPendingFile = null;   // archivo xlsx/csv seleccionado pendiente de impor
 let finEditingExpenseId = null; // id del gasto en edición (null = modo creación)
 let finAnalysisFilters = null;
 let finAiQuestion = '';
+let finAiQuestionDraft = '';
 let finAiResult = null;
 let finAiDateRange = null;
 const BISTROSOFT_SYNC_INTERVAL_MS = 30000;
@@ -5370,6 +5778,14 @@ let finBistroSync = {
   dayPollTimers: {},
   timer: null,
 };
+
+function changeFinActiveMonth(delta) {
+  finActiveMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() + delta, 1);
+  renderFinMonthNav();
+  renderFinanzas();
+  if (activeFinTab === 'audit') syncBistrosoftAuditMonth();
+  else syncBistrosoftMonth(true);
+}
 
 function initFinanzas() {
   document.querySelectorAll('.fin-tab').forEach((btn) => {
@@ -5396,19 +5812,13 @@ function initFinanzas() {
   }
 
   document.querySelector('#finPrevMonth').addEventListener('click', () => {
-    finActiveMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() - 1, 1);
-    renderFinMonthNav();
-    renderFinanzas();
-    if (activeFinTab === 'audit') syncBistrosoftAuditMonth();
-    else syncBistrosoftMonth(true);
+    changeFinActiveMonth(-1);
   });
   document.querySelector('#finNextMonth').addEventListener('click', () => {
-    finActiveMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() + 1, 1);
-    renderFinMonthNav();
-    renderFinanzas();
-    if (activeFinTab === 'audit') syncBistrosoftAuditMonth();
-    else syncBistrosoftMonth(true);
+    changeFinActiveMonth(1);
   });
+  document.querySelector('#reportsPrevMonth')?.addEventListener('click', () => changeFinActiveMonth(-1));
+  document.querySelector('#reportsNextMonth')?.addEventListener('click', () => changeFinActiveMonth(1));
 
   document.querySelector('#finImportForm').addEventListener('submit', handleSalesCsvImport);
   document.querySelector('#finManualSaleForm').addEventListener('submit', handleManualSaleForm);
@@ -6156,6 +6566,7 @@ function renderFinSyncStatus() {
 function setActiveFinTab(tab) {
   if (tab === 'hoy' && activeFinTab !== 'hoy') finTodayDate = toDateInput(new Date());
   activeFinTab = tab;
+  if (['audit', 'analysis', 'ai'].includes(tab)) activeReportTab = tab;
   document.querySelectorAll('.fin-tab').forEach((btn) => {
     btn.classList.toggle('is-active', btn.dataset.finTab === tab);
   });
@@ -6244,9 +6655,11 @@ async function syncBistrosoftAuditRange(from, until) {
 
 function renderFinMonthNav() {
   const nav = document.querySelector('#finMonthNav');
+  const reportsNav = document.querySelector('#reportsMonthNav');
   const projection = document.querySelector('#finTodayProjection');
   const isTodayTab = activeFinTab === 'hoy';
   if (nav) nav.hidden = isTodayTab;
+  if (reportsNav) reportsNav.hidden = activeFinTab !== 'audit';
   if (projection) {
     projection.hidden = !isTodayTab;
     if (isTodayTab) renderFinTodayProjection();
@@ -6262,7 +6675,10 @@ function renderFinMonthNav() {
     dateLabel.textContent = finTodayDate === today ? 'Hoy' : formatHumanDate(finTodayDate);
   }
   const el = document.querySelector('#finMonthDisplay');
-  if (el) el.textContent = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  const reportsEl = document.querySelector('#reportsMonthDisplay');
+  const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  if (el) el.textContent = monthLabel;
+  if (reportsEl) reportsEl.textContent = monthLabel;
 }
 
 function renderFinanzas() {
@@ -6441,6 +6857,15 @@ function renderFinImport() {
 
 // -------- EXPENSES --------
 
+function calculateExpenseCategoryTotals(expenses = []) {
+  const totals = Object.fromEntries(EXPENSE_CATEGORIES.map((category) => [category.id, 0]));
+  expenses.forEach((expense) => {
+    const categoryId = Object.hasOwn(totals, expense.category) ? expense.category : 'otros';
+    totals[categoryId] += Number(expense.amount || 0);
+  });
+  return totals;
+}
+
 function renderFinExpenses() {
   const monthKey = monthInputValue(finActiveMonth);
   const expenses = getLocationExpenses()
@@ -6451,11 +6876,21 @@ function renderFinExpenses() {
       || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
     );
   const monthTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const categoryTotals = calculateExpenseCategoryTotals(expenses);
 
   document.querySelector('#finExpListTitle').textContent =
     `Gastos de ${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
   document.querySelector('#finExpSummary').textContent =
     `${expenses.length} movimientos · ${formatEur(monthTotal)}`;
+  document.querySelector('#finExpCategoryMonth').textContent =
+    `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  document.querySelector('#finExpenseCategorySummary').innerHTML = EXPENSE_CATEGORIES.map((category) => {
+    const amount = categoryTotals[category.id];
+    return `<div class="fin-expense-category-item${amount === 0 ? ' is-zero' : ''}" data-expense-category="${category.id}">
+      <span>${escapeHtml(category.label)}</span>
+      <strong>${formatEur(amount)}</strong>
+    </div>`;
+  }).join('');
 
   const list = document.querySelector('#finExpenseList');
   if (!expenses.length) {
@@ -6475,7 +6910,7 @@ function renderFinExpenses() {
       : '';
     const tcBadge = exp.isDiferido ? `<span class="fin-tc-badge">TC · vence ${formatHumanDate(exp.dueDate)}</span>` : '';
     return `
-      <article class="event-item${exp.isDiferido ? ' fin-item-tc' : ''}">
+      <article class="event-item fin-expense-item${exp.isDiferido ? ' fin-item-tc' : ''}">
         <div class="event-topline">
           <span>${catLabel}${exp.supplier ? ' · ' + escapeHtml(exp.supplier) : ''}${tcBadge}${bistroBadge}</span>
           <span class="status-pill status-rejected">${formatEur(exp.amount)}</span>
@@ -8232,7 +8667,11 @@ const FIN_AI_MONTH_ALIASES = [
 ];
 
 const FIN_AI_PRODUCT_STOP_WORDS = new Set([
-  'de', 'del', 'la', 'las', 'el', 'los', 'con', 'sin', 'para', 'por', 'un', 'una', 'y',
+  'de', 'del', 'la', 'las', 'el', 'los', 'con', 'sin', 'para', 'por', 'un', 'una', 'y', 'o',
+  'cuanto', 'cuanta', 'cuantos', 'cuantas', 'se', 'vendio', 'vendieron', 'vender', 'vendido',
+  'venta', 'ventas', 'unidad', 'unidades', 'producto', 'productos', 'articulo', 'articulos',
+  'entre', 'desde', 'hasta', 'quiero', 'mostrar', 'mostrame', 'dame', 'buscar', 'busca', 'ver',
+  'hay', 'hubo', 'total', 'totales', 'comparar', 'compara', 'comparame',
 ]);
 
 function normalizeFinAiText(value) {
@@ -8245,6 +8684,7 @@ function normalizeFinAiText(value) {
 }
 
 function stemFinAiToken(token) {
+  if (token === 'cafes') return 'cafe';
   if (token.length > 4 && token.endsWith('es')) return token.slice(0, -2);
   if (token.length > 3 && token.endsWith('s')) return token.slice(0, -1);
   return token;
@@ -8252,8 +8692,8 @@ function stemFinAiToken(token) {
 
 function finAiProductTokens(value) {
   return normalizeFinAiText(value).split(/\s+/).filter(Boolean)
-    .filter((token) => !FIN_AI_PRODUCT_STOP_WORDS.has(token))
-    .map(stemFinAiToken);
+    .map(stemFinAiToken)
+    .filter((token) => token.length > 1 && !FIN_AI_PRODUCT_STOP_WORDS.has(token));
 }
 
 function getFinAiMonthKeys(dateFrom, dateTo) {
@@ -8374,10 +8814,16 @@ function resolveFinAiProducts(question, sales = getLocationSales()) {
   const normalized = normalizeFinAiText(question);
   const compact = normalized.replace(/\s+/g, '');
   const questionTokens = new Set(finAiProductTokens(question));
-  return buildFinAiProductCatalog(sales).filter((product) => {
+  const catalog = buildFinAiProductCatalog(sales);
+  const productVocabulary = new Set(catalog.flatMap((product) => product.tokens));
+  const queryProductTokens = [...questionTokens].filter((token) => productVocabulary.has(token));
+  const asksCoffeeCategory = /\b(cafe|cafes|coffee)\b/.test(normalized);
+  return catalog.filter((product) => {
+    if (asksCoffeeCategory && isCoffeeItem({ name: product.label })) return true;
     const exact = normalized.includes(product.key) || (product.compact.length >= 4 && compact.includes(product.compact));
     if (exact) return true;
     const overlap = product.tokens.filter((token) => questionTokens.has(token)).length;
+    if (queryProductTokens.length === 1 && product.tokens.includes(queryProductTokens[0])) return true;
     if (product.tokens.length === 1) return overlap === 1;
     return overlap >= 2 && overlap / product.tokens.length >= 0.6;
   });
@@ -8476,8 +8922,15 @@ function buildFinAiProductResult(question, period, periodSales, allSales, wantsT
     };
   }
 
-  const matchKeys = new Set(matches.map((match) => match.key));
-  const selected = rows.filter((row) => matchKeys.has(row.key));
+  const rowsByKey = new Map(rows.map((row) => [row.key, row]));
+  const selected = matches.map((match) => rowsByKey.get(match.key) || {
+    key: match.key,
+    label: match.label,
+    quantity: 0,
+    amount: 0,
+    tickets: new Set(),
+    months: new Map(),
+  }).sort((a, b) => b.quantity - a.quantity || a.label.localeCompare(b.label, 'es'));
   const totalQuantity = selected.reduce((sum, row) => sum + row.quantity, 0);
   const totalAmount = selected.reduce((sum, row) => sum + row.amount, 0);
   const ticketIds = new Set(selected.flatMap((row) => [...row.tickets]));
@@ -8486,9 +8939,13 @@ function buildFinAiProductResult(question, period, periodSales, allSales, wantsT
     quantity: selected.reduce((sum, row) => sum + (row.months.get(monthKey) || 0), 0),
   }));
   const matchedLabels = matches.map((match) => match.label);
-  const answer = totalQuantity > 0
-    ? `Se vendieron ${formatQuantity(totalQuantity)} unidades de ${matchedLabels.join(', ')} en ${period.label}.`
-    : `No hay ventas registradas de ${matchedLabels.join(', ')} en ${period.label}.`;
+  const answer = matches.length > 1
+    ? (totalQuantity > 0
+      ? `Encontré ${matches.length} variantes en ${period.label}, con ${formatQuantity(totalQuantity)} unidades en total. Se muestran por separado.`
+      : `No hay ventas registradas en ${period.label} para las ${matches.length} variantes encontradas. Se muestran por separado.`)
+    : (totalQuantity > 0
+      ? `Se vendieron ${formatQuantity(totalQuantity)} unidades de ${matchedLabels[0]} en ${period.label}.`
+      : `No hay ventas registradas de ${matchedLabels[0]} en ${period.label}.`);
   const chart = selected.length > 1
     ? selected.map((row) => ({ label: row.label, value: row.quantity, display: formatQuantity(row.quantity) }))
     : monthly.map((row) => ({ label: row.label, value: row.quantity, display: formatQuantity(row.quantity) }));
@@ -8497,7 +8954,7 @@ function buildFinAiProductResult(question, period, periodSales, allSales, wantsT
     answer,
     note: finAiCoverageNote(coverage),
     kpis: [
-      { label: 'Unidades', value: formatQuantity(totalQuantity) },
+      { label: matches.length > 1 ? 'Unidades totales' : 'Unidades', value: formatQuantity(totalQuantity) },
       { label: 'Tickets', value: String(ticketIds.size) },
       { label: 'Variantes encontradas', value: String(matches.length) },
       { label: 'Venta identificada', value: totalAmount > 0 ? formatEur(totalAmount) : '—' },
@@ -8506,9 +8963,7 @@ function buildFinAiProductResult(question, period, periodSales, allSales, wantsT
     chartTitle: selected.length > 1 ? 'Comparación por producto' : 'Unidades por mes',
     table: {
       columns: ['Producto', 'Unidades', 'Tickets', 'Venta identificada'],
-      rows: selected.length
-        ? selected.map((row) => [row.label, formatQuantity(row.quantity), String(row.tickets.size), row.amount > 0 ? formatEur(row.amount) : '—'])
-        : matchedLabels.map((label) => [label, '0', '0', '—']),
+      rows: selected.map((row) => [row.label, formatQuantity(row.quantity), String(row.tickets.size), row.amount > 0 ? formatEur(row.amount) : '—']),
     },
   };
 }
@@ -8625,9 +9080,40 @@ function renderFinAiResult(result) {
   </section>`;
 }
 
+function captureFinAiEditorState(container) {
+  const questionInput = container?.querySelector('#finAiQuestion');
+  const dateFromInput = container?.querySelector('#finAiDateFrom');
+  const dateToInput = container?.querySelector('#finAiDateTo');
+  if (questionInput) finAiQuestionDraft = questionInput.value;
+  if (isDateKey(dateFromInput?.value) && isDateKey(dateToInput?.value) && dateFromInput.value <= dateToInput.value) {
+    finAiDateRange = { dateFrom: dateFromInput.value, dateTo: dateToInput.value };
+  }
+  const activeElement = document.activeElement;
+  const focusId = activeElement && container?.contains(activeElement)
+    && ['finAiQuestion', 'finAiDateFrom', 'finAiDateTo'].includes(activeElement.id)
+    ? activeElement.id
+    : null;
+  return {
+    focusId,
+    selectionStart: focusId === 'finAiQuestion' ? activeElement.selectionStart : null,
+    selectionEnd: focusId === 'finAiQuestion' ? activeElement.selectionEnd : null,
+  };
+}
+
+function restoreFinAiEditorState(editorState) {
+  if (!editorState?.focusId) return;
+  const input = document.querySelector(`#${editorState.focusId}`);
+  if (!input) return;
+  input.focus({ preventScroll: true });
+  if (editorState.focusId === 'finAiQuestion' && typeof input.setSelectionRange === 'function') {
+    input.setSelectionRange(editorState.selectionStart, editorState.selectionEnd);
+  }
+}
+
 function renderFinAi() {
   const container = document.querySelector('#finAiContent');
   if (!container) return;
+  const editorState = captureFinAiEditorState(container);
   const selectedPeriod = getFinAiSelectedPeriod();
   const examples = [
     '¿Cuántos Pan de queso se vendieron?',
@@ -8654,7 +9140,7 @@ function renderFinAi() {
         </div>
         <label for="finAiQuestion">Tu pregunta</label>
         <div class="fin-ai-compose">
-          <textarea id="finAiQuestion" rows="3" placeholder="Ejemplo: ¿Cuántos Cold Brew se vendieron?">${escapeHtml(finAiQuestion)}</textarea>
+          <textarea id="finAiQuestion" rows="3" placeholder="Ejemplo: ¿Cuántos Cold Brew se vendieron?">${escapeHtml(finAiQuestionDraft)}</textarea>
           <button class="primary-button" type="submit">Consultar</button>
         </div>
         <p class="pin-error" id="finAiDateError" hidden>La fecha “Hasta” debe ser igual o posterior a “Desde”.</p>
@@ -8667,7 +9153,8 @@ function renderFinAi() {
 
   document.querySelector('#finAiForm')?.addEventListener('submit', (event) => {
     event.preventDefault();
-    const question = document.querySelector('#finAiQuestion')?.value.trim() || '';
+    const questionValue = document.querySelector('#finAiQuestion')?.value || '';
+    const question = questionValue.trim();
     if (!question) return;
     const dateFrom = document.querySelector('#finAiDateFrom')?.value || '';
     const dateTo = document.querySelector('#finAiDateTo')?.value || '';
@@ -8678,9 +9165,13 @@ function renderFinAi() {
     }
     if (error) error.hidden = true;
     finAiDateRange = { dateFrom, dateTo };
+    finAiQuestionDraft = questionValue;
     finAiQuestion = question;
     finAiResult = answerFinAiQuestion(question, null, null, getFinAiSelectedPeriod());
     renderFinAi();
+  });
+  document.querySelector('#finAiQuestion')?.addEventListener('input', (event) => {
+    finAiQuestionDraft = event.currentTarget.value;
   });
   ['finAiDateFrom', 'finAiDateTo'].forEach((id) => {
     document.querySelector(`#${id}`)?.addEventListener('change', () => {
@@ -8704,10 +9195,12 @@ function renderFinAi() {
       }
       finAiDateRange = { dateFrom, dateTo };
       finAiQuestion = button.dataset.aiExample;
+      finAiQuestionDraft = finAiQuestion;
       finAiResult = answerFinAiQuestion(finAiQuestion, null, null, getFinAiSelectedPeriod());
       renderFinAi();
     });
   });
+  restoreFinAiEditorState(editorState);
 }
 
 // -------- METRICS --------

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=31" />
+    <link rel="stylesheet" href="styles.css?v=33" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -280,6 +280,7 @@
           <button class="nav-item" data-tab="fichas" type="button">Fichas</button>
           <button class="nav-item" data-tab="traffic" type="button">Carga por hora</button>
           <button class="nav-item" data-tab="finanzas" type="button">Finanzas</button>
+          <button class="nav-item" data-tab="reports" type="button">Reportes</button>
           <button class="nav-item" data-tab="settings" type="button">Ajustes</button>
         </nav>
 
@@ -600,9 +601,6 @@
               <button class="fin-tab" data-fin-tab="monthly" type="button">Mensual</button>
               <button class="fin-tab" data-fin-tab="pnl" type="button">P&amp;L anual</button>
               <button class="fin-tab" data-fin-tab="presupuesto" type="button">Presupuesto</button>
-              <button class="fin-tab" data-fin-tab="audit" type="button">Auditoría</button>
-              <button class="fin-tab" data-fin-tab="analysis" type="button">Análisis</button>
-              <button class="fin-tab" data-fin-tab="ai" type="button">IA</button>
             </nav>
             <div class="fin-sync-bar" id="finBistroSync" aria-live="polite">
               <span class="fin-sync-dot" id="finSyncDot" aria-hidden="true"></span>
@@ -692,52 +690,61 @@
 
           <!-- GASTOS -->
           <div class="fin-panel" data-fin-panel="expenses">
-            <div class="two-column" style="padding:20px">
-              <form class="form-surface" id="finExpenseForm">
-                <h3 id="finExpFormTitle">Registrar gasto</h3>
-                <p class="form-note fin-bistro-edit-note" id="finExpEditNote" hidden>
-                  Este movimiento sigue vinculado a Bistrosoft. Solo se guarda la categoría elegida en esta app; no se duplica ni se modifica el original.
-                </p>
-                <input type="hidden" id="finExpEditId" value="" />
-                <div class="form-grid">
-                  <label>Fecha<input id="finExpDate" type="date" required /></label>
-                  <label>Importe (€)<input id="finExpAmount" type="number" step="0.01" min="0.01" placeholder="0,00" required /></label>
-                  <label>Categoría
-                    <select id="finExpCategory">
-                      <option value="materia_prima">Materia prima</option>
-                      <option value="nominas">Nóminas</option>
-                      <option value="seguridad_social">Seg. Social / TGSS</option>
-                      <option value="alquiler">Alquiler</option>
-                      <option value="suministros">Suministros</option>
-                      <option value="mantenimiento">Mantenimiento</option>
-                      <option value="comisiones_tpv">Comisiones TPV</option>
-                      <option value="impuestos">Impuestos</option>
-                      <option value="gestoria">Gestoría / Admin</option>
-                      <option value="inversiones">Inversiones</option>
-                      <option value="marketing">Marketing</option>
-                      <option value="otros">Otros</option>
-                    </select>
+            <div class="two-column fin-expense-layout" style="padding:20px">
+              <div class="fin-expense-entry-column">
+                <form class="form-surface" id="finExpenseForm">
+                  <h3 id="finExpFormTitle">Registrar gasto</h3>
+                  <p class="form-note fin-bistro-edit-note" id="finExpEditNote" hidden>
+                    Este movimiento sigue vinculado a Bistrosoft. Solo se guarda la categoría elegida en esta app; no se duplica ni se modifica el original.
+                  </p>
+                  <input type="hidden" id="finExpEditId" value="" />
+                  <div class="form-grid">
+                    <label>Fecha<input id="finExpDate" type="date" required /></label>
+                    <label>Importe (€)<input id="finExpAmount" type="number" step="0.01" min="0.01" placeholder="0,00" required /></label>
+                    <label>Categoría
+                      <select id="finExpCategory">
+                        <option value="materia_prima">Materia prima</option>
+                        <option value="nominas">Nóminas</option>
+                        <option value="seguridad_social">Seg. Social / TGSS</option>
+                        <option value="alquiler">Alquiler</option>
+                        <option value="suministros">Suministros</option>
+                        <option value="mantenimiento">Mantenimiento</option>
+                        <option value="comisiones_tpv">Comisiones TPV</option>
+                        <option value="impuestos">Impuestos</option>
+                        <option value="gestoria">Gestoría / Admin</option>
+                        <option value="inversiones">Inversiones</option>
+                        <option value="marketing">Marketing</option>
+                        <option value="otros">Otros</option>
+                      </select>
+                    </label>
+                    <label>Proveedor<input id="finExpSupplier" type="text" placeholder="Nombre" /></label>
+                  </div>
+                  <label>Descripción<input id="finExpDesc" type="text" placeholder="Detalle breve (opcional)" /></label>
+                  <!-- Pago diferido TC -->
+                  <label class="fin-defer-toggle">
+                    <input type="checkbox" id="finExpDiferido" />
+                    <span>Pago diferido (Tarjeta de crédito)</span>
                   </label>
-                  <label>Proveedor<input id="finExpSupplier" type="text" placeholder="Nombre" /></label>
-                </div>
-                <label>Descripción<input id="finExpDesc" type="text" placeholder="Detalle breve (opcional)" /></label>
-                <!-- Pago diferido TC -->
-                <label class="fin-defer-toggle">
-                  <input type="checkbox" id="finExpDiferido" />
-                  <span>Pago diferido (Tarjeta de crédito)</span>
-                </label>
-                <div id="finExpDueDateRow" class="fin-duedaterow" style="display:none">
-                  <label>Fecha de vencimiento TC<input id="finExpDueDate" type="date" /></label>
-                  <p class="form-note">El gasto se reflejará en el P&L del mes de vencimiento.</p>
-                </div>
-                <div class="button-row" style="margin-top:14px">
-                  <button class="primary-button" type="submit" id="finExpSubmitBtn">Guardar gasto</button>
-                  <button class="ghost-button" type="button" id="finExpCancelEdit" style="display:none">Cancelar</button>
-                </div>
-              </form>
-              <div class="list-surface">
+                  <div id="finExpDueDateRow" class="fin-duedaterow" style="display:none">
+                    <label>Fecha de vencimiento TC<input id="finExpDueDate" type="date" /></label>
+                    <p class="form-note">El gasto se reflejará en el P&L del mes de vencimiento.</p>
+                  </div>
+                  <div class="button-row" style="margin-top:14px">
+                    <button class="primary-button" type="submit" id="finExpSubmitBtn">Guardar gasto</button>
+                    <button class="ghost-button" type="button" id="finExpCancelEdit" style="display:none">Cancelar</button>
+                  </div>
+                </form>
+                <aside class="list-surface fin-expense-category-summary" aria-labelledby="finExpCategoryTitle">
+                  <div class="list-heading">
+                    <h3 id="finExpCategoryTitle">Total por categoría</h3>
+                    <span id="finExpCategoryMonth"></span>
+                  </div>
+                  <div class="fin-expense-category-grid" id="finExpenseCategorySummary"></div>
+                </aside>
+              </div>
+              <div class="list-surface fin-expense-list-surface">
                 <div class="list-heading"><h3 id="finExpListTitle">Gastos del mes</h3><span id="finExpSummary"></span></div>
-                <div id="finExpenseList" class="event-list"></div>
+                <div id="finExpenseList" class="event-list fin-expense-list"></div>
               </div>
             </div>
           </div>
@@ -781,21 +788,6 @@
             <div id="finPresupuestoContent" style="padding:20px"></div>
           </div>
 
-          <!-- AUDITORÍA -->
-          <div class="fin-panel" data-fin-panel="audit">
-            <div id="finAuditContent" style="padding:20px"></div>
-          </div>
-
-          <!-- ANÁLISIS -->
-          <div class="fin-panel" data-fin-panel="analysis">
-            <div id="finAnalysisContent" style="padding:20px"></div>
-          </div>
-
-          <!-- IA DE DATOS -->
-          <div class="fin-panel" data-fin-panel="ai">
-            <div id="finAiContent" style="padding:20px"></div>
-          </div>
-
           <!-- P&L -->
           <div class="fin-panel" data-fin-panel="pnl">
             <div style="padding:20px">
@@ -809,6 +801,37 @@
               </div>
               <div id="finPnlTable" style="overflow-x:auto"></div>
             </div>
+          </div>
+        </section>
+
+        <section class="panel tab-panel" id="reportsPanel" data-panel="reports">
+          <div class="panel-heading reports-heading">
+            <div>
+              <p class="eyebrow">Auditoría · análisis · consultas</p>
+              <h2>Reportes</h2>
+            </div>
+            <div class="fin-month-nav" id="reportsMonthNav">
+              <button id="reportsPrevMonth" class="icon-button" type="button" title="Mes anterior">&#8249;</button>
+              <span id="reportsMonthDisplay"></span>
+              <button id="reportsNextMonth" class="icon-button" type="button" title="Mes siguiente">&#8250;</button>
+            </div>
+            <nav class="fin-subnav" aria-label="Secciones de reportes">
+              <button class="fin-tab is-active" data-fin-tab="audit" type="button">Auditoría</button>
+              <button class="fin-tab" data-fin-tab="analysis" type="button">Análisis</button>
+              <button class="fin-tab" data-fin-tab="ai" type="button">IA</button>
+            </nav>
+          </div>
+
+          <div class="fin-panel is-visible" data-fin-panel="audit">
+            <div id="finAuditContent" style="padding:20px"></div>
+          </div>
+
+          <div class="fin-panel" data-fin-panel="analysis">
+            <div id="finAnalysisContent" style="padding:20px"></div>
+          </div>
+
+          <div class="fin-panel" data-fin-panel="ai">
+            <div id="finAiContent" style="padding:20px"></div>
           </div>
         </section>
 
@@ -900,6 +923,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=58"></script>
+    <script src="app.js?v=61"></script>
   </body>
 </html>

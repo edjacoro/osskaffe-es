@@ -112,7 +112,88 @@ assert.match(appSource, /id="finAiDateFrom" type="date"/);
 assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
-assert.match(html, /styles\.css\?v=31/);
-assert.match(html, /app\.js\?v=58/);
+assert.match(html, /styles\.css\?v=33/);
+assert.match(html, /app\.js\?v=61/);
+assert.match(html, /id="finExpenseCategorySummary"/);
+assert.match(html, /id="finExpCategoryMonth"/);
+assert.match(html, /id="finExpenseList" class="event-list fin-expense-list"/);
+assert.match(appSource, /function calculateExpenseCategoryTotals\(expenses = \[\]\)/);
+assert.match(appSource, /Object\.hasOwn\(totals, expense\.category\) \? expense\.category : 'otros'/);
+assert.match(appSource, /data-expense-category="\$\{category\.id\}"/);
+assert.match(styles, /\.fin-expense-category-grid \{[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/);
+assert.match(styles, /\.fin-expense-item \{[\s\S]*?padding: 8px 9px/);
+assert.match(styles, /\.fin-expense-item \.mini-button \{[\s\S]*?min-height: 25px/);
 
-console.log("OK: Finanzas conserva Auditoria y calcula cafes / pasteleria sin exigir el mismo ticket.");
+const expenseTotalsStart = appSource.indexOf('function calculateExpenseCategoryTotals');
+const expenseTotalsEnd = appSource.indexOf('function renderFinExpenses', expenseTotalsStart);
+const buildExpenseTotals = new Function(
+  'EXPENSE_CATEGORIES',
+  `${appSource.slice(expenseTotalsStart, expenseTotalsEnd)}\nreturn calculateExpenseCategoryTotals;`,
+);
+const calculateExpenseTotals = buildExpenseTotals([
+  { id: 'materia_prima', label: 'Materia prima' },
+  { id: 'nominas', label: 'Nóminas' },
+  { id: 'otros', label: 'Otros' },
+]);
+assert.deepEqual(
+  calculateExpenseTotals([
+    { category: 'materia_prima', amount: 100 },
+    { category: 'materia_prima', amount: '25.5' },
+    { category: 'nominas', amount: 300 },
+    { category: 'categoria_desconocida', amount: 10 },
+  ]),
+  { materia_prima: 125.5, nominas: 300, otros: 10 },
+  'El visor debe sumar cada categoría y llevar cualquier categoría desconocida a Otros.',
+);
+
+const financeNavPosition = html.indexOf('data-tab="finanzas"');
+const reportsNavPosition = html.indexOf('data-tab="reports"');
+const settingsNavPosition = html.indexOf('data-tab="settings"');
+assert.ok(
+  financeNavPosition >= 0 && reportsNavPosition > financeNavPosition && settingsNavPosition > reportsNavPosition,
+  "Reportes debe aparecer inmediatamente después de Finanzas en la navegación principal.",
+);
+assert.match(html, /id="reportsPanel" data-panel="reports"/);
+const financeSubnav = html.slice(html.indexOf('aria-label="Secciones de finanzas"'), html.indexOf('</nav>', html.indexOf('aria-label="Secciones de finanzas"')));
+assert.doesNotMatch(financeSubnav, /data-fin-tab="(audit|analysis|ai)"/);
+const reportsSubnav = html.slice(html.indexOf('aria-label="Secciones de reportes"'), html.indexOf('</nav>', html.indexOf('aria-label="Secciones de reportes"')));
+assert.match(reportsSubnav, /data-fin-tab="audit"/);
+assert.match(reportsSubnav, /data-fin-tab="analysis"/);
+assert.match(reportsSubnav, /data-fin-tab="ai"/);
+assert.match(appSource, /let activeReportTab = 'audit'/);
+assert.match(appSource, /function captureFinAiEditorState\(container\)/);
+assert.match(appSource, /finAiQuestionDraft = event\.currentTarget\.value/);
+assert.match(appSource, /restoreFinAiEditorState\(editorState\)/);
+
+const resolverStart = appSource.indexOf('const FIN_AI_PRODUCT_STOP_WORDS');
+const resolverEnd = appSource.indexOf('function aggregateFinAiProducts', resolverStart);
+assert.ok(resolverStart >= 0 && resolverEnd > resolverStart, 'Debe poder aislarse la búsqueda de productos de IA.');
+const buildProductResolver = new Function(
+  'itemName',
+  'isCoffeeItem',
+  `${appSource.slice(resolverStart, resolverEnd)}\nreturn resolveFinAiProducts;`,
+);
+const resolveProducts = buildProductResolver(
+  (item) => String(item?.name || ''),
+  (item) => /cafe|coffee|espresso|americano|latte|flat\s*white|cold\s*brew|shakerato/i.test(String(item?.name || '')),
+);
+const productSales = [{ items: [
+  { name: 'Medialuna de manteca' },
+  { name: 'Medialunas J&Q' },
+  { name: 'Café J&Q' },
+  { name: 'Flat White' },
+  { name: 'Cold Brew' },
+  { name: 'Cookie' },
+] }];
+assert.deepEqual(
+  resolveProducts('¿Cuántas medialunas se vendieron?', productSales).map((product) => product.label).sort(),
+  ['Medialuna de manteca', 'Medialunas J&Q'].sort(),
+  'Una búsqueda genérica debe incluir todas las variantes de medialuna, incluida J&Q.',
+);
+assert.deepEqual(
+  resolveProducts('¿Cuántos cafés se vendieron?', productSales).map((product) => product.label).sort(),
+  ['Café J&Q', 'Cold Brew', 'Flat White'].sort(),
+  'La palabra café debe incluir variedades frías, calientes y especiales sin mezclarlas.',
+);
+
+console.log("OK: Reportes separa Auditoria / Analisis / IA y la consulta conserva texto y variantes de producto.");

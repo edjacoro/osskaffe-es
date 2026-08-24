@@ -12,6 +12,7 @@
     "test:finance": "node scripts/test-finance-audit-consistency.mjs",
     "test:store-hours": "node scripts/test-store-hours-editor.mjs",
     "test:changes": "node scripts/test-change-ranges.mjs",
+    "test:schedule-plan": "node scripts/test-madrid-schedule-plan.mjs",
     "test:persistence": "node scripts/test-reliable-persistence.mjs"
   },
   "dependencies": {
