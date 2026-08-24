@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=33" />
+    <link rel="stylesheet" href="styles.css?v=34" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -258,6 +258,62 @@
       </div>
     </div>
 
+    <div class="shift-editor-modal" id="shiftEditorModal" hidden>
+      <aside class="shift-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="shiftEditorTitle">
+        <div class="shift-editor-header">
+          <div>
+            <p class="eyebrow">Editar turno</p>
+            <h3 id="shiftEditorTitle">Turno</h3>
+          </div>
+          <button class="shift-editor-close" id="shiftEditorClose" type="button" aria-label="Cerrar editor">&#215;</button>
+        </div>
+        <form id="shiftEditorForm">
+          <label>
+            Persona
+            <select id="shiftEditorEmployee" required></select>
+          </label>
+          <label>
+            Fecha
+            <input id="shiftEditorDate" type="date" required />
+          </label>
+          <div class="form-grid">
+            <label>
+              Desde
+              <input id="shiftEditorStart" type="time" step="1800" required />
+            </label>
+            <label>
+              Hasta
+              <input id="shiftEditorEnd" type="time" step="1800" required />
+            </label>
+          </div>
+          <div class="shift-editor-duration">
+            <span>Duración del turno</span>
+            <strong id="shiftEditorDuration">0 h</strong>
+          </div>
+          <div class="shift-editor-quick-group">
+            <span>Mover turno</span>
+            <div class="shift-editor-quick-row">
+              <button type="button" data-shift-move="-0.5">−30 min</button>
+              <button type="button" data-shift-move="0.5">+30 min</button>
+            </div>
+          </div>
+          <div class="shift-editor-quick-group">
+            <span>Sumar / restar horas</span>
+            <div class="shift-editor-quick-row">
+              <button type="button" data-shift-duration="-0.5">−30 min</button>
+              <button type="button" data-shift-duration="0.5">+30 min</button>
+            </div>
+          </div>
+          <p class="shift-editor-status" id="shiftEditorStatus" aria-live="polite"></p>
+          <button class="primary-button shift-editor-save" type="submit">Guardar turno</button>
+          <div class="shift-editor-secondary-actions">
+            <button class="ghost-button" id="shiftEditorDuplicate" type="button">Duplicar</button>
+            <button class="ghost-button danger" id="shiftEditorDelete" type="button">Eliminar</button>
+          </div>
+        </form>
+      </aside>
+    </div>
+
     <!-- ===== APP ADMIN ===== -->
     <div class="app-shell" hidden>
       <aside class="sidebar">
@@ -459,7 +515,7 @@
                 Nota
                 <textarea id="changeNote" rows="3" placeholder="Detalle breve"></textarea>
               </label>
-              <button class="primary-button" type="submit">Enviar a aprobar</button>
+              <button class="primary-button" type="submit">Guardar cambio</button>
             </form>
 
             <div class="list-surface">
@@ -923,6 +979,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=61"></script>
+    <script src="app.js?v=63"></script>
   </body>
 </html>

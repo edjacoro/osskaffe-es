@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { applySchedulePlanUpdate } from "../netlify/functions/schedule-plan.mjs";
 
 const appSource = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const planStart = appSource.indexOf("const MADRID_SCHEDULE_SEED_VERSION");
@@ -71,5 +72,20 @@ assert.ok(weekEightTuesday.some((shift) => shift.employeeId === "mechi" && shift
 
 assert.match(appSource, /id: "guillermo",\s+label: "Guillermina"/);
 assert.match(appSource, /id: "barista-tarde"[\s\S]*?canLogin: false[\s\S]*?testEmployee: true/);
+
+const priorState = {
+  sales: [{ id: "venta-1", total: 42 }],
+  employees: [{ id: "persona-existente", label: "Persona" }],
+  schedulePlans: { madrid: [{ id: "plan-anterior", effectiveFrom: "2026-01-01", cycleLength: 1, weeks: [{ shifts: [] }] }] },
+  madridScheduleSeedVersion: 1,
+};
+const savedState = applySchedulePlanUpdate(priorState, { plan, seedVersion: 2 });
+assert.deepEqual(savedState.sales, priorState.sales, "La grilla puntual no debe reenviar ni alterar ventas.");
+assert.deepEqual(savedState.employees, priorState.employees, "La grilla puntual no debe alterar el personal.");
+assert.equal(savedState.madridScheduleSeedVersion, 2);
+assert.equal(savedState.schedulePlans.madrid.find((candidate) => candidate.id === plan.id)?.weeks.length, 8);
+assert.ok(savedState.schedulePlans.madrid.some((candidate) => candidate.id === "plan-anterior"));
+assert.match(appSource, /sendSharedMutation\(\s*"\/api\/schedule-plan"/,
+  "La programación debe guardarse mediante una escritura pequeña y dedicada.");
 
 console.log("OK: Madrid conserva el pasado y repite exactamente el ciclo de ocho semanas desde el 31/08.");

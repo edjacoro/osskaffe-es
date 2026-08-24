@@ -57,6 +57,7 @@ function cleanChange(current, input = {}, session = {}) {
     replacementEmployeeId = "";
   }
 
+  const approvedByAdmin = session.role === "admin";
   return {
     id: String(input.id),
     locationId: employeeLocation(current, employeeId, input.locationId),
@@ -70,8 +71,12 @@ function cleanChange(current, input = {}, session = {}) {
     end,
     fullDay,
     note: String(input.note || "").trim().slice(0, 500),
-    status: "pending",
+    status: approvedByAdmin ? "approved" : "pending",
     createdAt: String(input.createdAt || new Date().toISOString()),
+    ...(approvedByAdmin ? {
+      reviewedAt: String(input.reviewedAt || new Date().toISOString()),
+      reviewedBy: "Administrador",
+    } : {}),
   };
 }
 
@@ -81,6 +86,18 @@ export function applyChangeMutation(current, body = {}, session = {}) {
   if (body.action === "create") {
     const change = cleanChange(current, body.change, session);
     if (!changes.some((item) => item.id === change.id)) changes.push(change);
+    next.changes = changes;
+    return next;
+  }
+
+  if (body.action === "batch-create") {
+    if (session.role !== "admin") throw new Error("Solo un administrador puede editar turnos directamente.");
+    const inputs = Array.isArray(body.changes) ? body.changes : [];
+    if (!inputs.length || inputs.length > 12) throw new Error("El lote de cambios es invalido.");
+    inputs.forEach((input) => {
+      const change = cleanChange(current, input, session);
+      if (!changes.some((item) => item.id === change.id)) changes.push(change);
+    });
     next.changes = changes;
     return next;
   }

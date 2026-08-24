@@ -133,6 +133,19 @@ un empleado de prueba: cubre horas en Grilla, pero no puede ingresar al Team ni
 participa en contratos o liquidaciones. La ficha legal conserva `Guillermo` y el
 nombre visible en la operacion es `Guillermina`.
 
+Desde el 31/08/2026 el horario predeterminado de Madrid es continuo: 08:00-19:00
+de lunes a viernes y 10:00-20:00 los sabados y domingos. Se conservan sin cambios
+los horarios y turnos anteriores, y una edicion puntual de un dia sigue teniendo
+prioridad para eventos o extensiones. La programación de ocho semanas se guarda
+con una escritura pequena dedicada, sin reenviar el historial financiero completo.
+
+En Grilla, cada fila sombrea suavemente el tramo en que la tienda esta abierta;
+la media hora de preparacion anterior y posterior queda fuera de ese fondo para
+distinguirla rapidamente. El administrador puede tocar cualquier turno para abrir
+el editor rapido: cambiar persona o fecha, editar horas, mover el turno 30 minutos,
+sumar o restar 30 minutos, duplicarlo o eliminarlo. Cada accion se guarda en
+Netlify y aparece inmediatamente en Cambios con estado aprobado.
+
 El editor mensual de apertura permite completar la hora sin validar mientras se
 esta escribiendo. Cada dia modificado se confirma con **Guardar**; la pantalla
 indica cuando hay cambios pendientes y cuando Netlify confirmo el guardado. El

@@ -18,7 +18,40 @@ assert.match(appSource, /Guardado en Netlify/, "Debe confirmar visualmente la pe
 assert.match(appSource, /const editorLocationId = activeLocationId;/, "El editor debe conservar la tienda que se esta modificando.");
 assert.match(appSource, /getLocationSettings\(locationId\)/, "Los horarios deben guardarse por separado para cada tienda.");
 assert.match(html, /presioná GUARDAR en cada día modificado/);
-assert.match(html, /app\.js\?v=61/);
+assert.match(html, /app\.js\?v=63/);
+
+const openingStart = appSource.indexOf("function getDefaultOpeningPeriodsForDate");
+const openingEnd = appSource.indexOf("function getDefaultOpeningForDate", openingStart);
+assert.ok(openingStart >= 0 && openingEnd > openingStart, "Debe poder comprobarse el horario efectivo por fecha.");
+const getDefaultOpeningPeriodsForDate = new Function(
+  "activeLocationId",
+  "normalizeLocationId",
+  "getHoliday",
+  "getRegularOpeningPeriods",
+  "formatHour",
+  "MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM",
+  `${appSource.slice(openingStart, openingEnd)}\nreturn getDefaultOpeningPeriodsForDate;`,
+)(
+  "madrid",
+  (value) => value,
+  () => null,
+  (day) => day >= 1 && day <= 5
+    ? [{ open: 8.5, close: 14 }, { open: 16, close: 20 }]
+    : [{ open: 10, close: 14 }, { open: 16, close: 20 }],
+  (value) => `${String(Math.floor(value)).padStart(2, "0")}:${value % 1 ? "30" : "00"}`,
+  "2026-08-31",
+);
+assert.deepEqual(getDefaultOpeningPeriodsForDate("2026-08-31", "madrid"), [
+  { open: "08:00", close: "19:00" },
+], "Madrid debe abrir de corrido entre semana desde el 31/08.");
+assert.deepEqual(getDefaultOpeningPeriodsForDate("2026-09-05", "madrid"), [
+  { open: "10:00", close: "20:00" },
+], "Madrid debe abrir de corrido los fines de semana desde el 31/08.");
+assert.equal(
+  getDefaultOpeningPeriodsForDate("2026-08-30", "madrid").length,
+  2,
+  "El horario historico hasta el 30/08 debe quedar intacto.",
+);
 
 const constraintStart = appSource.indexOf("function constrainShiftsToOpeningPeriods");
 const constraintEnd = appSource.indexOf("function getOpenLabel", constraintStart);
@@ -59,6 +92,19 @@ assert.deepEqual(
   ),
   [{ employeeId: "tarde", start: 16, end: 20 }],
   "La reapertura de la tarde no debe agregar media hora de preparacion.",
+);
+assert.deepEqual(
+  constrainShiftsToOpeningPeriods([
+    { employeeId: "micaela", start: 7.5, end: 14.5 },
+    { employeeId: "guillermo", start: 9, end: 14 },
+    { employeeId: "barista-tarde", start: 14.5, end: 19.5 },
+  ], [{ open: 8, close: 19 }]),
+  [
+    { employeeId: "micaela", start: 7.5, end: 14.5 },
+    { employeeId: "guillermo", start: 9, end: 14 },
+    { employeeId: "barista-tarde", start: 14.5, end: 19.5 },
+  ],
+  "El horario continuo no debe recortar los turnos del PDF.",
 );
 
 const initial = {

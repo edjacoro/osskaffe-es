@@ -190,8 +190,9 @@ const DEFAULT_BASE_SCHEDULES = {
   mechi: baseSchedule({}),
 };
 
-const MADRID_SCHEDULE_SEED_VERSION = 1;
+const MADRID_SCHEDULE_SEED_VERSION = 2;
 const MADRID_SCHEDULE_PLAN_ID = "madrid-2026-08-31-8-semanas";
+const MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM = "2026-08-31";
 
 function buildMadridScheduleWeek({ tuesdayEmployee = "perla", saturday = [], sunday = [] } = {}) {
   const shifts = [];
@@ -654,6 +655,7 @@ let pendingTeamRecoverySnapshot = { employees: [], profiles: {}, baseSchedules: 
 let pendingEmployeeId = null;
 let empHoursMonth = firstDayOfMonth(new Date());
 let shiftNotificationTimer = null;
+let activeShiftEdit = null;
 const notifiedShiftKeys = new Set();
 
 const els = {
@@ -670,6 +672,18 @@ const els = {
   storeHoursNextMonth: document.querySelector("#storeHoursNextMonth"),
   storeHoursDays: document.querySelector("#storeHoursDays"),
   scheduleTable: document.querySelector("#scheduleTable"),
+  shiftEditorModal: document.querySelector("#shiftEditorModal"),
+  shiftEditorForm: document.querySelector("#shiftEditorForm"),
+  shiftEditorTitle: document.querySelector("#shiftEditorTitle"),
+  shiftEditorClose: document.querySelector("#shiftEditorClose"),
+  shiftEditorEmployee: document.querySelector("#shiftEditorEmployee"),
+  shiftEditorDate: document.querySelector("#shiftEditorDate"),
+  shiftEditorStart: document.querySelector("#shiftEditorStart"),
+  shiftEditorEnd: document.querySelector("#shiftEditorEnd"),
+  shiftEditorDuration: document.querySelector("#shiftEditorDuration"),
+  shiftEditorStatus: document.querySelector("#shiftEditorStatus"),
+  shiftEditorDuplicate: document.querySelector("#shiftEditorDuplicate"),
+  shiftEditorDelete: document.querySelector("#shiftEditorDelete"),
   plannedHours: document.querySelector("#plannedHours"),
   pendingCount: document.querySelector("#pendingCount"),
   suggestionCount: document.querySelector("#suggestionCount"),
@@ -851,6 +865,34 @@ function bindEvents() {
     renderLegend();
     renderSchedule();
     renderMetrics();
+  });
+
+  els.scheduleTable.addEventListener("click", (event) => {
+    const shiftButton = event.target.closest("[data-edit-shift]");
+    if (!shiftButton || appRole !== "admin") return;
+    openShiftEditor(shiftButton);
+  });
+  els.shiftEditorClose.addEventListener("click", closeShiftEditor);
+  els.shiftEditorModal.addEventListener("click", (event) => {
+    if (event.target === els.shiftEditorModal) closeShiftEditor();
+  });
+  els.shiftEditorForm.addEventListener("submit", saveShiftEditorChanges);
+  [els.shiftEditorStart, els.shiftEditorEnd].forEach((input) => {
+    input.addEventListener("input", syncShiftEditorDuration);
+  });
+  els.shiftEditorDate.addEventListener("change", () => {
+    populateShiftEditorEmployees(els.shiftEditorDate.value, els.shiftEditorEmployee.value);
+  });
+  els.shiftEditorForm.querySelectorAll("[data-shift-move]").forEach((button) => {
+    button.addEventListener("click", () => adjustShiftEditorMove(Number(button.dataset.shiftMove)));
+  });
+  els.shiftEditorForm.querySelectorAll("[data-shift-duration]").forEach((button) => {
+    button.addEventListener("click", () => adjustShiftEditorDuration(Number(button.dataset.shiftDuration)));
+  });
+  els.shiftEditorDuplicate.addEventListener("click", duplicateShiftFromEditor);
+  els.shiftEditorDelete.addEventListener("click", deleteShiftFromEditor);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.shiftEditorModal.hidden) closeShiftEditor();
   });
 
   els.storeHoursPrevMonth.addEventListener("click", () => {
@@ -1221,6 +1263,18 @@ function renderDayRow(date) {
   const dateKey = toDateInput(date);
   const day = date.getDay();
   const shifts = getVisibleShiftsForDate(dateKey);
+  const openingBands = getOpeningPeriodsForDate(dateKey)
+    .map((period) => ({
+      start: Math.max(7, Math.min(20, period.open)),
+      end: Math.max(7, Math.min(20, period.close)),
+    }))
+    .filter((period) => period.end > period.start)
+    .map((period) => {
+      const left = ((period.start - 7) / 13) * 100;
+      const width = ((period.end - period.start) / 13) * 100;
+      return `<span class="timeline-open-period" aria-hidden="true" style="left:${left}%;width:${width}%"></span>`;
+    })
+    .join("");
   const dayHours = shifts.reduce((sum, shift) => sum + shift.end - shift.start, 0);
   const lanes = layoutShifts(shifts);
   const height = Math.max(94, 18 + lanes.length * 33);
@@ -1240,6 +1294,7 @@ function renderDayRow(date) {
         <span class="day-meta">${escapeHtml(getOpenLabelForDate(dateKey))}</span>
       </div>
       <div class="timeline" style="min-height:${height}px">
+        ${openingBands}
         ${lanes
           .map((shift, index) => {
             const employee = getEmployee(shift.employeeId, dateKey);
@@ -1247,11 +1302,16 @@ function renderDayRow(date) {
             const widthPercent = ((shift.end - shift.start) / 13) * 100;
             const top = 13 + index * 33;
             const sourceLabel = shift.source === "base" ? "" : shift.source;
+            const editable = appRole === "admin";
+            const tag = editable ? "button" : "div";
+            const editAttributes = editable
+              ? `type="button" class="shift-bar is-editable" data-edit-shift data-shift-date="${dateKey}" data-shift-employee="${employee.id}" data-shift-start="${formatHour(shift.start)}" data-shift-end="${formatHour(shift.end)}"`
+              : `class="shift-bar"`;
             return `
-              <div class="shift-bar" title="${employee.label} ${formatHour(shift.start)}-${formatHour(shift.end)}" style="left:${startPercent}%; width:${widthPercent}%; top:${top}px; background:${employee.color}">
-                <span>${employee.label}</span>
+              <${tag} ${editAttributes} title="${escapeHtml(employee.label)} ${formatHour(shift.start)}-${formatHour(shift.end)}${editable ? " · Editar turno" : ""}" style="left:${startPercent}%; width:${widthPercent}%; top:${top}px; background:${employee.color}">
+                <span>${escapeHtml(employee.label)}</span>
                 <small>${formatHour(shift.start)}-${formatHour(shift.end)} ${sourceLabel}</small>
-              </div>
+              </${tag}>
             `;
           })
           .join("")}
@@ -1259,6 +1319,218 @@ function renderDayRow(date) {
       <div class="day-hours">${formatHours(dayHours)}</div>
     </div>
   `;
+}
+
+function populateShiftEditorEmployees(dateKey, selectedEmployeeId = "") {
+  const employees = getEmployees(true).filter((employee) => isEmployeeActiveOnDate(employee, dateKey));
+  els.shiftEditorEmployee.innerHTML = employees.map((employee) => `
+    <option value="${employee.id}">${escapeHtml(employee.label)}</option>
+  `).join("");
+  if (employees.some((employee) => employee.id === selectedEmployeeId)) {
+    els.shiftEditorEmployee.value = selectedEmployeeId;
+  }
+}
+
+function openShiftEditor(button) {
+  const date = button.dataset.shiftDate;
+  const employeeId = button.dataset.shiftEmployee;
+  const start = button.dataset.shiftStart;
+  const end = button.dataset.shiftEnd;
+  if (!isDateKey(date) || !employeeId || !start || !end) return;
+
+  activeShiftEdit = { date, employeeId, start, end };
+  const employee = getEmployee(employeeId, date);
+  els.shiftEditorTitle.textContent = `${employee.label} · ${formatHumanDate(date)}`;
+  els.shiftEditorDate.value = date;
+  populateShiftEditorEmployees(date, employeeId);
+  els.shiftEditorStart.value = start;
+  els.shiftEditorEnd.value = end;
+  els.shiftEditorStatus.textContent = "";
+  syncShiftEditorDuration();
+  els.shiftEditorModal.hidden = false;
+  setTimeout(() => els.shiftEditorEmployee.focus(), 0);
+}
+
+function closeShiftEditor() {
+  if (!els.shiftEditorModal || els.shiftEditorModal.hidden) return;
+  els.shiftEditorModal.hidden = true;
+  els.shiftEditorStatus.textContent = "";
+  activeShiftEdit = null;
+}
+
+function getShiftEditorValues() {
+  const date = els.shiftEditorDate.value;
+  const employeeId = els.shiftEditorEmployee.value;
+  const start = els.shiftEditorStart.value;
+  const end = els.shiftEditorEnd.value;
+  const startDecimal = timeToDecimal(start);
+  const endDecimal = timeToDecimal(end);
+  if (!isDateKey(date) || !employeeId || !start || !end || !Number.isFinite(startDecimal) || !Number.isFinite(endDecimal)) {
+    return { error: "Completá persona, fecha y horario." };
+  }
+  if (endDecimal <= startDecimal) return { error: "La hora de salida debe ser posterior a la entrada." };
+  return { date, employeeId, start, end, startDecimal, endDecimal };
+}
+
+function syncShiftEditorDuration() {
+  const start = timeToDecimal(els.shiftEditorStart.value || "00:00");
+  const end = timeToDecimal(els.shiftEditorEnd.value || "00:00");
+  els.shiftEditorDuration.textContent = Number.isFinite(start) && Number.isFinite(end) && end > start
+    ? formatHours(end - start)
+    : "—";
+}
+
+function setShiftEditorTimes(start, end) {
+  if (start < 0 || end >= 24 || end <= start) {
+    els.shiftEditorStatus.textContent = "Ese movimiento deja un horario inválido.";
+    return false;
+  }
+  els.shiftEditorStart.value = formatHour(start);
+  els.shiftEditorEnd.value = formatHour(end);
+  els.shiftEditorStatus.textContent = "";
+  syncShiftEditorDuration();
+  return true;
+}
+
+function adjustShiftEditorMove(delta) {
+  const values = getShiftEditorValues();
+  if (values.error) {
+    els.shiftEditorStatus.textContent = values.error;
+    return;
+  }
+  setShiftEditorTimes(values.startDecimal + delta, values.endDecimal + delta);
+}
+
+function adjustShiftEditorDuration(delta) {
+  const values = getShiftEditorValues();
+  if (values.error) {
+    els.shiftEditorStatus.textContent = values.error;
+    return;
+  }
+  setShiftEditorTimes(values.startDecimal, values.endDecimal + delta);
+}
+
+function makeApprovedGridChange({ date, employeeId, action, start, end, note }) {
+  const timestamp = new Date().toISOString();
+  return {
+    id: createId(),
+    locationId: activeLocationId,
+    date,
+    endDate: date,
+    employeeId,
+    replacementEmployeeId: "",
+    reason: "Edición rápida de grilla",
+    action,
+    start,
+    end,
+    fullDay: false,
+    note,
+    status: "approved",
+    createdAt: timestamp,
+    reviewedAt: timestamp,
+    reviewedBy: "Administrador",
+  };
+}
+
+function setShiftEditorBusy(busy, message = "") {
+  els.shiftEditorForm.querySelectorAll("button, input, select").forEach((control) => {
+    control.disabled = busy;
+  });
+  els.shiftEditorClose.disabled = busy;
+  els.shiftEditorStatus.textContent = message;
+}
+
+async function persistGridShiftChanges(changes, successMessage) {
+  setShiftEditorBusy(true, "Guardando en Netlify...");
+  const result = await persistChangeMutation({ action: "batch-create", changes });
+  if (!result.ok) {
+    setShiftEditorBusy(false, result.error || "No se pudo guardar el cambio. Volvé a intentarlo.");
+    return false;
+  }
+  const storedChanges = Array.isArray(result.payload?.changes) && result.payload.changes.length
+    ? result.payload.changes
+    : changes;
+  const existingIds = new Set((state.changes || []).map((change) => change.id));
+  state.changes.push(...storedChanges.filter((change) => !existingIds.has(change.id)));
+  saveState({ shared: false });
+  setShiftEditorBusy(false, successMessage);
+  closeShiftEditor();
+  render();
+  return true;
+}
+
+async function saveShiftEditorChanges(event) {
+  event.preventDefault();
+  if (!activeShiftEdit) return;
+  const values = getShiftEditorValues();
+  if (values.error) {
+    els.shiftEditorStatus.textContent = values.error;
+    return;
+  }
+  if (
+    values.date === activeShiftEdit.date
+    && values.employeeId === activeShiftEdit.employeeId
+    && values.start === activeShiftEdit.start
+    && values.end === activeShiftEdit.end
+  ) {
+    els.shiftEditorStatus.textContent = "El turno no tiene cambios.";
+    return;
+  }
+
+  const previousEmployee = getEmployee(activeShiftEdit.employeeId, activeShiftEdit.date);
+  const nextEmployee = getEmployee(values.employeeId, values.date);
+  const changes = [
+    makeApprovedGridChange({
+      date: activeShiftEdit.date,
+      employeeId: activeShiftEdit.employeeId,
+      action: "absence",
+      start: activeShiftEdit.start,
+      end: activeShiftEdit.end,
+      note: `Edición desde Grilla: quitar ${previousEmployee.label} ${activeShiftEdit.start}-${activeShiftEdit.end}.`,
+    }),
+    makeApprovedGridChange({
+      date: values.date,
+      employeeId: values.employeeId,
+      action: "extra",
+      start: values.start,
+      end: values.end,
+      note: `Edición desde Grilla: asignar ${nextEmployee.label} ${values.start}-${values.end}.`,
+    }),
+  ];
+  await persistGridShiftChanges(changes, "Turno guardado.");
+}
+
+async function duplicateShiftFromEditor() {
+  const values = getShiftEditorValues();
+  if (values.error) {
+    els.shiftEditorStatus.textContent = values.error;
+    return;
+  }
+  const employee = getEmployee(values.employeeId, values.date);
+  const duplicate = makeApprovedGridChange({
+    date: values.date,
+    employeeId: values.employeeId,
+    action: "extra",
+    start: values.start,
+    end: values.end,
+    note: `Turno duplicado desde Grilla para ${employee.label}.`,
+  });
+  await persistGridShiftChanges([duplicate], "Turno duplicado.");
+}
+
+async function deleteShiftFromEditor() {
+  if (!activeShiftEdit) return;
+  const employee = getEmployee(activeShiftEdit.employeeId, activeShiftEdit.date);
+  if (!window.confirm(`¿Eliminar el turno de ${employee.label} ${activeShiftEdit.start}-${activeShiftEdit.end}?`)) return;
+  const removal = makeApprovedGridChange({
+    date: activeShiftEdit.date,
+    employeeId: activeShiftEdit.employeeId,
+    action: "absence",
+    start: activeShiftEdit.start,
+    end: activeShiftEdit.end,
+    note: `Turno eliminado desde Grilla para ${employee.label}.`,
+  });
+  await persistGridShiftChanges([removal], "Turno eliminado.");
 }
 
 function renderMetrics() {
@@ -1585,6 +1857,8 @@ async function handleChangeRequest(event) {
     alert("La fecha hasta debe ser igual o posterior a la fecha desde.");
     return;
   }
+  const createdAt = new Date().toISOString();
+  const adminApproved = appRole === "admin";
   const change = {
     id: createId(),
     locationId: activeLocationId,
@@ -1598,8 +1872,9 @@ async function handleChangeRequest(event) {
     end: leave ? "23:59" : els.changeEnd.value,
     fullDay: leave,
     note: els.changeNote.value.trim(),
-    status: "pending",
-    createdAt: new Date().toISOString(),
+    status: adminApproved ? "approved" : "pending",
+    createdAt,
+    ...(adminApproved ? { reviewedAt: createdAt, reviewedBy: "Administrador" } : {}),
   };
   const submitButton = event.submitter || els.changeForm.querySelector('button[type="submit"]');
   if (submitButton) submitButton.disabled = true;
@@ -1614,6 +1889,11 @@ async function handleChangeRequest(event) {
     render();
     alert(`${result.error || "No se pudo guardar la solicitud."} Los datos permanecen en el formulario para que puedas reintentar.`);
     return;
+  }
+  if (result.payload?.change) {
+    state.changes = state.changes.map((item) => item.id === change.id ? result.payload.change : item);
+    saveState({ shared: false });
+    render();
   }
   els.changeNote.value = "";
 }
@@ -2117,14 +2397,26 @@ function getOpeningOverride(dateKey, locationId = activeLocationId) {
   return getLocationSettings(locationId).monthlyOpeningHours?.[dateKey] || null;
 }
 
-function getDefaultOpeningForDate(dateKey) {
-  const holiday = getHoliday(dateKey);
-  if (holiday) return { open: holiday.open || "10:00", close: holiday.close || "19:00" };
+function getDefaultOpeningPeriodsForDate(dateKey, locationId = activeLocationId) {
   const day = new Date(`${dateKey}T12:00:00`).getDay();
-  const periods = getRegularOpeningPeriods(day);
+  if (normalizeLocationId(locationId) === "madrid" && dateKey >= MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM) {
+    return day >= 1 && day <= 5
+      ? [{ open: "08:00", close: "19:00" }]
+      : [{ open: "10:00", close: "20:00" }];
+  }
+  const holiday = getHoliday(dateKey);
+  if (holiday) return [{ open: holiday.open || "10:00", close: holiday.close || "19:00" }];
+  return getRegularOpeningPeriods(day).map((period) => ({
+    open: formatHour(period.open),
+    close: formatHour(period.close),
+  }));
+}
+
+function getDefaultOpeningForDate(dateKey) {
+  const periods = getDefaultOpeningPeriodsForDate(dateKey);
   return {
-    open: formatHour(periods[0].open),
-    close: formatHour(periods[periods.length - 1].close),
+    open: String(periods[0].open),
+    close: String(periods[periods.length - 1].close),
   };
 }
 
@@ -2135,22 +2427,19 @@ function getOpenLabelForDate(dateKey) {
   if (override?.open && override?.close) {
     return `${holiday ? `${holiday.name || "Feriado"} · ` : ""}${override.open}-${override.close} local`;
   }
-  if (holiday) return `${holiday.name || "Feriado"} ${holiday.open}-${holiday.close}`;
-  return getOpenLabel(new Date(`${dateKey}T12:00:00`).getDay());
+  const defaults = getDefaultOpeningForDate(dateKey);
+  return `${holiday ? `${holiday.name || "Feriado"} · ` : ""}${defaults.open}-${defaults.close} local`;
 }
 
 function getOpeningPeriodsForDate(dateKey) {
   const override = getOpeningOverride(dateKey);
   if (override?.closed) return [];
 
-  const holiday = getHoliday(dateKey);
   let periods;
   if (override?.open && override?.close) {
     periods = [{ open: override.open, close: override.close }];
-  } else if (holiday?.open && holiday?.close) {
-    periods = [{ open: holiday.open, close: holiday.close }];
   } else {
-    periods = getRegularOpeningPeriods(parseDateKey(dateKey).getDay());
+    periods = getDefaultOpeningPeriodsForDate(dateKey);
   }
 
   return periods.map((period) => {
@@ -3292,7 +3581,12 @@ function applyMadridScheduleSeed(nextState) {
   nextState.baseSchedules["barista-tarde"] = normalizeBaseSchedule(
     nextState.baseSchedules["barista-tarde"] || createBlankBaseSchedule()
   );
-  nextState.schedulePlans = mergeSchedulePlans(DEFAULT_SCHEDULE_PLANS, nextState.schedulePlans);
+  const storedSchedulePlans = structuredClone(nextState.schedulePlans || {});
+  storedSchedulePlans.madrid = [
+    ...(storedSchedulePlans.madrid || []).filter((plan) => plan?.id !== MADRID_SCHEDULE_PLAN_ID),
+    structuredClone(MADRID_SCHEDULE_PLAN_2026_08_31),
+  ];
+  nextState.schedulePlans = mergeSchedulePlans(DEFAULT_SCHEDULE_PLANS, storedSchedulePlans);
   nextState.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
   return nextState;
 }
@@ -4636,13 +4930,21 @@ async function persistMadridScheduleSeedToServer(remoteState = {}) {
   }
 
   const remotePlan = (remoteState.schedulePlans?.madrid || []).find((plan) => plan.id === MADRID_SCHEDULE_PLAN_ID);
-  const needsStateSave = Number(remoteState.madridScheduleSeedVersion || 0) < MADRID_SCHEDULE_SEED_VERSION
+  const needsPlanSave = Number(remoteState.madridScheduleSeedVersion || 0) < MADRID_SCHEDULE_SEED_VERSION
     || !remotePlan;
   if (failed) state.madridScheduleSeedVersion = 0;
-  if (needsStateSave || updated || failed) {
-    sharedStatePending = true;
+  let stateSaved = true;
+  if (needsPlanSave) {
+    const plan = (state.schedulePlans?.madrid || []).find((candidate) => candidate.id === MADRID_SCHEDULE_PLAN_ID)
+      || MADRID_SCHEDULE_PLAN_2026_08_31;
+    const result = await sendSharedMutation(
+      "/api/schedule-plan",
+      { plan, seedVersion: failed ? 0 : MADRID_SCHEDULE_SEED_VERSION },
+      "No se pudo guardar la nueva grilla de Madrid en Netlify.",
+    );
+    stateSaved = result.ok;
+    if (result.ok && !failed) state.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
   }
-  const stateSaved = sharedStatePending ? await persistSharedStateNow() : true;
   return { updated, failed, stateSaved };
 }
 

@@ -10,6 +10,10 @@ const current = {
   baseSchedules: { ana: { mode: "weekly", weeks: { a: { 1: [{ start: "08:00", end: "14:00" }] }, b: {} } } },
   contracts: { ana: { hoursPerWeek: 30 } },
   changes: [{ id: "vac-1", employeeId: "ana", status: "approved" }],
+  schedulePlans: {
+    madrid: [{ id: "madrid-vigente", effectiveFrom: "2026-08-31", cycleLength: 1, weeks: [{ shifts: [] }] }],
+  },
+  madridScheduleSeedVersion: 2,
   settings: { storeLat: "actual", monthlyOpeningHours: {} },
   locationSettings: {
     barcelona: { monthlyOpeningHours: { "2026-08-03": { open: "09:00", close: "20:00", closed: true } } },
@@ -21,6 +25,10 @@ const stale = {
   profiles: { ana: { fullName: "Ana Viejo" } },
   contracts: { ana: { hoursPerWeek: 10 } },
   changes: [{ id: "vac-1", employeeId: "ana", status: "pending" }],
+  schedulePlans: {
+    madrid: [{ id: "madrid-vigente", effectiveFrom: "2026-08-31", cycleLength: 1, weeks: [{ shifts: [{ employeeId: "ana" }] }] }],
+  },
+  madridScheduleSeedVersion: 1,
   settings: { storeLat: "nuevo", monthlyOpeningHours: {} },
   locationSettings: { barcelona: { monthlyOpeningHours: {} }, madrid: { monthlyOpeningHours: {} } },
 };
@@ -31,6 +39,9 @@ assert.equal(mergedAdmin.changes[0].status, "approved");
 assert.equal(mergedAdmin.settings.storeLat, "nuevo", "Los ajustes normales deben seguir siendo editables.");
 assert.equal(mergedAdmin.locationSettings.barcelona.monthlyOpeningHours["2026-08-03"].closed, true);
 assert.equal(mergedAdmin.locationSettings.madrid.monthlyOpeningHours["2026-08-04"].close, "14:00");
+assert.equal(mergedAdmin.madridScheduleSeedVersion, 2);
+assert.equal(mergedAdmin.schedulePlans.madrid[0].weeks[0].shifts.length, 0,
+  "Una copia completa antigua no debe deshacer la grilla puntual ya confirmada.");
 
 const mergedEmployee = mergeEmployeeState(current, {
   profiles: { ana: { fullName: "Ana Viejo" } },
@@ -76,6 +87,7 @@ const appSource = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8")
 assert.match(appSource, /let sharedMutationQueue = Promise\.resolve\(\)/);
 assert.match(appSource, /await sharedMutationQueue\.catch/);
 assert.match(appSource, /sendSharedMutation\("\/api\/store-hours"/);
+assert.match(appSource, /sendSharedMutation\(\s*"\/api\/schedule-plan"/);
 assert.match(appSource, /sendSharedMutation\("\/api\/changes"/);
 assert.match(appSource, /"\/api\/employee-profile"/);
 assert.match(appSource, /async function handleEmpProfileForm[\s\S]*?await saveProfileData\(activeEmployeeId, data\)/);

@@ -277,6 +277,25 @@ function mergeRecordsById(submitted = [], current = []) {
   return [...byId.values()];
 }
 
+function mergeSchedulePlansById(submitted = {}, current = {}) {
+  const locationIds = new Set([
+    ...Object.keys(submitted || {}),
+    ...Object.keys(current || {}),
+  ]);
+  return Object.fromEntries([...locationIds].map((locationId) => {
+    const byId = new Map();
+    (submitted?.[locationId] || []).forEach((plan) => {
+      if (plan?.id) byId.set(plan.id, plan);
+    });
+    // El estado actual prevalece para que una copia completa y antigua de un
+    // navegador no deshaga una programación guardada por el endpoint puntual.
+    (current?.[locationId] || []).forEach((plan) => {
+      if (plan?.id) byId.set(plan.id, plan);
+    });
+    return [locationId, [...byId.values()]];
+  }));
+}
+
 export function mergeEmployeeState(current, submitted, employeeId) {
   const currentProfiles = current?.profiles || {};
   const currentPunches = current?.punches || [];
@@ -963,6 +982,11 @@ export function mergeAdminState(current, submitted) {
     baseSchedules: { ...(submitted.baseSchedules || {}), ...(current.baseSchedules || {}) },
     contracts: { ...(submitted.contracts || {}), ...(current.contracts || {}) },
     changes: mergeRecordsById(submitted.changes || [], current.changes || []),
+    schedulePlans: mergeSchedulePlansById(submitted.schedulePlans || {}, current.schedulePlans || {}),
+    madridScheduleSeedVersion: Math.max(
+      Number(submitted.madridScheduleSeedVersion || 0),
+      Number(current.madridScheduleSeedVersion || 0),
+    ),
     locationSettings,
     settings: {
       ...(current.settings || {}),

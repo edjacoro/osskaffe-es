@@ -496,10 +496,21 @@ h3 {
   );
 }
 
+.timeline-open-period {
+  position: absolute;
+  inset-block: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(65, 104, 119, 0.1);
+  border-inline: 1px solid rgba(65, 104, 119, 0.16);
+}
+
 .shift-bar {
   position: absolute;
+  z-index: 1;
   height: 28px;
   padding: 0 9px;
+  border: 0;
   border-radius: 7px;
   display: flex;
   align-items: center;
@@ -509,7 +520,23 @@ h3 {
   font-weight: 800;
   overflow: hidden;
   white-space: nowrap;
+  font-family: inherit;
+  text-align: left;
   box-shadow: 0 8px 18px rgba(23, 33, 43, 0.13);
+}
+
+.shift-bar.is-editable {
+  cursor: pointer;
+  transition: filter .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+
+.shift-bar.is-editable:hover,
+.shift-bar.is-editable:focus-visible {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(23, 33, 43, 0.22);
+  outline: 2px solid rgba(65, 104, 119, 0.35);
+  outline-offset: 2px;
 }
 
 .shift-bar small {
@@ -1339,6 +1366,143 @@ textarea {
 
 .waste-modal[hidden] {
   display: none;
+}
+
+.shift-editor-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(20, 30, 38, 0.58);
+}
+
+.shift-editor-modal[hidden] {
+  display: none;
+}
+
+.shift-editor-dialog {
+  width: min(430px, 100%);
+  height: 100dvh;
+  overflow-y: auto;
+  padding: 24px;
+  background: #ffffff;
+  box-shadow: -18px 0 55px rgba(0, 0, 0, 0.22);
+}
+
+.shift-editor-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.shift-editor-header h3 {
+  margin: 2px 0 0;
+  font-size: 1.45rem;
+}
+
+.shift-editor-close {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: #eaf3f5;
+  color: var(--blue-dark);
+  font-size: 1.35rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.shift-editor-duration {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0 18px;
+  padding: 14px;
+  border: 1px solid #c7dfe4;
+  border-radius: 10px;
+  background: #eff8f9;
+  color: #415968;
+  font-size: .8rem;
+  font-weight: 800;
+}
+
+.shift-editor-duration strong {
+  color: var(--blue-dark);
+  font-size: 1.15rem;
+}
+
+.shift-editor-quick-group {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+  color: #334155;
+  font-size: .76rem;
+  font-weight: 850;
+}
+
+.shift-editor-quick-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.shift-editor-quick-row button {
+  min-height: 40px;
+  border: 0;
+  background: #ffffff;
+  color: var(--blue-dark);
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.shift-editor-quick-row button + button {
+  border-left: 1px solid var(--line);
+}
+
+.shift-editor-quick-row button:hover {
+  background: #eef5f7;
+}
+
+.shift-editor-status {
+  min-height: 20px;
+  margin: 4px 0 8px;
+  color: var(--danger);
+  font-size: .78rem;
+  font-weight: 750;
+}
+
+.shift-editor-save {
+  width: 100%;
+}
+
+.shift-editor-secondary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.shift-editor-secondary-actions .ghost-button {
+  width: 100%;
+}
+
+.shift-editor-secondary-actions .ghost-button.danger {
+  border-color: #e5a2a2;
+  color: #b23b3b;
+}
+
+@media (max-width: 560px) {
+  .shift-editor-dialog {
+    width: 100%;
+    padding: 20px 16px;
+  }
 }
 
 .waste-dialog {

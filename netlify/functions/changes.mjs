@@ -28,10 +28,16 @@ export default async (request) => {
       }
       return applyChangeMutation(current, body, session);
     });
-    const id = body.action === "create" ? body.change?.id : body.id;
+    const ids = body.action === "batch-create"
+      ? (body.changes || []).map((change) => change?.id).filter(Boolean)
+      : [body.action === "create" ? body.change?.id : body.id].filter(Boolean);
+    const savedChanges = ids
+      .map((id) => (state.changes || []).find((change) => change.id === id))
+      .filter(Boolean);
     return response({
       ok: true,
-      change: (state.changes || []).find((change) => change.id === id) || null,
+      change: savedChanges[0] || null,
+      changes: savedChanges,
       persistedAt: new Date().toISOString(),
     });
   } catch (error) {
