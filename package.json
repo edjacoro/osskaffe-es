@@ -14,6 +14,7 @@
     "test:changes": "node scripts/test-change-ranges.mjs",
     "test:schedule-plan": "node scripts/test-madrid-schedule-plan.mjs",
     "test:shift-editor": "node scripts/test-grid-shift-editor.mjs",
+    "test:grid-export": "node scripts/test-grid-exports.mjs",
     "test:persistence": "node scripts/test-reliable-persistence.mjs"
   },
   "dependencies": {

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=34" />
+    <link rel="stylesheet" href="styles.css?v=35" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -365,7 +365,12 @@
 
           <div class="topbar-actions">
             <button class="ghost-button" id="exportCsv" type="button">Exportar CSV</button>
-            <button class="primary-button" id="printPdf" type="button">PDF</button>
+            <label class="pdf-week-picker">
+              <span>Semana</span>
+              <select id="pdfWeekPicker" aria-label="Semana para exportar"></select>
+            </label>
+            <button class="ghost-button" id="printWeekPdf" type="button">PDF semana</button>
+            <button class="primary-button" id="printPdf" type="button">PDF mes</button>
           </div>
         </header>
 
@@ -975,10 +980,12 @@
       </main>
     </div>
 
+    <div class="print-grid-root" id="printGridRoot" aria-hidden="true"></div>
+
     <template id="emptyTemplate">
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=64"></script>
+    <script src="app.js?v=65"></script>
   </body>
 </html>

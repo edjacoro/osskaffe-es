@@ -161,14 +161,14 @@ button {
 .workspace {
   width: 100%;
   min-width: 0;
-  max-width: 1500px;
+  max-width: none;
   padding: 24px;
   margin: 0 auto;
 }
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
+  grid-template-columns: minmax(300px, 1fr) auto;
   align-items: center;
   gap: 16px;
   margin-bottom: 20px;
@@ -211,6 +211,46 @@ h3 {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.topbar-actions {
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .78);
+}
+
+.pdf-week-picker {
+  min-width: 154px;
+  min-height: 40px;
+  margin: 0;
+  padding: 3px 9px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.pdf-week-picker span {
+  color: var(--muted);
+  font-size: .65rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.pdf-week-picker select {
+  min-width: 0;
+  border: 0;
+  color: var(--blue-dark);
+  background: transparent;
+  font-size: .76rem;
+  font-weight: 850;
 }
 
 .month-controls {
@@ -413,6 +453,7 @@ h3 {
 }
 
 .schedule-table {
+  --schedule-timeline-hours: 15;
   overflow-x: auto;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
@@ -420,14 +461,13 @@ h3 {
 
 .schedule-ruler,
 .day-row {
-  min-width: 960px;
+  min-width: 1260px;
   display: grid;
-  grid-template-columns: 168px minmax(680px, 1fr) 92px;
+  grid-template-columns: 178px minmax(920px, 1fr) 76px;
 }
 
 .schedule-ruler {
-  position: sticky;
-  top: 0;
+  position: static;
   z-index: 2;
   background: #ffffff;
   border-bottom: 1px solid var(--line);
@@ -443,7 +483,7 @@ h3 {
 
 .hour-grid {
   display: grid;
-  grid-template-columns: repeat(13, minmax(48px, 1fr));
+  grid-template-columns: repeat(var(--schedule-timeline-hours), minmax(58px, 1fr));
 }
 
 .hour-cell {
@@ -455,7 +495,7 @@ h3 {
 }
 
 .day-row {
-  min-height: 94px;
+  min-height: 104px;
   border-bottom: 1px solid #eaf0f5;
 }
 
@@ -469,6 +509,9 @@ h3 {
 
 .day-info {
   padding: 15px 14px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
   border-right: 1px solid #edf1f5;
 }
 
@@ -479,20 +522,26 @@ h3 {
 
 .day-meta {
   display: block;
-  margin-top: 4px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.74rem;
+}
+
+.day-date {
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 700;
 }
 
 .timeline {
   position: relative;
   min-height: 94px;
+  overflow: hidden;
   background-image: repeating-linear-gradient(
     to right,
     transparent 0,
-    transparent calc(100% / 13 - 1px),
-    #edf1f5 calc(100% / 13 - 1px),
-    #edf1f5 calc(100% / 13)
+    transparent calc(100% / var(--schedule-timeline-hours) - 1px),
+    #edf1f5 calc(100% / var(--schedule-timeline-hours) - 1px),
+    #edf1f5 calc(100% / var(--schedule-timeline-hours))
   );
 }
 
@@ -546,11 +595,23 @@ h3 {
 
 .day-hours {
   padding: 15px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  display: grid;
+  align-content: center;
+  justify-items: end;
+  gap: 1px;
   color: var(--blue-dark);
   font-weight: 850;
+}
+
+.day-hours small {
+  color: var(--muted);
+  font-size: .62rem;
+  font-weight: 700;
+}
+
+#schedulePanel .panel-heading {
+  min-height: 72px;
+  padding: 15px 20px;
 }
 
 .two-column,
@@ -723,6 +784,11 @@ textarea {
   display: none;
 }
 
+.print-grid-root {
+  display: none;
+  --schedule-timeline-hours: 15;
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -844,6 +910,264 @@ textarea {
 
   .schedule-table {
     overflow: visible;
+  }
+
+  body.print-grid-export {
+    margin: 0;
+    background: #ffffff;
+    color: #17252b;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body.print-grid-export > * {
+    display: none !important;
+  }
+
+  body.print-grid-export > .print-grid-root {
+    display: block !important;
+  }
+
+  .print-week-page {
+    width: 100%;
+    height: 195mm;
+    overflow: hidden;
+    color: #17252b;
+    background: #ffffff;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-week-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .print-week-header {
+    min-height: 45px;
+    padding: 0 3px 8px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 18px;
+    align-items: end;
+    border-bottom: 2px solid #315f68;
+  }
+
+  .print-brand,
+  .print-week-total {
+    display: grid;
+    gap: 2px;
+  }
+
+  .print-brand strong {
+    color: #234950;
+    font-size: 14px;
+  }
+
+  .print-brand span,
+  .print-week-total span,
+  .print-week-title > span {
+    color: #65777d;
+    font-size: 7.5px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .print-week-title {
+    text-align: center;
+  }
+
+  .print-week-title h1 {
+    margin: 2px 0 0;
+    font-size: 15px;
+    line-height: 1.1;
+  }
+
+  .print-week-total {
+    justify-items: end;
+  }
+
+  .print-week-total strong {
+    color: #234950;
+    font-size: 17px;
+  }
+
+  .print-week-legend {
+    min-height: 29px;
+    padding: 6px 2px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .print-legend-item {
+    padding: 3px 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid #dfe8ea;
+    border-radius: 4px;
+    font-size: 7px;
+  }
+
+  .print-legend-item i {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: var(--employee-color);
+  }
+
+  .print-legend-item small {
+    color: #65777d;
+    font-size: 6.5px;
+    font-weight: 750;
+  }
+
+  .print-schedule {
+    overflow: hidden;
+    border: 1px solid #c8d7da;
+    border-radius: 5px;
+  }
+
+  .print-schedule-ruler,
+  .print-day-row {
+    display: grid;
+    grid-template-columns: 105px minmax(0, 1fr) 48px;
+  }
+
+  .print-schedule-ruler {
+    min-height: 25px;
+    border-bottom: 1px solid #c8d7da;
+    background: #f3f7f7;
+  }
+
+  .print-ruler-label,
+  .print-ruler-total {
+    padding: 7px 7px 5px;
+    color: #65777d;
+    font-size: 7px;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+
+  .print-ruler-total {
+    text-align: right;
+  }
+
+  .print-hour-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--schedule-timeline-hours), minmax(0, 1fr));
+  }
+
+  .print-hour-grid span {
+    padding-top: 7px;
+    border-left: 1px solid #dfe8ea;
+    color: #65777d;
+    font-size: 6.5px;
+    font-weight: 750;
+    text-align: center;
+  }
+
+  .print-day-row {
+    min-height: 50px;
+    border-bottom: 1px solid #dfe8ea;
+    break-inside: avoid;
+  }
+
+  .print-day-row:last-child {
+    border-bottom: 0;
+  }
+
+  .print-day-row.is-weekend {
+    background: #faf6ee;
+  }
+
+  .print-day-info {
+    padding: 6px 7px;
+    display: grid;
+    align-content: center;
+    gap: 1px;
+    border-right: 1px solid #dfe8ea;
+  }
+
+  .print-day-info strong {
+    font-size: 8px;
+  }
+
+  .print-day-info span,
+  .print-day-info small {
+    color: #65777d;
+    font-size: 6.2px;
+  }
+
+  .print-timeline {
+    position: relative;
+    overflow: hidden;
+    background-image: repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(100% / var(--schedule-timeline-hours) - 1px),
+      #e7edef calc(100% / var(--schedule-timeline-hours) - 1px),
+      #e7edef calc(100% / var(--schedule-timeline-hours))
+    );
+  }
+
+  .print-open-period {
+    position: absolute;
+    inset-block: 0;
+    z-index: 0;
+    background: rgba(65, 104, 119, .1);
+    border-inline: 1px solid rgba(65, 104, 119, .15);
+  }
+
+  .print-shift-bar {
+    position: absolute;
+    z-index: 1;
+    height: 18px;
+    padding: 0 5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .45);
+    border-radius: 3px;
+    color: #ffffff;
+    background: var(--employee-color);
+    white-space: nowrap;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-shift-bar strong {
+    overflow: hidden;
+    font-size: 6.8px;
+    text-overflow: ellipsis;
+  }
+
+  .print-shift-bar span {
+    color: rgba(255, 255, 255, .9);
+    font-size: 6.2px;
+    font-weight: 750;
+  }
+
+  .print-day-hours {
+    padding: 6px;
+    display: grid;
+    place-items: center end;
+    color: #234950;
+    font-size: 8px;
+    font-weight: 900;
+  }
+
+  .print-week-footer {
+    padding-top: 5px;
+    color: #65777d;
+    font-size: 6px;
+    text-align: right;
   }
 }
 

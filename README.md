@@ -146,6 +146,13 @@ el editor rapido: cambiar persona o fecha, editar horas, mover el turno 30 minut
 sumar o restar 30 minutos, duplicarlo o eliminarlo. Cada accion se guarda en
 Netlify y aparece inmediatamente en Cambios con estado aprobado.
 
+La grilla mensual muestra la franja completa de 07:00 a 22:00 con desplazamiento
+horizontal, de modo que los turnos de apertura o cierre nunca invaden la columna
+de horas. Desde su cabecera se puede elegir una semana y exportarla en PDF, o
+exportar el mes completo con una hoja A4 apaisada por semana. Tanto los PDF como
+el CSV incluyen solamente los empleados que esten encendidos en la leyenda de la
+grilla en ese momento.
+
 El editor mensual de apertura permite completar la hora sin validar mientras se
 esta escribiendo. Cada dia modificado se confirma con **Guardar**; la pantalla
 indica cuando hay cambios pendientes y cuando Netlify confirmo el guardado. El

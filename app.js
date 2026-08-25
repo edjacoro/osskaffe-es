@@ -124,6 +124,9 @@ const DEFAULT_PROFILES = {
 
 const SCHEDULE_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const DEFAULT_SCHEDULE_ANCHOR = "2026-01-05";
+const SCHEDULE_TIMELINE_START = 7;
+const SCHEDULE_TIMELINE_END = 22;
+const SCHEDULE_TIMELINE_HOURS = SCHEDULE_TIMELINE_END - SCHEDULE_TIMELINE_START;
 
 function scheduleWeek(entries = {}) {
   return SCHEDULE_DAY_ORDER.reduce((week, day) => {
@@ -628,6 +631,7 @@ const DEFAULT_STATE = {
 
 let state = loadState();
 let activeMonth = firstDayOfMonth(new Date());
+let selectedPdfWeekStart = "";
 let storeHoursActiveMonth = firstDayOfMonth(new Date());
 const hiddenGridEmployees = new Map();
 let trafficActiveMonth = firstDayOfMonth(new Date());
@@ -665,6 +669,9 @@ const els = {
   nextMonth: document.querySelector("#nextMonth"),
   exportCsv: document.querySelector("#exportCsv"),
   printPdf: document.querySelector("#printPdf"),
+  printWeekPdf: document.querySelector("#printWeekPdf"),
+  pdfWeekPicker: document.querySelector("#pdfWeekPicker"),
+  printGridRoot: document.querySelector("#printGridRoot"),
   employeeLegend: document.querySelector("#employeeLegend"),
   storeHoursEditor: document.querySelector("#storeHoursEditor"),
   storeHoursMonth: document.querySelector("#storeHoursMonth"),
@@ -911,7 +918,11 @@ function bindEvents() {
   });
 
   els.exportCsv.addEventListener("click", exportCsv);
-  els.printPdf.addEventListener("click", () => window.print());
+  els.printWeekPdf.addEventListener("click", exportSelectedWeekPdf);
+  els.printPdf.addEventListener("click", exportActiveMonthPdf);
+  els.pdfWeekPicker.addEventListener("change", (event) => {
+    selectedPdfWeekStart = event.target.value;
+  });
   els.punchForm.addEventListener("submit", handlePunch);
   els.mockOnTime.addEventListener("click", createMockPunches);
   els.emailLateReport.addEventListener("click", sendLateReport);
@@ -1193,6 +1204,7 @@ function render() {
   els.monthTitle.textContent = `Grilla ${getLocation().label} · ${MONTH_NAMES[month]} ${year}`;
   els.monthPicker.value = `${year}-${String(month + 1).padStart(2, "0")}`;
 
+  renderPdfWeekPicker();
   renderLegend();
   renderSchedule();
   renderStoreHoursEditor();
@@ -1207,6 +1219,69 @@ function render() {
   renderFinanzas();
   renderPasteleria();
   saveState();
+}
+
+function getMondayForDate(date) {
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const offset = (monday.getDay() + 6) % 7;
+  monday.setDate(monday.getDate() - offset);
+  return monday;
+}
+
+function addCalendarDays(date, amount) {
+  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  result.setDate(result.getDate() + amount);
+  return result;
+}
+
+function getMonthWeekRanges(monthDate = activeMonth) {
+  const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const last = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+  const ranges = [];
+  let monday = getMondayForDate(first);
+  while (monday <= last) {
+    const sunday = addCalendarDays(monday, 6);
+    ranges.push({
+      start: toDateInput(monday),
+      end: toDateInput(sunday),
+    });
+    monday = addCalendarDays(monday, 7);
+  }
+  return ranges;
+}
+
+function getDateKeysInRange(startKey, endKey) {
+  const dates = [];
+  const cursor = parseDateKey(startKey);
+  const last = parseDateKey(endKey);
+  while (cursor <= last) {
+    dates.push(toDateInput(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function formatWeekPickerRange(range) {
+  const start = parseDateKey(range.start);
+  const end = parseDateKey(range.end);
+  const startMonth = MONTH_NAMES[start.getMonth()].slice(0, 3).toUpperCase();
+  const endMonth = MONTH_NAMES[end.getMonth()].slice(0, 3).toUpperCase();
+  return `${start.getDate()} ${startMonth} - ${end.getDate()} ${endMonth}`;
+}
+
+function renderPdfWeekPicker() {
+  if (!els.pdfWeekPicker) return;
+  const ranges = getMonthWeekRanges(activeMonth);
+  const values = new Set(ranges.map((range) => range.start));
+  if (!values.has(selectedPdfWeekStart)) {
+    const todayKey = toDateInput(new Date());
+    selectedPdfWeekStart = ranges.find((range) => todayKey >= range.start && todayKey <= range.end)?.start
+      || ranges[0]?.start
+      || "";
+  }
+  els.pdfWeekPicker.innerHTML = ranges.map((range) => `
+    <option value="${range.start}"${range.start === selectedPdfWeekStart ? " selected" : ""}>${formatWeekPickerRange(range)}</option>
+  `).join("");
 }
 
 function renderLegend() {
@@ -1251,7 +1326,7 @@ function renderSchedule() {
     <div class="schedule-ruler">
       <div class="ruler-spacer">Dia</div>
       <div class="hour-grid">
-        ${range(7, 19).map((hour) => `<div class="hour-cell">${hour}:00</div>`).join("")}
+        ${range(SCHEDULE_TIMELINE_START, SCHEDULE_TIMELINE_END - 1).map((hour) => `<div class="hour-cell">${String(hour).padStart(2, "0")}:00</div>`).join("")}
       </div>
       <div class="hours-total">Horas</div>
     </div>
@@ -1265,19 +1340,19 @@ function renderDayRow(date) {
   const shifts = getVisibleShiftsForDate(dateKey);
   const openingBands = getOpeningPeriodsForDate(dateKey)
     .map((period) => ({
-      start: Math.max(7, Math.min(20, period.open)),
-      end: Math.max(7, Math.min(20, period.close)),
+      start: Math.max(SCHEDULE_TIMELINE_START, Math.min(SCHEDULE_TIMELINE_END, period.open)),
+      end: Math.max(SCHEDULE_TIMELINE_START, Math.min(SCHEDULE_TIMELINE_END, period.close)),
     }))
     .filter((period) => period.end > period.start)
     .map((period) => {
-      const left = ((period.start - 7) / 13) * 100;
-      const width = ((period.end - period.start) / 13) * 100;
+      const left = ((period.start - SCHEDULE_TIMELINE_START) / SCHEDULE_TIMELINE_HOURS) * 100;
+      const width = ((period.end - period.start) / SCHEDULE_TIMELINE_HOURS) * 100;
       return `<span class="timeline-open-period" aria-hidden="true" style="left:${left}%;width:${width}%"></span>`;
     })
     .join("");
   const dayHours = shifts.reduce((sum, shift) => sum + shift.end - shift.start, 0);
   const lanes = layoutShifts(shifts);
-  const height = Math.max(94, 18 + lanes.length * 33);
+  const height = Math.max(104, 18 + lanes.length * 33);
   const holiday = getHoliday(dateKey);
   const rowClasses = [
     "day-row",
@@ -1290,16 +1365,19 @@ function renderDayRow(date) {
   return `
     <div class="${rowClasses}" data-schedule-date="${dateKey}" style="min-height:${height}px">
       <div class="day-info">
-        <span class="day-name">${DAY_NAMES[day]} ${date.getDate()}</span>
-        <span class="day-meta">${escapeHtml(getOpenLabelForDate(dateKey))}</span>
+        <span class="day-name">${DAY_NAMES[day]}</span>
+        <span class="day-date">${formatNumericDate(dateKey)}</span>
+        <span class="day-meta">Atención ${escapeHtml(getOpenLabelForDate(dateKey).replace(" local", ""))}</span>
       </div>
       <div class="timeline" style="min-height:${height}px">
         ${openingBands}
         ${lanes
           .map((shift, index) => {
             const employee = getEmployee(shift.employeeId, dateKey);
-            const startPercent = ((shift.start - 7) / 13) * 100;
-            const widthPercent = ((shift.end - shift.start) / 13) * 100;
+            const visibleStart = Math.max(SCHEDULE_TIMELINE_START, Math.min(SCHEDULE_TIMELINE_END, shift.start));
+            const visibleEnd = Math.max(SCHEDULE_TIMELINE_START, Math.min(SCHEDULE_TIMELINE_END, shift.end));
+            const startPercent = ((visibleStart - SCHEDULE_TIMELINE_START) / SCHEDULE_TIMELINE_HOURS) * 100;
+            const widthPercent = Math.max(0.5, ((visibleEnd - visibleStart) / SCHEDULE_TIMELINE_HOURS) * 100);
             const top = 13 + index * 33;
             const editable = appRole === "admin";
             const tag = editable ? "button" : "div";
@@ -1315,7 +1393,7 @@ function renderDayRow(date) {
           })
           .join("")}
       </div>
-      <div class="day-hours">${formatHours(dayHours)}</div>
+      <div class="day-hours"><strong>${formatHours(dayHours)}</strong><small>equipo</small></div>
     </div>
   `;
 }
@@ -2200,7 +2278,7 @@ function exportCsv() {
   const rows = [["date", "weekday", "employee", "start", "end", "hours", "source"]];
   getMonthDays(activeMonth).forEach((date) => {
     const dateKey = toDateInput(date);
-    getShiftsForDate(dateKey).forEach((shift) => {
+    getVisibleShiftsForDate(dateKey).forEach((shift) => {
       const employee = getEmployee(shift.employeeId, dateKey);
       rows.push([
         dateKey,
@@ -2224,6 +2302,152 @@ function exportCsv() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function exportSelectedWeekPdf() {
+  const ranges = getMonthWeekRanges(activeMonth);
+  const selected = ranges.find((range) => range.start === selectedPdfWeekStart) || ranges[0];
+  if (!selected) return;
+  printScheduleRangesAsPdf(
+    [selected],
+    `OSS-grilla-${getLocation().label}-semana-${selected.start}-a-${selected.end}`,
+  );
+}
+
+function exportActiveMonthPdf() {
+  const ranges = getMonthWeekRanges(activeMonth);
+  if (!ranges.length) return;
+  printScheduleRangesAsPdf(
+    ranges,
+    `OSS-grilla-${getLocation().label}-${monthInputValue(activeMonth)}`,
+  );
+}
+
+function printScheduleRangesAsPdf(ranges, title) {
+  const originalTitle = document.title;
+  const pageStyle = document.createElement("style");
+  pageStyle.id = "schedulePrintPageStyle";
+  pageStyle.textContent = "@page { size: A4 landscape; margin: 6mm; }";
+  document.head.appendChild(pageStyle);
+  els.printGridRoot.innerHTML = ranges.map((range, index) =>
+    renderPrintableScheduleWeek(range, index, ranges.length)
+  ).join("");
+  els.printGridRoot.setAttribute("aria-hidden", "false");
+  document.body.classList.add("print-grid-export");
+  document.title = title;
+  try {
+    window.print();
+  } finally {
+    document.title = originalTitle;
+    document.body.classList.remove("print-grid-export");
+    els.printGridRoot.setAttribute("aria-hidden", "true");
+    els.printGridRoot.innerHTML = "";
+    pageStyle.remove();
+  }
+}
+
+function renderPrintableScheduleWeek(range, index, totalPages) {
+  const dates = getDateKeysInRange(range.start, range.end);
+  const shifts = dates.flatMap((dateKey) => getVisibleShiftsForDate(dateKey));
+  const totalHours = shifts.reduce((sum, shift) => sum + shift.end - shift.start, 0);
+  const employeeHours = getEmployees(true)
+    .filter((employee) => !getHiddenGridEmployees().has(employee.id))
+    .map((employee) => ({
+      ...employee,
+      hours: shifts
+        .filter((shift) => shift.employeeId === employee.id)
+        .reduce((sum, shift) => sum + shift.end - shift.start, 0),
+    }))
+    .filter((employee) => employee.hours > 0);
+
+  return `
+    <section class="print-week-page" data-print-week-start="${range.start}">
+      <header class="print-week-header">
+        <div class="print-brand">
+          <strong>ÖSS Kaffe</strong>
+          <span>${escapeHtml(getLocation().label)} · Grilla de personal</span>
+        </div>
+        <div class="print-week-title">
+          <span>Semana ${index + 1} de ${totalPages}</span>
+          <h1>${formatNumericDate(range.start)} al ${formatNumericDate(range.end)}</h1>
+        </div>
+        <div class="print-week-total">
+          <span>Horas del equipo visible</span>
+          <strong>${formatHours(totalHours)}</strong>
+        </div>
+      </header>
+      <div class="print-week-legend">
+        ${employeeHours.map((employee) => `
+          <span class="print-legend-item" style="--employee-color:${employee.color}">
+            <i></i><strong>${escapeHtml(employee.label)}</strong><small>${formatHours(employee.hours)}</small>
+          </span>
+        `).join("")}
+      </div>
+      <div class="print-schedule">
+        <div class="print-schedule-ruler">
+          <div class="print-ruler-label">Día</div>
+          <div class="print-hour-grid">
+            ${rangeHoursForTimeline().map((hour) => `<span>${String(hour).padStart(2, "0")}:00</span>`).join("")}
+          </div>
+          <div class="print-ruler-total">Horas</div>
+        </div>
+        ${dates.map((dateKey) => renderPrintableScheduleDay(dateKey)).join("")}
+      </div>
+      <footer class="print-week-footer">Planificación visible · ${formatNumericDate(range.start)}-${formatNumericDate(range.end)}</footer>
+    </section>
+  `;
+}
+
+function rangeHoursForTimeline() {
+  return range(SCHEDULE_TIMELINE_START, SCHEDULE_TIMELINE_END - 1);
+}
+
+function renderPrintableScheduleDay(dateKey) {
+  const date = parseDateKey(dateKey);
+  const shifts = getVisibleShiftsForDate(dateKey);
+  const laidOut = layoutShifts(shifts);
+  const lanes = laidOut.reduce((maximum, shift) => Math.max(maximum, Number(shift.lane || 0) + 1), 0);
+  const height = Math.max(50, 10 + lanes * 21);
+  const openingBands = getOpeningPeriodsForDate(dateKey)
+    .map((period) => ({
+      start: Math.max(SCHEDULE_TIMELINE_START, Math.min(SCHEDULE_TIMELINE_END, period.open)),
+      end: Math.max(SCHEDULE_TIMELINE_START, Math.min(SCHEDULE_TIMELINE_END, period.close)),
+    }))
+    .filter((period) => period.end > period.start)
+    .map((period) => {
+      const left = ((period.start - SCHEDULE_TIMELINE_START) / SCHEDULE_TIMELINE_HOURS) * 100;
+      const width = ((period.end - period.start) / SCHEDULE_TIMELINE_HOURS) * 100;
+      return `<span class="print-open-period" style="left:${left}%;width:${width}%"></span>`;
+    }).join("");
+  const hours = shifts.reduce((sum, shift) => sum + shift.end - shift.start, 0);
+  return `
+    <div class="print-day-row${date.getDay() === 0 || date.getDay() === 6 ? " is-weekend" : ""}" style="height:${height}px">
+      <div class="print-day-info">
+        <strong>${DAY_NAMES[date.getDay()]}</strong>
+        <span>${formatNumericDate(dateKey)}</span>
+        <small>Atención ${escapeHtml(getOpenLabelForDate(dateKey).replace(" local", ""))}</small>
+      </div>
+      <div class="print-timeline">
+        ${openingBands}
+        ${laidOut.map((shift) => renderPrintableScheduleShift(shift, dateKey)).join("")}
+      </div>
+      <div class="print-day-hours">${formatHours(hours)}</div>
+    </div>
+  `;
+}
+
+function renderPrintableScheduleShift(shift, dateKey) {
+  const employee = getEmployee(shift.employeeId, dateKey);
+  const visibleStart = Math.max(SCHEDULE_TIMELINE_START, Math.min(SCHEDULE_TIMELINE_END, shift.start));
+  const visibleEnd = Math.max(SCHEDULE_TIMELINE_START, Math.min(SCHEDULE_TIMELINE_END, shift.end));
+  const left = ((visibleStart - SCHEDULE_TIMELINE_START) / SCHEDULE_TIMELINE_HOURS) * 100;
+  const width = Math.max(0.5, ((visibleEnd - visibleStart) / SCHEDULE_TIMELINE_HOURS) * 100);
+  const top = 5 + Number(shift.lane || 0) * 21;
+  return `
+    <div class="print-shift-bar" style="left:${left}%;width:${width}%;top:${top}px;--employee-color:${employee.color}">
+      <strong>${escapeHtml(employee.label)}</strong><span>${formatHour(shift.start)}-${formatHour(shift.end)}</span>
+    </div>
+  `;
 }
 
 function isLeaveReason(reason) {
@@ -3913,6 +4137,11 @@ function formatHours(value) {
 function formatHumanDate(dateKey) {
   const date = parseDateKey(dateKey);
   return `${DAY_NAMES[date.getDay()]} ${date.getDate()}/${date.getMonth() + 1}`;
+}
+
+function formatNumericDate(dateKey) {
+  const date = parseDateKey(dateKey);
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
 function formatDateTime(value) {
