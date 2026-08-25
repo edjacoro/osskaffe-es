@@ -10,12 +10,14 @@ assert.match(html, /id="shiftEditorModal"/);
 assert.match(html, /id="shiftEditorEmployee"/);
 assert.match(html, /data-shift-move="-0\.5"/);
 assert.match(html, /data-shift-duration="0\.5"/);
-assert.match(html, /app\.js\?v=63/);
+assert.match(html, /app\.js\?v=64/);
 assert.match(html, /styles\.css\?v=34/);
 assert.match(appSource, /data-edit-shift/);
 assert.match(appSource, /timeline-open-period/);
 assert.match(appSource, /action: "batch-create"/);
 assert.match(appSource, /status: "approved"/);
+assert.doesNotMatch(appSource, /sourceLabel}<\/small>/,
+  "Los turnos deben mostrar solo nombre y horario, sin ciclo ni semana.");
 assert.match(css, /\.shift-bar\.is-editable/);
 assert.match(css, /\.shift-editor-modal/);
 assert.match(css, /\.timeline-open-period/);

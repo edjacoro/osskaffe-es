@@ -1301,7 +1301,6 @@ function renderDayRow(date) {
             const startPercent = ((shift.start - 7) / 13) * 100;
             const widthPercent = ((shift.end - shift.start) / 13) * 100;
             const top = 13 + index * 33;
-            const sourceLabel = shift.source === "base" ? "" : shift.source;
             const editable = appRole === "admin";
             const tag = editable ? "button" : "div";
             const editAttributes = editable
@@ -1310,7 +1309,7 @@ function renderDayRow(date) {
             return `
               <${tag} ${editAttributes} title="${escapeHtml(employee.label)} ${formatHour(shift.start)}-${formatHour(shift.end)}${editable ? " · Editar turno" : ""}" style="left:${startPercent}%; width:${widthPercent}%; top:${top}px; background:${employee.color}">
                 <span>${escapeHtml(employee.label)}</span>
-                <small>${formatHour(shift.start)}-${formatHour(shift.end)} ${sourceLabel}</small>
+                <small>${formatHour(shift.start)}-${formatHour(shift.end)}</small>
               </${tag}>
             `;
           })
