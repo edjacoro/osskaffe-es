@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=35" />
+    <link rel="stylesheet" href="styles.css?v=37" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -765,12 +765,14 @@
                     <label>Categoría
                       <select id="finExpCategory">
                         <option value="materia_prima">Materia prima</option>
+                        <option value="productos_terceros">Productos de Terceros</option>
                         <option value="nominas">Nóminas</option>
+                        <option value="mano_obra">Mano de Obra</option>
                         <option value="seguridad_social">Seg. Social / TGSS</option>
                         <option value="alquiler">Alquiler</option>
                         <option value="suministros">Suministros</option>
                         <option value="mantenimiento">Mantenimiento</option>
-                        <option value="comisiones_tpv">Comisiones TPV</option>
+                        <option value="comisiones_tpv">Comisiones</option>
                         <option value="impuestos">Impuestos</option>
                         <option value="gestoria">Gestoría / Admin</option>
                         <option value="inversiones">Inversiones</option>
@@ -794,6 +796,7 @@
                     <button class="primary-button" type="submit" id="finExpSubmitBtn">Guardar gasto</button>
                     <button class="ghost-button" type="button" id="finExpCancelEdit" style="display:none">Cancelar</button>
                   </div>
+                  <small class="fin-expense-save-status" id="finExpenseSaveStatus" aria-live="polite"></small>
                 </form>
                 <aside class="list-surface fin-expense-category-summary" aria-labelledby="finExpCategoryTitle">
                   <div class="list-heading">
@@ -804,7 +807,13 @@
                 </aside>
               </div>
               <div class="list-surface fin-expense-list-surface">
-                <div class="list-heading"><h3 id="finExpListTitle">Gastos del mes</h3><span id="finExpSummary"></span></div>
+                <div class="list-heading fin-expense-list-heading">
+                  <h3 id="finExpListTitle">Gastos del mes</h3>
+                  <div class="fin-expense-list-tools">
+                    <span id="finExpSummary"></span>
+                    <button class="ghost-button compact-button" id="finExpensePdf" type="button">PDF mensual</button>
+                  </div>
+                </div>
                 <div id="finExpenseList" class="event-list fin-expense-list"></div>
               </div>
             </div>
@@ -981,11 +990,12 @@
     </div>
 
     <div class="print-grid-root" id="printGridRoot" aria-hidden="true"></div>
+    <div class="print-expense-root" id="printExpenseRoot" aria-hidden="true"></div>
 
     <template id="emptyTemplate">
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=65"></script>
+    <script src="app.js?v=68"></script>
   </body>
 </html>

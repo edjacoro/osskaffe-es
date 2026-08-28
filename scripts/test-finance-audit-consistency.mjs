@@ -112,17 +112,27 @@ assert.match(appSource, /id="finAiDateFrom" type="date"/);
 assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
-assert.match(html, /styles\.css\?v=36/);
-assert.match(html, /app\.js\?v=67/);
+assert.match(html, /styles\.css\?v=37/);
+assert.match(html, /app\.js\?v=68/);
 assert.match(html, /id="finExpenseCategorySummary"/);
 assert.match(html, /id="finExpCategoryMonth"/);
 assert.match(html, /id="finExpenseList" class="event-list fin-expense-list"/);
+assert.match(html, /value="productos_terceros">Productos de Terceros/);
+assert.match(html, /value="mano_obra">Mano de Obra/);
+assert.match(html, /value="comisiones_tpv">Comisiones/);
+assert.match(html, /id="finExpensePdf"/);
+assert.match(html, /id="printExpenseRoot"/);
 assert.match(appSource, /function calculateExpenseCategoryTotals\(expenses = \[\]\)/);
 assert.match(appSource, /Object\.hasOwn\(totals, expense\.category\) \? expense\.category : 'otros'/);
 assert.match(appSource, /data-expense-category="\$\{category\.id\}"/);
 assert.match(styles, /\.fin-expense-category-grid \{[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/);
 assert.match(styles, /\.fin-expense-item \{[\s\S]*?padding: 8px 9px/);
 assert.match(styles, /\.fin-expense-item \.mini-button \{[\s\S]*?min-height: 25px/);
+assert.match(styles, /body\.print-expense-export > \.print-expense-root/);
+assert.match(appSource, /function exportFinExpensesPdf\(\)/);
+assert.match(appSource, /<h2>TOTAL POR CATEGORÍA<\/h2>/);
+assert.match(appSource, /label: 'Insumos y MP', categories: \['materia_prima', 'productos_terceros'\]/);
+assert.match(appSource, /label: 'SUELDOS', categories: \['nominas', 'mano_obra', 'seguridad_social'\]/);
 
 const expenseTotalsStart = appSource.indexOf('function calculateExpenseCategoryTotals');
 const expenseTotalsEnd = appSource.indexOf('function renderFinExpenses', expenseTotalsStart);
@@ -132,17 +142,21 @@ const buildExpenseTotals = new Function(
 );
 const calculateExpenseTotals = buildExpenseTotals([
   { id: 'materia_prima', label: 'Materia prima' },
+  { id: 'productos_terceros', label: 'Productos de Terceros' },
   { id: 'nominas', label: 'Nóminas' },
+  { id: 'mano_obra', label: 'Mano de Obra' },
   { id: 'otros', label: 'Otros' },
 ]);
 assert.deepEqual(
   calculateExpenseTotals([
     { category: 'materia_prima', amount: 100 },
     { category: 'materia_prima', amount: '25.5' },
+    { category: 'productos_terceros', amount: 45 },
     { category: 'nominas', amount: 300 },
+    { category: 'mano_obra', amount: 80 },
     { category: 'categoria_desconocida', amount: 10 },
   ]),
-  { materia_prima: 125.5, nominas: 300, otros: 10 },
+  { materia_prima: 125.5, productos_terceros: 45, nominas: 300, mano_obra: 80, otros: 10 },
   'El visor debe sumar cada categoría y llevar cualquier categoría desconocida a Otros.',
 );
 

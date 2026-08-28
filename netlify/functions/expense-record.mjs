@@ -8,7 +8,7 @@ import {
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ID_PATTERN = /^[a-z0-9_-]{1,100}$/i;
 const EXPENSE_CATEGORIES = new Set([
-  "materia_prima", "nominas", "seguridad_social", "alquiler", "suministros",
+  "materia_prima", "productos_terceros", "nominas", "mano_obra", "seguridad_social", "alquiler", "suministros",
   "mantenimiento", "comisiones_tpv", "impuestos", "gestoria", "inversiones",
   "marketing", "otros",
 ]);

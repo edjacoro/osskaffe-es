@@ -213,6 +213,15 @@ empezar a registrar desde ahora con datos importados y mantener historial.
 - En Finanzas > Gastos, el administrador puede reclasificar esos movimientos. La app guarda
   la categoria local asociada a las claves equivalentes del movimiento de Bistrosoft, por lo
   que las siguientes sincronizaciones no duplican el gasto ni pierden la clasificacion elegida.
+- Las altas, ediciones, borrados y reclasificaciones de gastos se confirman mediante una
+  escritura atomica en Netlify. La lista conserva el punto de lectura mientras se trabaja y
+  evita que una pestana antigua sobrescriba un movimiento ya confirmado.
+- El visor mensual mantiene separadas **Materia prima**, **Productos de Terceros**, **Nominas**,
+  **Mano de Obra** y **Seg. Social / TGSS**. En P&L, Materia prima + Productos de Terceros se
+  agrupan como **Insumos y MP**, mientras Nominas + Mano de Obra + Seg. Social / TGSS se agrupan
+  en una unica columna **SUELDOS**. El rotulo Comisiones TPV se muestra como **Comisiones**.
+- El boton **PDF mensual** de Gastos exporta el detalle del mes activo con fecha, categoria,
+  proveedor, descripcion e importe, seguido de la tabla **TOTAL POR CATEGORIA**.
 - En Finanzas > Importar ventas, el administrador puede cargar ventas sueltas que no llegaron
   desde Bistrosoft indicando fecha, cantidad de tickets y total. Esas ventas se suman al P&L
   de la sucursal activa y no se eliminan con la sincronizacion automatica.

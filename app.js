@@ -6211,18 +6211,42 @@ async function handleEmpChangeForm(event) {
 
 const EXPENSE_CATEGORIES = [
   { id: 'materia_prima',    label: 'Materia prima' },
+  { id: 'productos_terceros', label: 'Productos de Terceros' },
   { id: 'nominas',          label: 'Nóminas' },
+  { id: 'mano_obra',        label: 'Mano de Obra' },
   { id: 'seguridad_social', label: 'Seg. Social / TGSS' },
   { id: 'alquiler',         label: 'Alquiler' },
   { id: 'suministros',      label: 'Suministros' },
   { id: 'mantenimiento',    label: 'Mantenimiento' },
-  { id: 'comisiones_tpv',   label: 'Comisiones TPV' },
+  { id: 'comisiones_tpv',   label: 'Comisiones' },
   { id: 'impuestos',        label: 'Impuestos' },
   { id: 'gestoria',         label: 'Gestoría / Admin' },
   { id: 'inversiones',      label: 'Inversiones' },
   { id: 'marketing',        label: 'Marketing' },
   { id: 'otros',            label: 'Otros' },
 ];
+
+const PNL_EXPENSE_GROUPS = [
+  { id: 'insumos_mp', label: 'Insumos y MP', categories: ['materia_prima', 'productos_terceros'] },
+  { id: 'sueldos', label: 'SUELDOS', categories: ['nominas', 'mano_obra', 'seguridad_social'] },
+  { id: 'alquiler', label: 'Alquiler', categories: ['alquiler'] },
+  { id: 'suministros', label: 'Suministros', categories: ['suministros'] },
+  { id: 'mantenimiento', label: 'Mantenimiento', categories: ['mantenimiento'] },
+  { id: 'comisiones', label: 'Comisiones', categories: ['comisiones_tpv'] },
+  { id: 'impuestos', label: 'Impuestos', categories: ['impuestos'] },
+  { id: 'gestoria', label: 'Gestoría / Admin', categories: ['gestoria'] },
+  { id: 'inversiones', label: 'Inversiones', categories: ['inversiones'] },
+  { id: 'marketing', label: 'Marketing', categories: ['marketing'] },
+  { id: 'otros', label: 'Otros', categories: ['otros'] },
+];
+
+function getExpenseCategoryLabel(categoryId) {
+  return EXPENSE_CATEGORIES.find((category) => category.id === categoryId)?.label || 'Otros';
+}
+
+function getPnlExpenseGroupId(categoryId) {
+  return PNL_EXPENSE_GROUPS.find((group) => group.categories.includes(categoryId))?.id || 'otros';
+}
 
 function expenseOverrideKeys(expense) {
   const keys = new Set();
@@ -6393,6 +6417,7 @@ function initFinanzas() {
 
   // Cancelar edición
   document.querySelector('#finExpCancelEdit').addEventListener('click', resetExpenseForm);
+  document.querySelector('#finExpensePdf').addEventListener('click', exportFinExpensesPdf);
   document.querySelector('#finExportMonthly').addEventListener('click', exportMonthlyCsv);
   document.querySelector('#finExportPnl').addEventListener('click', exportPnlCsv);
 
@@ -7973,36 +7998,37 @@ function appendMonthlyResultSummary(totSales, totalExpenses, result, resultClass
 
 function renderFinPnl() {
   document.querySelector('#finPnlYear').textContent = finPnlYear;
-  const catIds = EXPENSE_CATEGORIES.map((c) => c.id);
+  const groupIds = PNL_EXPENSE_GROUPS.map((group) => group.id);
   const locationSales = getLocationSales();
   const locationExpenses = getLocationExpenses();
-  const yearTotByCat = {};
-  catIds.forEach((id) => { yearTotByCat[id] = 0; });
+  const yearTotByGroup = {};
+  groupIds.forEach((id) => { yearTotByGroup[id] = 0; });
   let yearTotSales = 0, yearTotExp = 0;
 
   const rows = MONTH_NAMES.map((monthName, mi) => {
     const monthKey = `${finPnlYear}-${String(mi + 1).padStart(2, '0')}`;
     const mSales = locationSales.filter((s) => s.date.startsWith(monthKey)).reduce((s, t) => s + t.total, 0);
-    const byCat = {};
-    catIds.forEach((id) => { byCat[id] = 0; });
+    const byGroup = {};
+    groupIds.forEach((id) => { byGroup[id] = 0; });
     // Para gastos diferidos TC usar dueDate; para el resto usar date
     locationExpenses.filter((e) => {
       const effectiveDate = (e.isDiferido && e.dueDate) ? e.dueDate : e.date;
       return effectiveDate.startsWith(monthKey);
     }).forEach((e) => {
-      byCat[e.category] = (byCat[e.category] || 0) + e.amount;
+      const groupId = getPnlExpenseGroupId(e.category);
+      byGroup[groupId] += Number(e.amount || 0);
     });
-    const mExp = catIds.reduce((s, id) => s + byCat[id], 0);
+    const mExp = groupIds.reduce((sum, id) => sum + byGroup[id], 0);
     const mResult = mSales - mExp;
     yearTotSales += mSales;
     yearTotExp += mExp;
-    catIds.forEach((id) => { yearTotByCat[id] += byCat[id]; });
+    groupIds.forEach((id) => { yearTotByGroup[id] += byGroup[id]; });
     const hasData = mSales > 0 || mExp > 0;
     const rClass = mResult > 0 ? 'fin-cell-positive' : mResult < 0 ? 'fin-cell-negative' : '';
     return `<tr${!hasData ? ' class="fin-row-empty"' : ''}>
       <td>${monthName}</td>
       <td class="fin-cell-num">${mSales > 0 ? formatEur(mSales) : '—'}</td>
-      ${catIds.map((id) => `<td class="fin-cell-num">${byCat[id] > 0 ? formatEur(byCat[id]) : '—'}</td>`).join('')}
+      ${groupIds.map((id) => `<td class="fin-cell-num">${byGroup[id] > 0 ? formatEur(byGroup[id]) : '—'}</td>`).join('')}
       <td class="fin-cell-num">${mExp > 0 ? formatEur(mExp) : '—'}</td>
       <td class="fin-cell-num ${rClass}">${hasData ? (mResult >= 0 ? '+' : '') + formatEur(mResult) : '—'}</td>
     </tr>`;
@@ -8016,7 +8042,7 @@ function renderFinPnl() {
       <thead><tr>
         <th>Mes</th>
         <th class="fin-cell-num">Ventas</th>
-        ${EXPENSE_CATEGORIES.map((c) => `<th class="fin-cell-num" style="font-size:0.76rem">${c.label}</th>`).join('')}
+        ${PNL_EXPENSE_GROUPS.map((group) => `<th class="fin-cell-num" style="font-size:0.76rem">${group.label}</th>`).join('')}
         <th class="fin-cell-num">Total gastos</th>
         <th class="fin-cell-num">Resultado</th>
       </tr></thead>
@@ -8024,7 +8050,7 @@ function renderFinPnl() {
       <tfoot><tr class="fin-total-row">
         <td>Total ${finPnlYear}</td>
         <td class="fin-cell-num">${formatEur(yearTotSales)}</td>
-        ${catIds.map((id) => `<td class="fin-cell-num">${yearTotByCat[id] > 0 ? formatEur(yearTotByCat[id]) : '—'}</td>`).join('')}
+        ${groupIds.map((id) => `<td class="fin-cell-num">${yearTotByGroup[id] > 0 ? formatEur(yearTotByGroup[id]) : '—'}</td>`).join('')}
         <td class="fin-cell-num">${formatEur(yearTotExp)}</td>
         <td class="fin-cell-num ${yearRClass}">${(yearResult >= 0 ? '+' : '') + formatEur(yearResult)}</td>
       </tr></tfoot>
@@ -8275,7 +8301,7 @@ async function handleExpenseForm(event) {
           ? { ...expense, category }
           : expense
       );
-      resetExpenseForm();
+      resetExpenseForm({ keepViewport: true });
       saveState({ shared: false });
       render();
       setExpensePersistenceStatus(
@@ -8307,7 +8333,7 @@ async function handleExpenseForm(event) {
     if (existingIndex >= 0) state.expenses[existingIndex] = persistedExpense;
     else state.expenses.push(persistedExpense);
     if (state.expenseDeletionTombstones) delete state.expenseDeletionTombstones[persistedExpense.id];
-    resetExpenseForm();
+    resetExpenseForm({ keepViewport: true });
     saveState({ shared: false });
     render();
     setExpensePersistenceStatus(
@@ -10003,6 +10029,90 @@ function groupSalesByDate() {
 
 // -------- EXPORTS --------
 
+function exportFinExpensesPdf() {
+  const monthKey = monthInputValue(finActiveMonth);
+  const expenses = getLocationExpenses()
+    .filter((expense) => expense.date.startsWith(monthKey))
+    .slice()
+    .sort((a, b) =>
+      a.date.localeCompare(b.date)
+      || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+    );
+  if (!expenses.length) {
+    alert('No hay gastos registrados para exportar en este mes.');
+    return;
+  }
+
+  const categoryTotals = calculateExpenseCategoryTotals(expenses);
+  const total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  const locationLabel = getLocation().label;
+  const detailRows = expenses.map((expense) => `
+    <tr>
+      <td>${escapeHtml(formatHumanDate(expense.date))}</td>
+      <td>${escapeHtml(getExpenseCategoryLabel(expense.category))}</td>
+      <td>${escapeHtml(expense.supplier || '—')}</td>
+      <td>${escapeHtml(expense.description || '—')}</td>
+      <td class="expense-print-amount">${formatEur(Number(expense.amount || 0))}</td>
+    </tr>`).join('');
+  const categoryRows = EXPENSE_CATEGORIES
+    .filter((category) => categoryTotals[category.id] > 0)
+    .map((category) => `
+      <tr>
+        <td>${escapeHtml(category.label)}</td>
+        <td class="expense-print-amount">${formatEur(categoryTotals[category.id])}</td>
+      </tr>`).join('');
+
+  const printRoot = document.querySelector('#printExpenseRoot');
+  const originalTitle = document.title;
+  const pageStyle = document.createElement('style');
+  pageStyle.id = 'expensePrintPageStyle';
+  pageStyle.textContent = '@page { size: A4 portrait; margin: 11mm; }';
+  document.head.appendChild(pageStyle);
+  printRoot.innerHTML = `
+    <main class="expense-print-report">
+      <header class="expense-print-header">
+        <div>
+          <p>ÖSS KAFFE · FINANZAS</p>
+          <h1>Gastos de ${escapeHtml(monthLabel)}</h1>
+          <span>${escapeHtml(locationLabel)}</span>
+        </div>
+        <div class="expense-print-summary">
+          <span>${expenses.length} movimientos</span>
+          <strong>${formatEur(total)}</strong>
+        </div>
+      </header>
+      <section>
+        <h2>Detalle de gastos</h2>
+        <table class="expense-print-table expense-print-detail">
+          <thead><tr><th>Fecha</th><th>Categoría</th><th>Proveedor</th><th>Descripción</th><th>Importe</th></tr></thead>
+          <tbody>${detailRows}</tbody>
+          <tfoot><tr><td colspan="4">TOTAL DEL MES</td><td class="expense-print-amount">${formatEur(total)}</td></tr></tfoot>
+        </table>
+      </section>
+      <section class="expense-print-category-section">
+        <h2>TOTAL POR CATEGORÍA</h2>
+        <table class="expense-print-table expense-print-category-table">
+          <thead><tr><th>Categoría</th><th>Importe</th></tr></thead>
+          <tbody>${categoryRows}</tbody>
+          <tfoot><tr><td>TOTAL DEL MES</td><td class="expense-print-amount">${formatEur(total)}</td></tr></tfoot>
+        </table>
+      </section>
+    </main>`;
+  printRoot.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('print-expense-export');
+  document.title = `OSS-gastos-${activeLocationId}-${monthKey}`;
+  try {
+    window.print();
+  } finally {
+    document.title = originalTitle;
+    document.body.classList.remove('print-expense-export');
+    printRoot.setAttribute('aria-hidden', 'true');
+    printRoot.innerHTML = '';
+    pageStyle.remove();
+  }
+}
+
 function exportMonthlyCsv() {
   const rows = [['Fecha', 'Ventas', 'Tickets', 'Ticket promedio', 'Gastos', 'Resultado']];
   let totS = 0, totT = 0, totE = 0;
@@ -10017,19 +10127,25 @@ function exportMonthlyCsv() {
 }
 
 function exportPnlCsv() {
-  const catIds = EXPENSE_CATEGORIES.map((c) => c.id);
-  const catLabels = EXPENSE_CATEGORIES.map((c) => c.label);
-  const rows = [['Mes', 'Ventas', ...catLabels, 'Total gastos', 'Resultado']];
+  const groupIds = PNL_EXPENSE_GROUPS.map((group) => group.id);
+  const groupLabels = PNL_EXPENSE_GROUPS.map((group) => group.label);
+  const rows = [['Mes', 'Ventas', ...groupLabels, 'Total gastos', 'Resultado']];
   const locationSales = getLocationSales();
   const locationExpenses = getLocationExpenses();
   MONTH_NAMES.forEach((name, mi) => {
     const mk = `${finPnlYear}-${String(mi + 1).padStart(2, '0')}`;
     const mSales = locationSales.filter((s) => s.date.startsWith(mk)).reduce((s, t) => s + t.total, 0);
-    const byCat = {};
-    catIds.forEach((id) => { byCat[id] = 0; });
-    locationExpenses.filter((e) => e.date.startsWith(mk)).forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
-    const mExp = catIds.reduce((s, id) => s + byCat[id], 0);
-    rows.push([name, mSales.toFixed(2), ...catIds.map((id) => byCat[id].toFixed(2)), mExp.toFixed(2), (mSales - mExp).toFixed(2)]);
+    const byGroup = {};
+    groupIds.forEach((id) => { byGroup[id] = 0; });
+    locationExpenses.filter((expense) => {
+      const effectiveDate = expense.isDiferido && expense.dueDate ? expense.dueDate : expense.date;
+      return effectiveDate.startsWith(mk);
+    }).forEach((expense) => {
+      const groupId = getPnlExpenseGroupId(expense.category);
+      byGroup[groupId] += Number(expense.amount || 0);
+    });
+    const mExp = groupIds.reduce((sum, id) => sum + byGroup[id], 0);
+    rows.push([name, mSales.toFixed(2), ...groupIds.map((id) => byGroup[id].toFixed(2)), mExp.toFixed(2), (mSales - mExp).toFixed(2)]);
   });
   downloadCsv(rows, `oss-pnl-${activeLocationId}-${finPnlYear}.csv`);
 }

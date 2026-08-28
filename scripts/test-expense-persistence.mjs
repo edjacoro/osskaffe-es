@@ -40,6 +40,29 @@ assert.equal(state.expenses.find((expense) => expense.id === "manual-b").amount,
 assert.equal(state.expenses.length, 3, "Editar no debe duplicar el gasto.");
 
 state = applyExpenseRecordMutation(state, {
+  action: "upsert",
+  expense: {
+    id: "manual-third-party",
+    date: "2026-01-11",
+    amount: 35,
+    category: "productos_terceros",
+    locationId: "barcelona",
+  },
+});
+state = applyExpenseRecordMutation(state, {
+  action: "upsert",
+  expense: {
+    id: "manual-labour",
+    date: "2026-01-11",
+    amount: 60,
+    category: "mano_obra",
+    locationId: "barcelona",
+  },
+});
+assert.equal(state.expenses.find((expense) => expense.id === "manual-third-party").category, "productos_terceros");
+assert.equal(state.expenses.find((expense) => expense.id === "manual-labour").category, "mano_obra");
+
+state = applyExpenseRecordMutation(state, {
   action: "categorize",
   category: "materia_prima",
   expense: bistro,
@@ -99,7 +122,24 @@ assert.match(appSource, /saveState\(\{ shared: false \}\);/);
 assert.match(appSource, /captureExpenseListViewport/);
 assert.match(appSource, /restoreExpenseListViewport/);
 assert.match(html, /id="finExpenseSaveStatus"/);
+assert.match(html, /id="finExpensePdf"/);
+assert.match(appSource, /resetExpenseForm\(\{ keepViewport: true \}\)/);
+assert.match(appSource, /label: 'Insumos y MP'/);
+assert.match(appSource, /label: 'SUELDOS'/);
 assert.match(css, /\.fin-expense-list\s*\{[\s\S]*?overflow-y:\s*auto/);
 assert.match(css, /\.fin-expense-list-surface\s*\{[\s\S]*?position:\s*sticky/);
+
+const categoryRulesStart = appSource.indexOf("const EXPENSE_CATEGORIES = [");
+const categoryRulesEnd = appSource.indexOf("function expenseOverrideKeys", categoryRulesStart);
+const buildCategoryRules = new Function(
+  `${appSource.slice(categoryRulesStart, categoryRulesEnd)}\nreturn { getPnlExpenseGroupId, getExpenseCategoryLabel };`,
+);
+const categoryRules = buildCategoryRules();
+assert.equal(categoryRules.getPnlExpenseGroupId("materia_prima"), "insumos_mp");
+assert.equal(categoryRules.getPnlExpenseGroupId("productos_terceros"), "insumos_mp");
+assert.equal(categoryRules.getPnlExpenseGroupId("nominas"), "sueldos");
+assert.equal(categoryRules.getPnlExpenseGroupId("mano_obra"), "sueldos");
+assert.equal(categoryRules.getPnlExpenseGroupId("seguridad_social"), "sueldos");
+assert.equal(categoryRules.getExpenseCategoryLabel("comisiones_tpv"), "Comisiones");
 
 console.log("OK: gastos y categorías se guardan de forma atómica, resisten pestañas antiguas y conservan la posición de la lista.");

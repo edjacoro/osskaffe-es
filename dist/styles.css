@@ -789,6 +789,10 @@ textarea {
   --schedule-timeline-hours: 15;
 }
 
+.print-expense-root {
+  display: none;
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -926,6 +930,140 @@ textarea {
 
   body.print-grid-export > .print-grid-root {
     display: block !important;
+  }
+
+  body.print-expense-export {
+    margin: 0;
+    background: #ffffff;
+    color: #17252b;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body.print-expense-export > * {
+    display: none !important;
+  }
+
+  body.print-expense-export > .print-expense-root {
+    display: block !important;
+  }
+
+  .expense-print-report {
+    color: #17252b;
+    font-family: Inter, Arial, sans-serif;
+    font-size: 9pt;
+  }
+
+  .expense-print-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8mm;
+    padding-bottom: 4mm;
+    border-bottom: 2px solid #2f6672;
+  }
+
+  .expense-print-header p {
+    margin: 0 0 1.5mm;
+    color: #c26b43;
+    font-size: 8pt;
+    font-weight: 800;
+    letter-spacing: .04em;
+  }
+
+  .expense-print-header h1 {
+    margin: 0 0 1mm;
+    color: #123b4b;
+    font-size: 19pt;
+    line-height: 1.05;
+  }
+
+  .expense-print-header span {
+    color: #4f6670;
+  }
+
+  .expense-print-summary {
+    display: grid;
+    justify-items: end;
+    gap: 1mm;
+    white-space: nowrap;
+  }
+
+  .expense-print-summary strong {
+    color: #123b4b;
+    font-size: 16pt;
+  }
+
+  .expense-print-report h2 {
+    margin: 0 0 3mm;
+    color: #123b4b;
+    font-size: 11pt;
+  }
+
+  .expense-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .expense-print-table thead {
+    display: table-header-group;
+  }
+
+  .expense-print-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .expense-print-table th,
+  .expense-print-table td {
+    padding: 2.2mm 2mm;
+    border-bottom: 1px solid #d4dfe3;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+
+  .expense-print-table th {
+    background: #eaf1f3;
+    color: #315863;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+  }
+
+  .expense-print-detail th:nth-child(1) { width: 13%; }
+  .expense-print-detail th:nth-child(2) { width: 21%; }
+  .expense-print-detail th:nth-child(3) { width: 18%; }
+  .expense-print-detail th:nth-child(4) { width: 32%; }
+  .expense-print-detail th:nth-child(5) { width: 16%; }
+
+  .expense-print-table tfoot td {
+    padding-top: 3mm;
+    border-top: 2px solid #315863;
+    border-bottom: 0;
+    color: #123b4b;
+    font-weight: 800;
+  }
+
+  .expense-print-amount {
+    text-align: right !important;
+    white-space: nowrap;
+  }
+
+  .expense-print-category-section {
+    margin-top: 8mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .expense-print-category-table {
+    width: 58%;
+    margin-left: auto;
+  }
+
+  .expense-print-category-table th:last-child {
+    text-align: right;
   }
 
   .print-week-page {
@@ -3230,6 +3368,29 @@ textarea {
   min-width: 0;
 }
 
+.fin-expense-layout {
+  align-items: start;
+}
+
+.fin-expense-list-surface {
+  position: sticky;
+  top: 12px;
+  min-height: 0;
+}
+
+.fin-expense-list-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fin-expense-list-tools .compact-button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: .7rem;
+}
+
 .fin-expense-category-summary {
   padding: 12px;
 }
@@ -3279,6 +3440,33 @@ textarea {
 
 .fin-expense-list {
   gap: 7px;
+  max-height: calc(72vh - 70px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.fin-expense-save-status {
+  display: block;
+  min-height: 18px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.fin-expense-save-status[data-status="saving"],
+.fin-expense-save-status[data-status="warning"] {
+  color: #9a5a12;
+}
+
+.fin-expense-save-status[data-status="success"] {
+  color: var(--success);
+}
+
+.fin-expense-save-status[data-status="error"] {
+  color: var(--danger);
 }
 
 .fin-expense-item {
@@ -3338,6 +3526,23 @@ textarea {
 
   .fin-import-layout > .list-surface {
     grid-column: auto;
+  }
+
+  .fin-expense-list-surface {
+    position: static;
+  }
+
+  .fin-expense-list {
+    max-height: 62vh;
+  }
+
+  .fin-expense-list-heading {
+    align-items: flex-start;
+  }
+
+  .fin-expense-list-tools {
+    align-items: flex-end;
+    flex-direction: column;
   }
 }
 

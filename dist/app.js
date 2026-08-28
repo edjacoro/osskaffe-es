@@ -617,6 +617,7 @@ const DEFAULT_STATE = {
   sales: [],
   expenses: [],
   expenseCategoryOverrides: {},
+  expenseDeletionTombstones: {},
   wasteRecords: [],
   contracts: {},
   baseSchedules: DEFAULT_BASE_SCHEDULES,
@@ -4396,7 +4397,7 @@ async function tryAdminPin() {
     if (sharedLogin.failedTeamRecoveries) {
       alert(`No se pudieron recuperar ${sharedLogin.failedTeamRecoveries} empleado(s). Siguen visibles en este navegador; revisÃ¡ la conexiÃ³n y volvÃ© a guardar sus fichas.`);
     }
-    if (sharedLogin.madridScheduleSeed?.failed || sharedLogin.madridScheduleSeed?.stateSaved === false) {
+    if (sharedLogin.madridScheduleSeed?.stateSaved === false) {
       alert("La nueva grilla de Madrid se ve localmente, pero Netlify no confirmó todavía todos sus datos. Cerrá y volvé a ingresar como administrador para reintentar el guardado.");
     }
   } else {
@@ -5160,18 +5161,17 @@ async function persistMadridScheduleSeedToServer(remoteState = {}) {
   const remotePlan = (remoteState.schedulePlans?.madrid || []).find((plan) => plan.id === MADRID_SCHEDULE_PLAN_ID);
   const needsPlanSave = Number(remoteState.madridScheduleSeedVersion || 0) < MADRID_SCHEDULE_SEED_VERSION
     || !remotePlan;
-  if (failed) state.madridScheduleSeedVersion = 0;
   let stateSaved = true;
   if (needsPlanSave) {
     const plan = (state.schedulePlans?.madrid || []).find((candidate) => candidate.id === MADRID_SCHEDULE_PLAN_ID)
       || MADRID_SCHEDULE_PLAN_2026_08_31;
     const result = await sendSharedMutation(
       "/api/schedule-plan",
-      { plan, seedVersion: failed ? 0 : MADRID_SCHEDULE_SEED_VERSION },
+      { plan, seedVersion: MADRID_SCHEDULE_SEED_VERSION },
       "No se pudo guardar la nueva grilla de Madrid en Netlify.",
     );
     stateSaved = result.ok;
-    if (result.ok && !failed) state.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
+    if (result.ok) state.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
   }
   return { updated, failed, stateSaved };
 }
@@ -6211,18 +6211,42 @@ async function handleEmpChangeForm(event) {
 
 const EXPENSE_CATEGORIES = [
   { id: 'materia_prima',    label: 'Materia prima' },
+  { id: 'productos_terceros', label: 'Productos de Terceros' },
   { id: 'nominas',          label: 'Nóminas' },
+  { id: 'mano_obra',        label: 'Mano de Obra' },
   { id: 'seguridad_social', label: 'Seg. Social / TGSS' },
   { id: 'alquiler',         label: 'Alquiler' },
   { id: 'suministros',      label: 'Suministros' },
   { id: 'mantenimiento',    label: 'Mantenimiento' },
-  { id: 'comisiones_tpv',   label: 'Comisiones TPV' },
+  { id: 'comisiones_tpv',   label: 'Comisiones' },
   { id: 'impuestos',        label: 'Impuestos' },
   { id: 'gestoria',         label: 'Gestoría / Admin' },
   { id: 'inversiones',      label: 'Inversiones' },
   { id: 'marketing',        label: 'Marketing' },
   { id: 'otros',            label: 'Otros' },
 ];
+
+const PNL_EXPENSE_GROUPS = [
+  { id: 'insumos_mp', label: 'Insumos y MP', categories: ['materia_prima', 'productos_terceros'] },
+  { id: 'sueldos', label: 'SUELDOS', categories: ['nominas', 'mano_obra', 'seguridad_social'] },
+  { id: 'alquiler', label: 'Alquiler', categories: ['alquiler'] },
+  { id: 'suministros', label: 'Suministros', categories: ['suministros'] },
+  { id: 'mantenimiento', label: 'Mantenimiento', categories: ['mantenimiento'] },
+  { id: 'comisiones', label: 'Comisiones', categories: ['comisiones_tpv'] },
+  { id: 'impuestos', label: 'Impuestos', categories: ['impuestos'] },
+  { id: 'gestoria', label: 'Gestoría / Admin', categories: ['gestoria'] },
+  { id: 'inversiones', label: 'Inversiones', categories: ['inversiones'] },
+  { id: 'marketing', label: 'Marketing', categories: ['marketing'] },
+  { id: 'otros', label: 'Otros', categories: ['otros'] },
+];
+
+function getExpenseCategoryLabel(categoryId) {
+  return EXPENSE_CATEGORIES.find((category) => category.id === categoryId)?.label || 'Otros';
+}
+
+function getPnlExpenseGroupId(categoryId) {
+  return PNL_EXPENSE_GROUPS.find((group) => group.categories.includes(categoryId))?.id || 'otros';
+}
 
 function expenseOverrideKeys(expense) {
   const keys = new Set();
@@ -6283,6 +6307,8 @@ let finTodayDate = toDateInput(new Date());
 let finPnlYear = new Date().getFullYear();
 let finPendingFile = null;   // archivo xlsx/csv seleccionado pendiente de importar
 let finEditingExpenseId = null; // id del gasto en edición (null = modo creación)
+let finExpenseListViewport = { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 };
+let finExpensePinnedViewport = null;
 let finAnalysisFilters = null;
 let finAiQuestion = '';
 let finAiQuestionDraft = '';
@@ -6391,6 +6417,7 @@ function initFinanzas() {
 
   // Cancelar edición
   document.querySelector('#finExpCancelEdit').addEventListener('click', resetExpenseForm);
+  document.querySelector('#finExpensePdf').addEventListener('click', exportFinExpensesPdf);
   document.querySelector('#finExportMonthly').addEventListener('click', exportMonthlyCsv);
   document.querySelector('#finExportPnl').addEventListener('click', exportPnlCsv);
 
@@ -7396,7 +7423,91 @@ function calculateExpenseCategoryTotals(expenses = []) {
   return totals;
 }
 
+function captureExpenseListViewport(list = document.querySelector('#finExpenseList')) {
+  if (!list) return finExpenseListViewport;
+  const listRect = list.getBoundingClientRect();
+  const items = [...list.querySelectorAll('[data-expense-id]')];
+  const anchor = items.find((item) => item.getBoundingClientRect().bottom > listRect.top + 1) || null;
+  finExpenseListViewport = {
+    scrollTop: list.scrollTop,
+    scrollHeight: list.scrollHeight,
+    anchorId: anchor?.dataset.expenseId || null,
+    anchorOffset: anchor ? anchor.getBoundingClientRect().top - listRect.top : 0,
+  };
+  return { ...finExpenseListViewport };
+}
+
+function restoreExpenseListViewport(list, viewport = finExpenseListViewport) {
+  if (!list || !viewport) return;
+  const anchor = viewport.anchorId
+    ? [...list.querySelectorAll('[data-expense-id]')]
+        .find((item) => item.dataset.expenseId === viewport.anchorId)
+    : null;
+  if (anchor) {
+    const listRect = list.getBoundingClientRect();
+    const delta = anchor.getBoundingClientRect().top - listRect.top - viewport.anchorOffset;
+    list.scrollTop = Math.max(0, viewport.scrollTop + delta);
+  } else {
+    const contentDelta = list.scrollHeight - Number(viewport.scrollHeight || list.scrollHeight);
+    list.scrollTop = Math.max(0, Number(viewport.scrollTop || 0) + contentDelta);
+  }
+  finExpenseListViewport = { ...viewport, scrollTop: list.scrollTop, scrollHeight: list.scrollHeight };
+}
+
+function setExpensePersistenceStatus(message = '', status = '') {
+  const element = document.querySelector('#finExpenseSaveStatus');
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.status = status;
+}
+
+async function persistExpenseMutation(body) {
+  return sendSharedMutation(
+    '/api/expense-record',
+    body,
+    'No se pudo guardar el gasto en Netlify.',
+  );
+}
+
+function expensePersistenceMessage(result, fallback) {
+  if (result.local) return 'Guardado solo en este navegador. Netlify no está disponible.';
+  const persistedAt = result.payload?.persistedAt;
+  return persistedAt
+    ? `${fallback} · ${formatDateTime(new Date(persistedAt))}`
+    : fallback;
+}
+
+async function deleteExpenseRecord(expenseId, confirmationMessage = '¿Borrar este gasto?') {
+  const expense = state.expenses.find((item) => item.id === expenseId);
+  finExpensePinnedViewport = captureExpenseListViewport();
+  if (!expense || !confirm(confirmationMessage)) {
+    finExpensePinnedViewport = null;
+    return false;
+  }
+  setExpensePersistenceStatus('Guardando el borrado en Netlify...', 'saving');
+  const result = await persistExpenseMutation({ action: 'delete', expenseId });
+  if (!result.ok) {
+    setExpensePersistenceStatus(result.error || 'No se pudo borrar el gasto en Netlify.', 'error');
+    alert(result.error || 'El gasto no se borró porque Netlify no confirmó el cambio.');
+    return false;
+  }
+  state.expenses = state.expenses.filter((item) => item.id !== expenseId);
+  state.expenseDeletionTombstones = {
+    ...(state.expenseDeletionTombstones || {}),
+    [expenseId]: new Date().toISOString(),
+  };
+  saveState({ shared: false });
+  render();
+  setExpensePersistenceStatus(
+    expensePersistenceMessage(result, 'Gasto borrado y confirmado en Netlify.'),
+    result.local ? 'warning' : 'success',
+  );
+  return true;
+}
+
 function renderFinExpenses() {
+  const previousList = document.querySelector('#finExpenseList');
+  const viewport = finExpensePinnedViewport || captureExpenseListViewport(previousList);
   const monthKey = monthInputValue(finActiveMonth);
   const expenses = getLocationExpenses()
     .filter((expense) => expense.date.startsWith(monthKey))
@@ -7425,6 +7536,8 @@ function renderFinExpenses() {
   const list = document.querySelector('#finExpenseList');
   if (!expenses.length) {
     list.innerHTML = '<div class="empty-state">No hay gastos registrados en este mes.</div>';
+    restoreExpenseListViewport(list, { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 });
+    finExpensePinnedViewport = null;
     return;
   }
 
@@ -7440,7 +7553,7 @@ function renderFinExpenses() {
       : '';
     const tcBadge = exp.isDiferido ? `<span class="fin-tc-badge">TC · vence ${formatHumanDate(exp.dueDate)}</span>` : '';
     return `
-      <article class="event-item fin-expense-item${exp.isDiferido ? ' fin-item-tc' : ''}">
+      <article class="event-item fin-expense-item${exp.isDiferido ? ' fin-item-tc' : ''}" data-expense-id="${escapeHtml(exp.id)}">
         <div class="event-topline">
           <span>${catLabel}${exp.supplier ? ' · ' + escapeHtml(exp.supplier) : ''}${tcBadge}${bistroBadge}</span>
           <span class="status-pill status-rejected">${formatEur(exp.amount)}</span>
@@ -7458,16 +7571,14 @@ function renderFinExpenses() {
   }).join('');
 
   list.querySelectorAll('[data-delete-expense]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (!confirm('¿Borrar este gasto?')) return;
-      state.expenses = state.expenses.filter((e) => e.id !== btn.dataset.deleteExpense);
-      render();
-    });
+    btn.addEventListener('click', () => deleteExpenseRecord(btn.dataset.deleteExpense));
   });
 
   list.querySelectorAll('[data-edit-expense]').forEach((btn) => {
     btn.addEventListener('click', () => startEditExpense(btn.dataset.editExpense));
   });
+  restoreExpenseListViewport(list, viewport);
+  finExpensePinnedViewport = null;
 }
 
 function renderFinWaste() {
@@ -7537,6 +7648,7 @@ function renderFinWaste() {
 function startEditExpense(id) {
   const exp = state.expenses.find((e) => e.id === id);
   if (!exp) return;
+  finExpensePinnedViewport = captureExpenseListViewport();
   finEditingExpenseId = id;
   const isBistrosoft = exp._source === 'bistrosoft';
 
@@ -7568,7 +7680,8 @@ function startEditExpense(id) {
   document.querySelector('#finExpenseForm').scrollIntoView({ behavior: 'smooth' });
 }
 
-function resetExpenseForm() {
+function resetExpenseForm(options = {}) {
+  if (!options.keepViewport) finExpensePinnedViewport = null;
   finEditingExpenseId = null;
   ['finExpDate', 'finExpAmount', 'finExpSupplier', 'finExpDesc', 'finExpDiferido', 'finExpDueDate']
     .forEach((fieldId) => {
@@ -7660,11 +7773,9 @@ function renderFinDiferidos() {
 
   // Listeners
   container.querySelectorAll('[data-delete-expense]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (!confirm('¿Borrar este gasto diferido?')) return;
-      state.expenses = state.expenses.filter((e) => e.id !== btn.dataset.deleteExpense);
-      render();
-    });
+    btn.addEventListener('click', () =>
+      deleteExpenseRecord(btn.dataset.deleteExpense, '¿Borrar este gasto diferido?')
+    );
   });
   container.querySelectorAll('[data-edit-expense]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -7673,15 +7784,31 @@ function renderFinDiferidos() {
     });
   });
   container.querySelectorAll('[data-paygroup]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const key = btn.dataset.paygroup;
       if (!confirm(`¿Marcar todos los gastos de "${key}" como pagados (mover a vencidos)?`)) return;
       // Cambiar la dueDate a ayer para que quede en "pagados"
       const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
       const yStr = yesterday.toISOString().slice(0, 10);
+      const expenseIds = state.expenses
+        .filter((e) => belongsToActiveLocation(e) && e.isDiferido && e.dueDate === key)
+        .map((e) => e.id);
+      btn.disabled = true;
+      const result = await persistExpenseMutation({
+        action: 'mark-paid',
+        expenseIds,
+        dueDate: yStr,
+        locationId: activeLocationId,
+      });
+      if (!result.ok) {
+        btn.disabled = false;
+        alert(result.error || 'Los gastos no se modificaron porque Netlify no confirmó el cambio.');
+        return;
+      }
       state.expenses = state.expenses.map((e) =>
         belongsToActiveLocation(e) && e.isDiferido && e.dueDate === key ? { ...e, dueDate: yStr } : e
       );
+      saveState({ shared: false });
       render();
     });
   });
@@ -7871,36 +7998,37 @@ function appendMonthlyResultSummary(totSales, totalExpenses, result, resultClass
 
 function renderFinPnl() {
   document.querySelector('#finPnlYear').textContent = finPnlYear;
-  const catIds = EXPENSE_CATEGORIES.map((c) => c.id);
+  const groupIds = PNL_EXPENSE_GROUPS.map((group) => group.id);
   const locationSales = getLocationSales();
   const locationExpenses = getLocationExpenses();
-  const yearTotByCat = {};
-  catIds.forEach((id) => { yearTotByCat[id] = 0; });
+  const yearTotByGroup = {};
+  groupIds.forEach((id) => { yearTotByGroup[id] = 0; });
   let yearTotSales = 0, yearTotExp = 0;
 
   const rows = MONTH_NAMES.map((monthName, mi) => {
     const monthKey = `${finPnlYear}-${String(mi + 1).padStart(2, '0')}`;
     const mSales = locationSales.filter((s) => s.date.startsWith(monthKey)).reduce((s, t) => s + t.total, 0);
-    const byCat = {};
-    catIds.forEach((id) => { byCat[id] = 0; });
+    const byGroup = {};
+    groupIds.forEach((id) => { byGroup[id] = 0; });
     // Para gastos diferidos TC usar dueDate; para el resto usar date
     locationExpenses.filter((e) => {
       const effectiveDate = (e.isDiferido && e.dueDate) ? e.dueDate : e.date;
       return effectiveDate.startsWith(monthKey);
     }).forEach((e) => {
-      byCat[e.category] = (byCat[e.category] || 0) + e.amount;
+      const groupId = getPnlExpenseGroupId(e.category);
+      byGroup[groupId] += Number(e.amount || 0);
     });
-    const mExp = catIds.reduce((s, id) => s + byCat[id], 0);
+    const mExp = groupIds.reduce((sum, id) => sum + byGroup[id], 0);
     const mResult = mSales - mExp;
     yearTotSales += mSales;
     yearTotExp += mExp;
-    catIds.forEach((id) => { yearTotByCat[id] += byCat[id]; });
+    groupIds.forEach((id) => { yearTotByGroup[id] += byGroup[id]; });
     const hasData = mSales > 0 || mExp > 0;
     const rClass = mResult > 0 ? 'fin-cell-positive' : mResult < 0 ? 'fin-cell-negative' : '';
     return `<tr${!hasData ? ' class="fin-row-empty"' : ''}>
       <td>${monthName}</td>
       <td class="fin-cell-num">${mSales > 0 ? formatEur(mSales) : '—'}</td>
-      ${catIds.map((id) => `<td class="fin-cell-num">${byCat[id] > 0 ? formatEur(byCat[id]) : '—'}</td>`).join('')}
+      ${groupIds.map((id) => `<td class="fin-cell-num">${byGroup[id] > 0 ? formatEur(byGroup[id]) : '—'}</td>`).join('')}
       <td class="fin-cell-num">${mExp > 0 ? formatEur(mExp) : '—'}</td>
       <td class="fin-cell-num ${rClass}">${hasData ? (mResult >= 0 ? '+' : '') + formatEur(mResult) : '—'}</td>
     </tr>`;
@@ -7914,7 +8042,7 @@ function renderFinPnl() {
       <thead><tr>
         <th>Mes</th>
         <th class="fin-cell-num">Ventas</th>
-        ${EXPENSE_CATEGORIES.map((c) => `<th class="fin-cell-num" style="font-size:0.76rem">${c.label}</th>`).join('')}
+        ${PNL_EXPENSE_GROUPS.map((group) => `<th class="fin-cell-num" style="font-size:0.76rem">${group.label}</th>`).join('')}
         <th class="fin-cell-num">Total gastos</th>
         <th class="fin-cell-num">Resultado</th>
       </tr></thead>
@@ -7922,7 +8050,7 @@ function renderFinPnl() {
       <tfoot><tr class="fin-total-row">
         <td>Total ${finPnlYear}</td>
         <td class="fin-cell-num">${formatEur(yearTotSales)}</td>
-        ${catIds.map((id) => `<td class="fin-cell-num">${yearTotByCat[id] > 0 ? formatEur(yearTotByCat[id]) : '—'}</td>`).join('')}
+        ${groupIds.map((id) => `<td class="fin-cell-num">${yearTotByGroup[id] > 0 ? formatEur(yearTotByGroup[id]) : '—'}</td>`).join('')}
         <td class="fin-cell-num">${formatEur(yearTotExp)}</td>
         <td class="fin-cell-num ${yearRClass}">${(yearResult >= 0 ? '+' : '') + formatEur(yearResult)}</td>
       </tr></tfoot>
@@ -8145,50 +8273,80 @@ function parseBistrosoftRowsXlsx(rows) {
   return parseBistrosoftCsv(csvLines.join('\n'));
 }
 
-function handleExpenseForm(event) {
+async function handleExpenseForm(event) {
   event.preventDefault();
+  const submitButton = document.querySelector('#finExpSubmitBtn');
   const existingExpense = finEditingExpenseId
     ? state.expenses.find((expense) => expense.id === finEditingExpenseId)
     : null;
-  if (existingExpense?._source === 'bistrosoft') {
-    const category = document.querySelector('#finExpCategory').value;
-    setExpenseCategoryOverride(existingExpense, category);
-    state.expenses = state.expenses.map((expense) =>
-      expenseOverrideKeys(existingExpense).includes(expense.id) || expense.id === existingExpense.id
-        ? { ...expense, category }
-        : expense
-    );
-    resetExpenseForm();
-    saveState();
+  submitButton.disabled = true;
+  setExpensePersistenceStatus('Guardando y confirmando en Netlify...', 'saving');
+  try {
+    if (existingExpense?._source === 'bistrosoft') {
+      const category = document.querySelector('#finExpCategory').value;
+      const result = await persistExpenseMutation({
+        action: 'categorize',
+        category,
+        expense: {
+          id: existingExpense.id,
+          bistroId: existingExpense.bistroId,
+          locationId: existingExpense.locationId,
+        },
+      });
+      if (!result.ok) throw new Error(result.error || 'Netlify no confirmó la categoría.');
+      const referenceKeys = new Set(expenseOverrideKeys(existingExpense));
+      setExpenseCategoryOverride(existingExpense, category);
+      state.expenses = state.expenses.map((expense) =>
+        expenseOverrideKeys(expense).some((key) => referenceKeys.has(key))
+          ? { ...expense, category }
+          : expense
+      );
+      resetExpenseForm({ keepViewport: true });
+      saveState({ shared: false });
+      render();
+      setExpensePersistenceStatus(
+        expensePersistenceMessage(result, 'Categoría guardada y confirmada en Netlify.'),
+        result.local ? 'warning' : 'success',
+      );
+      return;
+    }
+
+    const isDif = document.querySelector('#finExpDiferido').checked;
+    const expData = {
+      date:        document.querySelector('#finExpDate').value,
+      amount:      parseFloat(document.querySelector('#finExpAmount').value),
+      category:    document.querySelector('#finExpCategory').value,
+      supplier:    document.querySelector('#finExpSupplier').value.trim(),
+      description: document.querySelector('#finExpDesc').value.trim(),
+      isDiferido:  isDif,
+      dueDate:     isDif ? document.querySelector('#finExpDueDate').value : null,
+      paymentMethod: isDif ? 'tc' : 'efectivo',
+      locationId:   normalizeLocationId(existingExpense?.locationId || activeLocationId),
+    };
+    const expense = existingExpense
+      ? { ...existingExpense, ...expData }
+      : { id: createId(), ...expData, createdAt: new Date().toISOString() };
+    const result = await persistExpenseMutation({ action: 'upsert', expense });
+    if (!result.ok) throw new Error(result.error || 'Netlify no confirmó el gasto.');
+    const persistedExpense = result.payload?.expense || expense;
+    const existingIndex = state.expenses.findIndex((item) => item.id === persistedExpense.id);
+    if (existingIndex >= 0) state.expenses[existingIndex] = persistedExpense;
+    else state.expenses.push(persistedExpense);
+    if (state.expenseDeletionTombstones) delete state.expenseDeletionTombstones[persistedExpense.id];
+    resetExpenseForm({ keepViewport: true });
+    saveState({ shared: false });
     render();
-    return;
-  }
-
-  const isDif = document.querySelector('#finExpDiferido').checked;
-  const expData = {
-    date:        document.querySelector('#finExpDate').value,
-    amount:      parseFloat(document.querySelector('#finExpAmount').value),
-    category:    document.querySelector('#finExpCategory').value,
-    supplier:    document.querySelector('#finExpSupplier').value.trim(),
-    description: document.querySelector('#finExpDesc').value.trim(),
-    isDiferido:  isDif,
-    dueDate:     isDif ? document.querySelector('#finExpDueDate').value : null,
-    paymentMethod: isDif ? 'tc' : 'efectivo',
-    locationId:   normalizeLocationId(existingExpense?.locationId || activeLocationId),
-  };
-
-  if (finEditingExpenseId) {
-    // Modo edición: reemplazar el registro existente
-    state.expenses = state.expenses.map((e) =>
-      e.id === finEditingExpenseId ? { ...e, ...expData } : e
+    setExpensePersistenceStatus(
+      expensePersistenceMessage(result, existingExpense
+        ? 'Cambios guardados y confirmados en Netlify.'
+        : 'Gasto guardado y confirmado en Netlify.'),
+      result.local ? 'warning' : 'success',
     );
-  } else {
-    // Modo creación: agregar nuevo
-    state.expenses.push({ id: createId(), ...expData, createdAt: new Date().toISOString() });
+  } catch (error) {
+    setExpensePersistenceStatus(error.message || 'No se pudo guardar el gasto en Netlify.', 'error');
+  } finally {
+    submitButton.disabled = false;
   }
-
-  resetExpenseForm();
-  render();
 }
 
 // -------- CSV PARSER --------
@@ -9871,6 +10029,90 @@ function groupSalesByDate() {
 
 // -------- EXPORTS --------
 
+function exportFinExpensesPdf() {
+  const monthKey = monthInputValue(finActiveMonth);
+  const expenses = getLocationExpenses()
+    .filter((expense) => expense.date.startsWith(monthKey))
+    .slice()
+    .sort((a, b) =>
+      a.date.localeCompare(b.date)
+      || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+    );
+  if (!expenses.length) {
+    alert('No hay gastos registrados para exportar en este mes.');
+    return;
+  }
+
+  const categoryTotals = calculateExpenseCategoryTotals(expenses);
+  const total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  const locationLabel = getLocation().label;
+  const detailRows = expenses.map((expense) => `
+    <tr>
+      <td>${escapeHtml(formatHumanDate(expense.date))}</td>
+      <td>${escapeHtml(getExpenseCategoryLabel(expense.category))}</td>
+      <td>${escapeHtml(expense.supplier || '—')}</td>
+      <td>${escapeHtml(expense.description || '—')}</td>
+      <td class="expense-print-amount">${formatEur(Number(expense.amount || 0))}</td>
+    </tr>`).join('');
+  const categoryRows = EXPENSE_CATEGORIES
+    .filter((category) => categoryTotals[category.id] > 0)
+    .map((category) => `
+      <tr>
+        <td>${escapeHtml(category.label)}</td>
+        <td class="expense-print-amount">${formatEur(categoryTotals[category.id])}</td>
+      </tr>`).join('');
+
+  const printRoot = document.querySelector('#printExpenseRoot');
+  const originalTitle = document.title;
+  const pageStyle = document.createElement('style');
+  pageStyle.id = 'expensePrintPageStyle';
+  pageStyle.textContent = '@page { size: A4 portrait; margin: 11mm; }';
+  document.head.appendChild(pageStyle);
+  printRoot.innerHTML = `
+    <main class="expense-print-report">
+      <header class="expense-print-header">
+        <div>
+          <p>ÖSS KAFFE · FINANZAS</p>
+          <h1>Gastos de ${escapeHtml(monthLabel)}</h1>
+          <span>${escapeHtml(locationLabel)}</span>
+        </div>
+        <div class="expense-print-summary">
+          <span>${expenses.length} movimientos</span>
+          <strong>${formatEur(total)}</strong>
+        </div>
+      </header>
+      <section>
+        <h2>Detalle de gastos</h2>
+        <table class="expense-print-table expense-print-detail">
+          <thead><tr><th>Fecha</th><th>Categoría</th><th>Proveedor</th><th>Descripción</th><th>Importe</th></tr></thead>
+          <tbody>${detailRows}</tbody>
+          <tfoot><tr><td colspan="4">TOTAL DEL MES</td><td class="expense-print-amount">${formatEur(total)}</td></tr></tfoot>
+        </table>
+      </section>
+      <section class="expense-print-category-section">
+        <h2>TOTAL POR CATEGORÍA</h2>
+        <table class="expense-print-table expense-print-category-table">
+          <thead><tr><th>Categoría</th><th>Importe</th></tr></thead>
+          <tbody>${categoryRows}</tbody>
+          <tfoot><tr><td>TOTAL DEL MES</td><td class="expense-print-amount">${formatEur(total)}</td></tr></tfoot>
+        </table>
+      </section>
+    </main>`;
+  printRoot.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('print-expense-export');
+  document.title = `OSS-gastos-${activeLocationId}-${monthKey}`;
+  try {
+    window.print();
+  } finally {
+    document.title = originalTitle;
+    document.body.classList.remove('print-expense-export');
+    printRoot.setAttribute('aria-hidden', 'true');
+    printRoot.innerHTML = '';
+    pageStyle.remove();
+  }
+}
+
 function exportMonthlyCsv() {
   const rows = [['Fecha', 'Ventas', 'Tickets', 'Ticket promedio', 'Gastos', 'Resultado']];
   let totS = 0, totT = 0, totE = 0;
@@ -9885,19 +10127,25 @@ function exportMonthlyCsv() {
 }
 
 function exportPnlCsv() {
-  const catIds = EXPENSE_CATEGORIES.map((c) => c.id);
-  const catLabels = EXPENSE_CATEGORIES.map((c) => c.label);
-  const rows = [['Mes', 'Ventas', ...catLabels, 'Total gastos', 'Resultado']];
+  const groupIds = PNL_EXPENSE_GROUPS.map((group) => group.id);
+  const groupLabels = PNL_EXPENSE_GROUPS.map((group) => group.label);
+  const rows = [['Mes', 'Ventas', ...groupLabels, 'Total gastos', 'Resultado']];
   const locationSales = getLocationSales();
   const locationExpenses = getLocationExpenses();
   MONTH_NAMES.forEach((name, mi) => {
     const mk = `${finPnlYear}-${String(mi + 1).padStart(2, '0')}`;
     const mSales = locationSales.filter((s) => s.date.startsWith(mk)).reduce((s, t) => s + t.total, 0);
-    const byCat = {};
-    catIds.forEach((id) => { byCat[id] = 0; });
-    locationExpenses.filter((e) => e.date.startsWith(mk)).forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
-    const mExp = catIds.reduce((s, id) => s + byCat[id], 0);
-    rows.push([name, mSales.toFixed(2), ...catIds.map((id) => byCat[id].toFixed(2)), mExp.toFixed(2), (mSales - mExp).toFixed(2)]);
+    const byGroup = {};
+    groupIds.forEach((id) => { byGroup[id] = 0; });
+    locationExpenses.filter((expense) => {
+      const effectiveDate = expense.isDiferido && expense.dueDate ? expense.dueDate : expense.date;
+      return effectiveDate.startsWith(mk);
+    }).forEach((expense) => {
+      const groupId = getPnlExpenseGroupId(expense.category);
+      byGroup[groupId] += Number(expense.amount || 0);
+    });
+    const mExp = groupIds.reduce((sum, id) => sum + byGroup[id], 0);
+    rows.push([name, mSales.toFixed(2), ...groupIds.map((id) => byGroup[id].toFixed(2)), mExp.toFixed(2), (mSales - mExp).toFixed(2)]);
   });
   downloadCsv(rows, `oss-pnl-${activeLocationId}-${finPnlYear}.csv`);
 }
