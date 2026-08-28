@@ -138,6 +138,6 @@ assert.match(appSource, /employee\.testEmployee !== true/,
 assert.match(appSource, /data-delete-test-employee/,
   "Fichas debe ofrecer borrado definitivo solo para empleados de prueba.");
 assert.match(htmlSource, /id="teamMemberIsTest"/);
-assert.match(htmlSource, /app\.js\?v=65/);
+assert.match(htmlSource, /app\.js\?v=67/);
 
 console.log("OK: altas, bajas, empleados de prueba y borrado definitivo persisten correctamente.");

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=35" />
+    <link rel="stylesheet" href="styles.css?v=36" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -794,6 +794,7 @@
                     <button class="primary-button" type="submit" id="finExpSubmitBtn">Guardar gasto</button>
                     <button class="ghost-button" type="button" id="finExpCancelEdit" style="display:none">Cancelar</button>
                   </div>
+                  <small class="fin-expense-save-status" id="finExpenseSaveStatus" aria-live="polite"></small>
                 </form>
                 <aside class="list-surface fin-expense-category-summary" aria-labelledby="finExpCategoryTitle">
                   <div class="list-heading">
@@ -986,6 +987,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=65"></script>
+    <script src="app.js?v=67"></script>
   </body>
 </html>

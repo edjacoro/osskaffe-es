@@ -3230,6 +3230,16 @@ textarea {
   min-width: 0;
 }
 
+.fin-expense-layout {
+  align-items: start;
+}
+
+.fin-expense-list-surface {
+  position: sticky;
+  top: 12px;
+  min-height: 0;
+}
+
 .fin-expense-category-summary {
   padding: 12px;
 }
@@ -3279,6 +3289,33 @@ textarea {
 
 .fin-expense-list {
   gap: 7px;
+  max-height: calc(72vh - 70px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.fin-expense-save-status {
+  display: block;
+  min-height: 18px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.fin-expense-save-status[data-status="saving"],
+.fin-expense-save-status[data-status="warning"] {
+  color: #9a5a12;
+}
+
+.fin-expense-save-status[data-status="success"] {
+  color: var(--success);
+}
+
+.fin-expense-save-status[data-status="error"] {
+  color: var(--danger);
 }
 
 .fin-expense-item {
@@ -3338,6 +3375,14 @@ textarea {
 
   .fin-import-layout > .list-surface {
     grid-column: auto;
+  }
+
+  .fin-expense-list-surface {
+    position: static;
+  }
+
+  .fin-expense-list {
+    max-height: 62vh;
   }
 }
 

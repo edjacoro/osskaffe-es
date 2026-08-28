@@ -930,28 +930,42 @@ function mergePersistedBistroSales(currentSales = [], submittedSales = []) {
   return [...submittedManual, ...byId.values()];
 }
 
-function mergePersistedBistroExpenses(currentExpenses = [], submittedExpenses = []) {
+function mergePersistedBistroExpenses(currentExpenses = [], submittedExpenses = [], deletionTombstones = {}) {
+  const currentManual = currentExpenses.filter((expense) => expense?._source !== "bistrosoft");
   const submittedManual = submittedExpenses.filter((expense) => expense?._source !== "bistrosoft");
   const currentBistro = currentExpenses.filter((expense) => expense?._source === "bistrosoft");
   const submittedBistro = submittedExpenses.filter((expense) => expense?._source === "bistrosoft");
+  const manualById = new Map(
+    currentManual
+      .filter((expense) => expense?.id && !deletionTombstones[expense.id])
+      .map((expense) => [String(expense.id), expense]),
+  );
+  submittedManual.forEach((expense) => {
+    const key = String(expense?.id || "");
+    if (key && !deletionTombstones[key] && !manualById.has(key)) manualById.set(key, expense);
+  });
   const submittedById = new Map(submittedBistro.map((expense) => [recordIdentity(expense), expense]));
   const byId = new Map(currentBistro.map((expense) => {
     const submitted = submittedById.get(recordIdentity(expense));
     return [recordIdentity(expense), {
       ...(submitted || {}),
       ...expense,
-      category: submitted?.category || expense.category,
+      category: expense.category || submitted?.category,
     }];
   }));
   submittedBistro.forEach((expense) => {
     const key = recordIdentity(expense);
     if (!byId.has(key)) byId.set(key, expense);
   });
-  return [...submittedManual, ...byId.values()];
+  return [...manualById.values(), ...byId.values()];
 }
 
 export function mergeAdminState(current, submitted) {
   if (!current || typeof current !== "object") return submitted;
+  const expenseDeletionTombstones = {
+    ...(submitted.expenseDeletionTombstones || {}),
+    ...(current.expenseDeletionTombstones || {}),
+  };
   const submittedLocationSettings = submitted.locationSettings || {};
   const currentLocationSettings = current.locationSettings || {};
   const locationIds = new Set([
@@ -996,7 +1010,16 @@ export function mergeAdminState(current, submitted) {
         || {},
     },
     sales: mergePersistedBistroSales(current.sales || [], submitted.sales || []),
-    expenses: mergePersistedBistroExpenses(current.expenses || [], submitted.expenses || []),
+    expenses: mergePersistedBistroExpenses(
+      current.expenses || [],
+      submitted.expenses || [],
+      expenseDeletionTombstones,
+    ),
+    expenseCategoryOverrides: {
+      ...(submitted.expenseCategoryOverrides || {}),
+      ...(current.expenseCategoryOverrides || {}),
+    },
+    expenseDeletionTombstones,
     bistroSyncedMonthsByLocation: current.bistroSyncedMonthsByLocation || submitted.bistroSyncedMonthsByLocation,
     bistroSalesSyncedMonths: current.bistroSalesSyncedMonths || submitted.bistroSalesSyncedMonths,
     bistroExpenseSyncedMonths: current.bistroExpenseSyncedMonths || submitted.bistroExpenseSyncedMonths,

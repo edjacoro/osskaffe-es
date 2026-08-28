@@ -9,8 +9,8 @@ assert.match(html, /id="pdfWeekPicker"/);
 assert.match(html, /id="printWeekPdf"[^>]*>PDF semana</i);
 assert.match(html, /id="printPdf"[^>]*>PDF mes</i);
 assert.match(html, /id="printGridRoot"/);
-assert.match(html, /app\.js\?v=65/);
-assert.match(html, /styles\.css\?v=35/);
+assert.match(html, /app\.js\?v=67/);
+assert.match(html, /styles\.css\?v=36/);
 
 assert.match(appSource, /const SCHEDULE_TIMELINE_START = 7/);
 assert.match(appSource, /const SCHEDULE_TIMELINE_END = 22/);

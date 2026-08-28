@@ -617,6 +617,7 @@ const DEFAULT_STATE = {
   sales: [],
   expenses: [],
   expenseCategoryOverrides: {},
+  expenseDeletionTombstones: {},
   wasteRecords: [],
   contracts: {},
   baseSchedules: DEFAULT_BASE_SCHEDULES,
@@ -4396,7 +4397,7 @@ async function tryAdminPin() {
     if (sharedLogin.failedTeamRecoveries) {
       alert(`No se pudieron recuperar ${sharedLogin.failedTeamRecoveries} empleado(s). Siguen visibles en este navegador; revisÃ¡ la conexiÃ³n y volvÃ© a guardar sus fichas.`);
     }
-    if (sharedLogin.madridScheduleSeed?.failed || sharedLogin.madridScheduleSeed?.stateSaved === false) {
+    if (sharedLogin.madridScheduleSeed?.stateSaved === false) {
       alert("La nueva grilla de Madrid se ve localmente, pero Netlify no confirmó todavía todos sus datos. Cerrá y volvé a ingresar como administrador para reintentar el guardado.");
     }
   } else {
@@ -5160,18 +5161,17 @@ async function persistMadridScheduleSeedToServer(remoteState = {}) {
   const remotePlan = (remoteState.schedulePlans?.madrid || []).find((plan) => plan.id === MADRID_SCHEDULE_PLAN_ID);
   const needsPlanSave = Number(remoteState.madridScheduleSeedVersion || 0) < MADRID_SCHEDULE_SEED_VERSION
     || !remotePlan;
-  if (failed) state.madridScheduleSeedVersion = 0;
   let stateSaved = true;
   if (needsPlanSave) {
     const plan = (state.schedulePlans?.madrid || []).find((candidate) => candidate.id === MADRID_SCHEDULE_PLAN_ID)
       || MADRID_SCHEDULE_PLAN_2026_08_31;
     const result = await sendSharedMutation(
       "/api/schedule-plan",
-      { plan, seedVersion: failed ? 0 : MADRID_SCHEDULE_SEED_VERSION },
+      { plan, seedVersion: MADRID_SCHEDULE_SEED_VERSION },
       "No se pudo guardar la nueva grilla de Madrid en Netlify.",
     );
     stateSaved = result.ok;
-    if (result.ok && !failed) state.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
+    if (result.ok) state.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
   }
   return { updated, failed, stateSaved };
 }
@@ -6283,6 +6283,8 @@ let finTodayDate = toDateInput(new Date());
 let finPnlYear = new Date().getFullYear();
 let finPendingFile = null;   // archivo xlsx/csv seleccionado pendiente de importar
 let finEditingExpenseId = null; // id del gasto en edición (null = modo creación)
+let finExpenseListViewport = { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 };
+let finExpensePinnedViewport = null;
 let finAnalysisFilters = null;
 let finAiQuestion = '';
 let finAiQuestionDraft = '';
@@ -7396,7 +7398,91 @@ function calculateExpenseCategoryTotals(expenses = []) {
   return totals;
 }
 
+function captureExpenseListViewport(list = document.querySelector('#finExpenseList')) {
+  if (!list) return finExpenseListViewport;
+  const listRect = list.getBoundingClientRect();
+  const items = [...list.querySelectorAll('[data-expense-id]')];
+  const anchor = items.find((item) => item.getBoundingClientRect().bottom > listRect.top + 1) || null;
+  finExpenseListViewport = {
+    scrollTop: list.scrollTop,
+    scrollHeight: list.scrollHeight,
+    anchorId: anchor?.dataset.expenseId || null,
+    anchorOffset: anchor ? anchor.getBoundingClientRect().top - listRect.top : 0,
+  };
+  return { ...finExpenseListViewport };
+}
+
+function restoreExpenseListViewport(list, viewport = finExpenseListViewport) {
+  if (!list || !viewport) return;
+  const anchor = viewport.anchorId
+    ? [...list.querySelectorAll('[data-expense-id]')]
+        .find((item) => item.dataset.expenseId === viewport.anchorId)
+    : null;
+  if (anchor) {
+    const listRect = list.getBoundingClientRect();
+    const delta = anchor.getBoundingClientRect().top - listRect.top - viewport.anchorOffset;
+    list.scrollTop = Math.max(0, viewport.scrollTop + delta);
+  } else {
+    const contentDelta = list.scrollHeight - Number(viewport.scrollHeight || list.scrollHeight);
+    list.scrollTop = Math.max(0, Number(viewport.scrollTop || 0) + contentDelta);
+  }
+  finExpenseListViewport = { ...viewport, scrollTop: list.scrollTop, scrollHeight: list.scrollHeight };
+}
+
+function setExpensePersistenceStatus(message = '', status = '') {
+  const element = document.querySelector('#finExpenseSaveStatus');
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.status = status;
+}
+
+async function persistExpenseMutation(body) {
+  return sendSharedMutation(
+    '/api/expense-record',
+    body,
+    'No se pudo guardar el gasto en Netlify.',
+  );
+}
+
+function expensePersistenceMessage(result, fallback) {
+  if (result.local) return 'Guardado solo en este navegador. Netlify no está disponible.';
+  const persistedAt = result.payload?.persistedAt;
+  return persistedAt
+    ? `${fallback} · ${formatDateTime(new Date(persistedAt))}`
+    : fallback;
+}
+
+async function deleteExpenseRecord(expenseId, confirmationMessage = '¿Borrar este gasto?') {
+  const expense = state.expenses.find((item) => item.id === expenseId);
+  finExpensePinnedViewport = captureExpenseListViewport();
+  if (!expense || !confirm(confirmationMessage)) {
+    finExpensePinnedViewport = null;
+    return false;
+  }
+  setExpensePersistenceStatus('Guardando el borrado en Netlify...', 'saving');
+  const result = await persistExpenseMutation({ action: 'delete', expenseId });
+  if (!result.ok) {
+    setExpensePersistenceStatus(result.error || 'No se pudo borrar el gasto en Netlify.', 'error');
+    alert(result.error || 'El gasto no se borró porque Netlify no confirmó el cambio.');
+    return false;
+  }
+  state.expenses = state.expenses.filter((item) => item.id !== expenseId);
+  state.expenseDeletionTombstones = {
+    ...(state.expenseDeletionTombstones || {}),
+    [expenseId]: new Date().toISOString(),
+  };
+  saveState({ shared: false });
+  render();
+  setExpensePersistenceStatus(
+    expensePersistenceMessage(result, 'Gasto borrado y confirmado en Netlify.'),
+    result.local ? 'warning' : 'success',
+  );
+  return true;
+}
+
 function renderFinExpenses() {
+  const previousList = document.querySelector('#finExpenseList');
+  const viewport = finExpensePinnedViewport || captureExpenseListViewport(previousList);
   const monthKey = monthInputValue(finActiveMonth);
   const expenses = getLocationExpenses()
     .filter((expense) => expense.date.startsWith(monthKey))
@@ -7425,6 +7511,8 @@ function renderFinExpenses() {
   const list = document.querySelector('#finExpenseList');
   if (!expenses.length) {
     list.innerHTML = '<div class="empty-state">No hay gastos registrados en este mes.</div>';
+    restoreExpenseListViewport(list, { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 });
+    finExpensePinnedViewport = null;
     return;
   }
 
@@ -7440,7 +7528,7 @@ function renderFinExpenses() {
       : '';
     const tcBadge = exp.isDiferido ? `<span class="fin-tc-badge">TC · vence ${formatHumanDate(exp.dueDate)}</span>` : '';
     return `
-      <article class="event-item fin-expense-item${exp.isDiferido ? ' fin-item-tc' : ''}">
+      <article class="event-item fin-expense-item${exp.isDiferido ? ' fin-item-tc' : ''}" data-expense-id="${escapeHtml(exp.id)}">
         <div class="event-topline">
           <span>${catLabel}${exp.supplier ? ' · ' + escapeHtml(exp.supplier) : ''}${tcBadge}${bistroBadge}</span>
           <span class="status-pill status-rejected">${formatEur(exp.amount)}</span>
@@ -7458,16 +7546,14 @@ function renderFinExpenses() {
   }).join('');
 
   list.querySelectorAll('[data-delete-expense]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (!confirm('¿Borrar este gasto?')) return;
-      state.expenses = state.expenses.filter((e) => e.id !== btn.dataset.deleteExpense);
-      render();
-    });
+    btn.addEventListener('click', () => deleteExpenseRecord(btn.dataset.deleteExpense));
   });
 
   list.querySelectorAll('[data-edit-expense]').forEach((btn) => {
     btn.addEventListener('click', () => startEditExpense(btn.dataset.editExpense));
   });
+  restoreExpenseListViewport(list, viewport);
+  finExpensePinnedViewport = null;
 }
 
 function renderFinWaste() {
@@ -7537,6 +7623,7 @@ function renderFinWaste() {
 function startEditExpense(id) {
   const exp = state.expenses.find((e) => e.id === id);
   if (!exp) return;
+  finExpensePinnedViewport = captureExpenseListViewport();
   finEditingExpenseId = id;
   const isBistrosoft = exp._source === 'bistrosoft';
 
@@ -7568,7 +7655,8 @@ function startEditExpense(id) {
   document.querySelector('#finExpenseForm').scrollIntoView({ behavior: 'smooth' });
 }
 
-function resetExpenseForm() {
+function resetExpenseForm(options = {}) {
+  if (!options.keepViewport) finExpensePinnedViewport = null;
   finEditingExpenseId = null;
   ['finExpDate', 'finExpAmount', 'finExpSupplier', 'finExpDesc', 'finExpDiferido', 'finExpDueDate']
     .forEach((fieldId) => {
@@ -7660,11 +7748,9 @@ function renderFinDiferidos() {
 
   // Listeners
   container.querySelectorAll('[data-delete-expense]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (!confirm('¿Borrar este gasto diferido?')) return;
-      state.expenses = state.expenses.filter((e) => e.id !== btn.dataset.deleteExpense);
-      render();
-    });
+    btn.addEventListener('click', () =>
+      deleteExpenseRecord(btn.dataset.deleteExpense, '¿Borrar este gasto diferido?')
+    );
   });
   container.querySelectorAll('[data-edit-expense]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -7673,15 +7759,31 @@ function renderFinDiferidos() {
     });
   });
   container.querySelectorAll('[data-paygroup]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const key = btn.dataset.paygroup;
       if (!confirm(`¿Marcar todos los gastos de "${key}" como pagados (mover a vencidos)?`)) return;
       // Cambiar la dueDate a ayer para que quede en "pagados"
       const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
       const yStr = yesterday.toISOString().slice(0, 10);
+      const expenseIds = state.expenses
+        .filter((e) => belongsToActiveLocation(e) && e.isDiferido && e.dueDate === key)
+        .map((e) => e.id);
+      btn.disabled = true;
+      const result = await persistExpenseMutation({
+        action: 'mark-paid',
+        expenseIds,
+        dueDate: yStr,
+        locationId: activeLocationId,
+      });
+      if (!result.ok) {
+        btn.disabled = false;
+        alert(result.error || 'Los gastos no se modificaron porque Netlify no confirmó el cambio.');
+        return;
+      }
       state.expenses = state.expenses.map((e) =>
         belongsToActiveLocation(e) && e.isDiferido && e.dueDate === key ? { ...e, dueDate: yStr } : e
       );
+      saveState({ shared: false });
       render();
     });
   });
@@ -8145,50 +8247,80 @@ function parseBistrosoftRowsXlsx(rows) {
   return parseBistrosoftCsv(csvLines.join('\n'));
 }
 
-function handleExpenseForm(event) {
+async function handleExpenseForm(event) {
   event.preventDefault();
+  const submitButton = document.querySelector('#finExpSubmitBtn');
   const existingExpense = finEditingExpenseId
     ? state.expenses.find((expense) => expense.id === finEditingExpenseId)
     : null;
-  if (existingExpense?._source === 'bistrosoft') {
-    const category = document.querySelector('#finExpCategory').value;
-    setExpenseCategoryOverride(existingExpense, category);
-    state.expenses = state.expenses.map((expense) =>
-      expenseOverrideKeys(existingExpense).includes(expense.id) || expense.id === existingExpense.id
-        ? { ...expense, category }
-        : expense
-    );
+  submitButton.disabled = true;
+  setExpensePersistenceStatus('Guardando y confirmando en Netlify...', 'saving');
+  try {
+    if (existingExpense?._source === 'bistrosoft') {
+      const category = document.querySelector('#finExpCategory').value;
+      const result = await persistExpenseMutation({
+        action: 'categorize',
+        category,
+        expense: {
+          id: existingExpense.id,
+          bistroId: existingExpense.bistroId,
+          locationId: existingExpense.locationId,
+        },
+      });
+      if (!result.ok) throw new Error(result.error || 'Netlify no confirmó la categoría.');
+      const referenceKeys = new Set(expenseOverrideKeys(existingExpense));
+      setExpenseCategoryOverride(existingExpense, category);
+      state.expenses = state.expenses.map((expense) =>
+        expenseOverrideKeys(expense).some((key) => referenceKeys.has(key))
+          ? { ...expense, category }
+          : expense
+      );
+      resetExpenseForm();
+      saveState({ shared: false });
+      render();
+      setExpensePersistenceStatus(
+        expensePersistenceMessage(result, 'Categoría guardada y confirmada en Netlify.'),
+        result.local ? 'warning' : 'success',
+      );
+      return;
+    }
+
+    const isDif = document.querySelector('#finExpDiferido').checked;
+    const expData = {
+      date:        document.querySelector('#finExpDate').value,
+      amount:      parseFloat(document.querySelector('#finExpAmount').value),
+      category:    document.querySelector('#finExpCategory').value,
+      supplier:    document.querySelector('#finExpSupplier').value.trim(),
+      description: document.querySelector('#finExpDesc').value.trim(),
+      isDiferido:  isDif,
+      dueDate:     isDif ? document.querySelector('#finExpDueDate').value : null,
+      paymentMethod: isDif ? 'tc' : 'efectivo',
+      locationId:   normalizeLocationId(existingExpense?.locationId || activeLocationId),
+    };
+    const expense = existingExpense
+      ? { ...existingExpense, ...expData }
+      : { id: createId(), ...expData, createdAt: new Date().toISOString() };
+    const result = await persistExpenseMutation({ action: 'upsert', expense });
+    if (!result.ok) throw new Error(result.error || 'Netlify no confirmó el gasto.');
+    const persistedExpense = result.payload?.expense || expense;
+    const existingIndex = state.expenses.findIndex((item) => item.id === persistedExpense.id);
+    if (existingIndex >= 0) state.expenses[existingIndex] = persistedExpense;
+    else state.expenses.push(persistedExpense);
+    if (state.expenseDeletionTombstones) delete state.expenseDeletionTombstones[persistedExpense.id];
     resetExpenseForm();
-    saveState();
+    saveState({ shared: false });
     render();
-    return;
-  }
-
-  const isDif = document.querySelector('#finExpDiferido').checked;
-  const expData = {
-    date:        document.querySelector('#finExpDate').value,
-    amount:      parseFloat(document.querySelector('#finExpAmount').value),
-    category:    document.querySelector('#finExpCategory').value,
-    supplier:    document.querySelector('#finExpSupplier').value.trim(),
-    description: document.querySelector('#finExpDesc').value.trim(),
-    isDiferido:  isDif,
-    dueDate:     isDif ? document.querySelector('#finExpDueDate').value : null,
-    paymentMethod: isDif ? 'tc' : 'efectivo',
-    locationId:   normalizeLocationId(existingExpense?.locationId || activeLocationId),
-  };
-
-  if (finEditingExpenseId) {
-    // Modo edición: reemplazar el registro existente
-    state.expenses = state.expenses.map((e) =>
-      e.id === finEditingExpenseId ? { ...e, ...expData } : e
+    setExpensePersistenceStatus(
+      expensePersistenceMessage(result, existingExpense
+        ? 'Cambios guardados y confirmados en Netlify.'
+        : 'Gasto guardado y confirmado en Netlify.'),
+      result.local ? 'warning' : 'success',
     );
-  } else {
-    // Modo creación: agregar nuevo
-    state.expenses.push({ id: createId(), ...expData, createdAt: new Date().toISOString() });
+  } catch (error) {
+    setExpensePersistenceStatus(error.message || 'No se pudo guardar el gasto en Netlify.', 'error');
+  } finally {
+    submitButton.disabled = false;
   }
-
-  resetExpenseForm();
-  render();
 }
 
 // -------- CSV PARSER --------
