@@ -1051,19 +1051,129 @@ textarea {
     white-space: nowrap;
   }
 
-  .expense-print-category-section {
+  .expense-print-final-section {
     margin-top: 8mm;
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
-  .expense-print-category-table {
-    width: 58%;
-    margin-left: auto;
+  .expense-print-category-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(52mm, .7fr);
+    gap: 8mm;
+    align-items: center;
   }
 
+  .expense-print-category-table {
+    width: 100%;
+  }
+
+  .expense-print-category-table th:nth-child(2),
   .expense-print-category-table th:last-child {
     text-align: right;
+  }
+
+  .expense-print-category-table td:first-child {
+    position: relative;
+  }
+
+  .expense-print-category-swatch {
+    display: inline-block;
+    width: 2.4mm;
+    height: 2.4mm;
+    margin-right: 1.5mm;
+    border-radius: 50%;
+    background: var(--expense-category-color);
+    vertical-align: -.2mm;
+  }
+
+  .expense-print-percentage {
+    text-align: right !important;
+    white-space: nowrap;
+  }
+
+  .expense-print-chart {
+    display: grid;
+    justify-items: center;
+    gap: 2mm;
+    margin: 0;
+  }
+
+  .expense-print-donut {
+    display: block;
+    width: 58mm;
+    height: 58mm;
+    overflow: visible;
+  }
+
+  .expense-print-donut-label {
+    fill: #ffffff;
+    font-family: Inter, Arial, sans-serif;
+    font-size: 9px;
+    font-weight: 800;
+  }
+
+  .expense-print-donut-center-label {
+    fill: #65777d;
+    font-family: Inter, Arial, sans-serif;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  .expense-print-donut-center-value {
+    fill: #123b4b;
+    font-family: Inter, Arial, sans-serif;
+    font-size: 20px;
+    font-weight: 850;
+  }
+
+  .expense-print-chart figcaption {
+    max-width: 56mm;
+    color: #65777d;
+    font-size: 7.5pt;
+    font-weight: 700;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  .expense-print-closing {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3mm;
+    margin-top: 8mm;
+    padding-top: 4mm;
+    border-top: 2px solid #2f6672;
+  }
+
+  .expense-print-closing > div {
+    display: grid;
+    gap: 1.5mm;
+    padding: 3.5mm;
+    border: 1px solid #d4dfe3;
+    border-radius: 2mm;
+    background: #f6f9fa;
+  }
+
+  .expense-print-closing span {
+    color: #65777d;
+    font-size: 7.5pt;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .expense-print-closing strong {
+    color: #123b4b;
+    font-size: 13pt;
+  }
+
+  .expense-print-closing .is-positive strong {
+    color: #0f766e;
+  }
+
+  .expense-print-closing .is-negative strong {
+    color: #bd3d38;
   }
 
   .print-week-page {

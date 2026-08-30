@@ -221,7 +221,9 @@ empezar a registrar desde ahora con datos importados y mantener historial.
   agrupan como **Insumos y MP**, mientras Nominas + Mano de Obra + Seg. Social / TGSS se agrupan
   en una unica columna **SUELDOS**. El rotulo Comisiones TPV se muestra como **Comisiones**.
 - El boton **PDF mensual** de Gastos exporta el detalle del mes activo con fecha, categoria,
-  proveedor, descripcion e importe, seguido de la tabla **TOTAL POR CATEGORIA**.
+  proveedor, descripcion e importe. El cierre incluye la tabla **TOTAL POR CATEGORIA**, el
+  porcentaje de cada categoria, un grafico circular y el resumen de ventas, gastos y resultado
+  del mismo mes y sucursal.
 - En Finanzas > Importar ventas, el administrador puede cargar ventas sueltas que no llegaron
   desde Bistrosoft indicando fecha, cantidad de tickets y total. Esas ventas se suman al P&L
   de la sucursal activa y no se eliminan con la sincronizacion automatica.

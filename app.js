@@ -10029,6 +10029,61 @@ function groupSalesByDate() {
 
 // -------- EXPORTS --------
 
+const EXPENSE_PRINT_COLORS = [
+  '#2f7665', '#4a9783', '#83c4b3', '#d04a23', '#e26e4d', '#efad9a', '#ba6f2c',
+  '#d5a858', '#5d758d', '#8f6a93', '#b17d9e', '#658b91', '#9a985f', '#858585',
+];
+
+function buildExpensePrintCategoryData(categoryTotals, total) {
+  return EXPENSE_CATEGORIES.map((category, index) => {
+    const amount = Number(categoryTotals[category.id] || 0);
+    return {
+      ...category,
+      amount,
+      percentage: total > 0 ? (amount / total) * 100 : 0,
+      color: EXPENSE_PRINT_COLORS[index % EXPENSE_PRINT_COLORS.length],
+    };
+  }).filter((category) => category.amount > 0);
+}
+
+function formatExpensePrintPercentage(percentage) {
+  return `${percentage >= 10 ? percentage.toFixed(0) : percentage.toFixed(1)}%`;
+}
+
+function renderExpenseDonutSvg(categoryData) {
+  let accumulatedPercentage = 0;
+  const segments = categoryData.map((category) => {
+    const start = accumulatedPercentage;
+    accumulatedPercentage += category.percentage;
+    return `<circle cx="120" cy="120" r="76" pathLength="100"
+      fill="none" stroke="${category.color}" stroke-width="42"
+      stroke-dasharray="${category.percentage.toFixed(4)} ${(100 - category.percentage).toFixed(4)}"
+      stroke-dashoffset="${(-start).toFixed(4)}" transform="rotate(-90 120 120)" />`;
+  }).join('');
+
+  accumulatedPercentage = 0;
+  const labels = categoryData.map((category) => {
+    const middle = accumulatedPercentage + category.percentage / 2;
+    accumulatedPercentage += category.percentage;
+    if (category.percentage < 4) return '';
+    const angle = (middle * 3.6 - 90) * Math.PI / 180;
+    const radius = 76;
+    const x = 120 + Math.cos(angle) * radius;
+    const y = 120 + Math.sin(angle) * radius;
+    return `<text x="${x.toFixed(2)}" y="${(y + 3).toFixed(2)}"
+      text-anchor="middle" class="expense-print-donut-label">${formatExpensePrintPercentage(category.percentage)}</text>`;
+  }).join('');
+
+  return `<svg class="expense-print-donut" viewBox="0 0 240 240" role="img" aria-label="Porcentaje de gastos por categoría">
+    <circle cx="120" cy="120" r="76" fill="none" stroke="#e6edef" stroke-width="42" />
+    ${segments}
+    <circle cx="120" cy="120" r="50" fill="#ffffff" />
+    <text x="120" y="114" text-anchor="middle" class="expense-print-donut-center-label">Gastos</text>
+    <text x="120" y="139" text-anchor="middle" class="expense-print-donut-center-value">100%</text>
+    ${labels}
+  </svg>`;
+}
+
 function exportFinExpensesPdf() {
   const monthKey = monthInputValue(finActiveMonth);
   const expenses = getLocationExpenses()
@@ -10045,6 +10100,12 @@ function exportFinExpensesPdf() {
 
   const categoryTotals = calculateExpenseCategoryTotals(expenses);
   const total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const monthlySales = getLocationSales()
+    .filter((sale) => sale.date.startsWith(monthKey))
+    .reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+  const monthlyResult = monthlySales - total;
+  const resultClass = monthlyResult >= 0 ? 'is-positive' : 'is-negative';
+  const categoryData = buildExpensePrintCategoryData(categoryTotals, total);
   const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
   const locationLabel = getLocation().label;
   const detailRows = expenses.map((expense) => `
@@ -10055,13 +10116,13 @@ function exportFinExpensesPdf() {
       <td>${escapeHtml(expense.description || '—')}</td>
       <td class="expense-print-amount">${formatEur(Number(expense.amount || 0))}</td>
     </tr>`).join('');
-  const categoryRows = EXPENSE_CATEGORIES
-    .filter((category) => categoryTotals[category.id] > 0)
-    .map((category) => `
+  const categoryRows = categoryData.map((category) => `
       <tr>
-        <td>${escapeHtml(category.label)}</td>
-        <td class="expense-print-amount">${formatEur(categoryTotals[category.id])}</td>
+        <td><span class="expense-print-category-swatch" style="--expense-category-color:${category.color}"></span>${escapeHtml(category.label)}</td>
+        <td class="expense-print-percentage">${formatExpensePrintPercentage(category.percentage)}</td>
+        <td class="expense-print-amount">${formatEur(category.amount)}</td>
       </tr>`).join('');
+  const donutChart = renderExpenseDonutSvg(categoryData);
 
   const printRoot = document.querySelector('#printExpenseRoot');
   const originalTitle = document.title;
@@ -10090,13 +10151,24 @@ function exportFinExpensesPdf() {
           <tfoot><tr><td colspan="4">TOTAL DEL MES</td><td class="expense-print-amount">${formatEur(total)}</td></tr></tfoot>
         </table>
       </section>
-      <section class="expense-print-category-section">
+      <section class="expense-print-final-section">
         <h2>TOTAL POR CATEGORÍA</h2>
-        <table class="expense-print-table expense-print-category-table">
-          <thead><tr><th>Categoría</th><th>Importe</th></tr></thead>
-          <tbody>${categoryRows}</tbody>
-          <tfoot><tr><td>TOTAL DEL MES</td><td class="expense-print-amount">${formatEur(total)}</td></tr></tfoot>
-        </table>
+        <div class="expense-print-category-layout">
+          <table class="expense-print-table expense-print-category-table">
+            <thead><tr><th>Categoría</th><th>%</th><th>Importe</th></tr></thead>
+            <tbody>${categoryRows}</tbody>
+            <tfoot><tr><td>TOTAL DEL MES</td><td class="expense-print-percentage">100%</td><td class="expense-print-amount">${formatEur(total)}</td></tr></tfoot>
+          </table>
+          <figure class="expense-print-chart">
+            ${donutChart}
+            <figcaption>Porcentaje de cada categoría sobre el gasto total</figcaption>
+          </figure>
+        </div>
+        <div class="expense-print-closing">
+          <div><span>Ventas del mes</span><strong>${formatEur(monthlySales)}</strong></div>
+          <div><span>Gastos del mes</span><strong>${formatEur(total)}</strong></div>
+          <div class="${resultClass}"><span>Resultado del mes</span><strong>${monthlyResult >= 0 ? '+' : ''}${formatEur(monthlyResult)}</strong></div>
+        </div>
       </section>
     </main>`;
   printRoot.setAttribute('aria-hidden', 'false');

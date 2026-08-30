@@ -18,7 +18,7 @@ assert.match(appSource, /Guardado en Netlify/, "Debe confirmar visualmente la pe
 assert.match(appSource, /const editorLocationId = activeLocationId;/, "El editor debe conservar la tienda que se esta modificando.");
 assert.match(appSource, /getLocationSettings\(locationId\)/, "Los horarios deben guardarse por separado para cada tienda.");
 assert.match(html, /presioná GUARDAR en cada día modificado/);
-assert.match(html, /app\.js\?v=68/);
+assert.match(html, /app\.js\?v=69/);
 
 const openingStart = appSource.indexOf("function getDefaultOpeningPeriodsForDate");
 const openingEnd = appSource.indexOf("function getDefaultOpeningForDate", openingStart);

@@ -73,7 +73,7 @@ assert.match(html, /id="changeDateEnd"/);
 assert.match(html, /id="empChangeDateEnd"/);
 assert.equal((html.match(/<option>Licencia<\/option>/g) || []).length, 2);
 assert.equal((html.match(/<option>Extra<\/option>/g) || []).length, 2);
-assert.match(html, /app\.js\?v=68/);
+assert.match(html, /app\.js\?v=69/);
 assert.match(appSource, /const endDate = ranged \? els\.changeDateEnd\.value : date/);
 assert.match(appSource, /action: extra \? "extra" : "absence"/);
 assert.match(appSource, /change\.status === "approved" && changeAppliesToDate\(change, dateKey\)/);

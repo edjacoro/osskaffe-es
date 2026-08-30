@@ -112,8 +112,8 @@ assert.match(appSource, /id="finAiDateFrom" type="date"/);
 assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
-assert.match(html, /styles\.css\?v=37/);
-assert.match(html, /app\.js\?v=68/);
+assert.match(html, /styles\.css\?v=38/);
+assert.match(html, /app\.js\?v=69/);
 assert.match(html, /id="finExpenseCategorySummary"/);
 assert.match(html, /id="finExpCategoryMonth"/);
 assert.match(html, /id="finExpenseList" class="event-list fin-expense-list"/);
@@ -131,6 +131,14 @@ assert.match(styles, /\.fin-expense-item \.mini-button \{[\s\S]*?min-height: 25p
 assert.match(styles, /body\.print-expense-export > \.print-expense-root/);
 assert.match(appSource, /function exportFinExpensesPdf\(\)/);
 assert.match(appSource, /<h2>TOTAL POR CATEGORÍA<\/h2>/);
+assert.match(appSource, /function renderExpenseDonutSvg\(categoryData\)/);
+assert.match(appSource, /Porcentaje de cada categoría sobre el gasto total/);
+assert.match(appSource, /<span>Ventas del mes<\/span>/);
+assert.match(appSource, /<span>Gastos del mes<\/span>/);
+assert.match(appSource, /<span>Resultado del mes<\/span>/);
+assert.match(appSource, /const monthlyResult = monthlySales - total/);
+assert.match(styles, /\.expense-print-category-layout\s*\{[\s\S]*?grid-template-columns/);
+assert.match(styles, /\.expense-print-closing\s*\{[\s\S]*?repeat\(3/);
 assert.match(appSource, /label: 'Insumos y MP', categories: \['materia_prima', 'productos_terceros'\]/);
 assert.match(appSource, /label: 'SUELDOS', categories: \['nominas', 'mano_obra', 'seguridad_social'\]/);
 
@@ -159,6 +167,26 @@ assert.deepEqual(
   { materia_prima: 125.5, productos_terceros: 45, nominas: 300, mano_obra: 80, otros: 10 },
   'El visor debe sumar cada categoría y llevar cualquier categoría desconocida a Otros.',
 );
+
+const expensePrintRulesStart = appSource.indexOf('const EXPENSE_PRINT_COLORS');
+const expensePrintRulesEnd = appSource.indexOf('function exportFinExpensesPdf', expensePrintRulesStart);
+const buildExpensePrintRules = new Function(
+  'EXPENSE_CATEGORIES',
+  `${appSource.slice(expensePrintRulesStart, expensePrintRulesEnd)}\nreturn { buildExpensePrintCategoryData, renderExpenseDonutSvg };`,
+);
+const expensePrintRules = buildExpensePrintRules([
+  { id: 'materia_prima', label: 'Materia prima' },
+  { id: 'productos_terceros', label: 'Productos de Terceros' },
+]);
+const printCategories = expensePrintRules.buildExpensePrintCategoryData(
+  { materia_prima: 25, productos_terceros: 75 },
+  100,
+);
+assert.deepEqual(printCategories.map((category) => category.percentage), [25, 75]);
+const donutSvg = expensePrintRules.renderExpenseDonutSvg(printCategories);
+assert.match(donutSvg, /aria-label="Porcentaje de gastos por categoría"/);
+assert.match(donutSvg, />25%</);
+assert.match(donutSvg, />75%</);
 
 const financeNavPosition = html.indexOf('data-tab="finanzas"');
 const reportsNavPosition = html.indexOf('data-tab="reports"');
