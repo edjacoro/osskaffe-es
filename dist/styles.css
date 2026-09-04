@@ -5168,3 +5168,1558 @@ canvas {
     color: #111;
   }
 }
+
+/* ==========================================================
+   RESPONSIVE APP SHELL · ADMIN + TEAM
+   ========================================================== */
+
+html {
+  min-width: 0;
+  background: var(--paper);
+}
+
+body.mobile-menu-open {
+  overflow: hidden;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(196, 109, 71, 0.28);
+  outline-offset: 2px;
+}
+
+.ui-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.ui-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.nav-item,
+.admin-home-action,
+.mobile-nav-item,
+.mobile-more-item,
+.mobile-session-button,
+.mobile-store-button,
+.metric-card,
+.fin-kpi-card,
+.admin-home-kpi,
+.admin-home-section {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+/* Inicio administrativo */
+.admin-home-panel {
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.admin-home-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: clamp(24px, 3vw, 38px);
+  color: #fff;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(239, 220, 183, 0.28), transparent 32%),
+    linear-gradient(135deg, var(--blue-dark), var(--blue));
+}
+
+.admin-home-copy h1 {
+  color: #fff;
+  font-size: clamp(1.8rem, 3vw, 2.65rem);
+}
+
+.admin-home-copy .eyebrow {
+  color: var(--coffee-soft);
+}
+
+.admin-home-copy > p:last-child {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.admin-home-date {
+  min-width: min(285px, 34vw);
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.admin-home-date span,
+.admin-home-date strong,
+.admin-home-date small {
+  display: block;
+}
+
+.admin-home-date span {
+  margin-bottom: 4px;
+  color: var(--coffee-soft);
+  font-size: 0.69rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-home-date strong {
+  font-size: 1rem;
+}
+
+.admin-home-date small {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.72rem;
+}
+
+.admin-home-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fbfc;
+}
+
+.admin-home-kpi {
+  position: relative;
+  min-height: 126px;
+  padding: 17px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 9px 24px rgba(24, 38, 54, 0.055);
+}
+
+.admin-home-kpi > span:not(.admin-home-kpi-icon) {
+  display: block;
+  padding-right: 34px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.admin-home-kpi > strong {
+  display: block;
+  margin-top: 15px;
+  color: var(--blue-dark);
+  font-size: clamp(1.4rem, 2.2vw, 1.85rem);
+  line-height: 1;
+}
+
+.admin-home-kpi.is-positive > strong {
+  color: var(--mint);
+}
+
+.admin-home-kpi.is-negative > strong {
+  color: var(--danger);
+}
+
+.admin-home-kpi.is-warning > strong {
+  color: var(--coffee-dark);
+}
+
+.admin-home-kpi-icon {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--blue-dark);
+  background: var(--blue-soft);
+}
+
+.admin-home-kpi-icon .ui-icon,
+.admin-home-kpi-icon > svg {
+  width: 19px;
+  height: 19px;
+}
+
+.admin-home-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 16px;
+  padding: 20px;
+}
+
+.admin-home-section {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.section-heading-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.section-heading-compact h2 {
+  font-size: 1.08rem;
+}
+
+.admin-home-actions,
+.admin-home-status {
+  display: grid;
+  gap: 9px;
+}
+
+.admin-home-action {
+  width: 100%;
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: #fbfdff;
+  text-align: left;
+}
+
+.admin-home-action > .ui-icon {
+  width: 38px;
+  height: 38px;
+  padding: 9px;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--blue);
+}
+
+.admin-home-action span:last-child,
+.admin-home-action strong,
+.admin-home-action small {
+  display: block;
+}
+
+.admin-home-action strong {
+  font-size: 0.88rem;
+}
+
+.admin-home-action small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.admin-home-action:hover {
+  transform: translateY(-1px);
+  border-color: #b8cbd3;
+  box-shadow: 0 8px 20px rgba(24, 38, 54, 0.07);
+}
+
+.admin-home-status-item {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.admin-home-status-item:last-child {
+  border-bottom: 0;
+}
+
+.admin-home-status-item span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.admin-home-status-item strong {
+  color: var(--blue-dark);
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+/* Controles exclusivos de la experiencia móvil */
+.mobile-bottom-nav,
+.mobile-more-sheet,
+.mobile-more-backdrop,
+.mobile-schedule-toolbar,
+.mobile-schedule-list {
+  display: none;
+}
+
+/* Mantener el panel lateral en escritorio y laptop, con scroll propio. */
+@media screen and (min-width: 901px) {
+  .app-shell {
+    grid-template-columns: 236px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    display: flex;
+    padding: 22px 14px 16px;
+    gap: 20px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.34) transparent;
+  }
+
+  .sidebar::-webkit-scrollbar {
+    width: 7px;
+  }
+
+  .sidebar::-webkit-scrollbar-thumb {
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.28);
+  }
+
+  .nav-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .nav-item {
+    width: 100%;
+    min-width: 0;
+    min-height: 43px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 0 12px;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .nav-item .ui-icon {
+    width: 18px;
+    height: 18px;
+    opacity: 0.82;
+  }
+
+  .nav-item.is-active .ui-icon {
+    opacity: 1;
+  }
+
+  .sidebar-footer {
+    margin-top: auto;
+    justify-content: flex-start;
+  }
+
+  .workspace {
+    padding: 22px;
+  }
+
+  .schedule-ruler,
+  .day-row {
+    min-width: 1160px;
+    grid-template-columns: 168px minmax(910px, 1fr) 72px;
+  }
+
+  .schedule-table {
+    max-height: max(350px, calc(100dvh - 400px));
+    overflow: auto;
+    scrollbar-width: auto;
+    scrollbar-color: var(--blue) #e7eef3;
+  }
+
+  .schedule-ruler {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+  }
+
+  .schedule-table::-webkit-scrollbar {
+    width: 11px;
+    height: 12px;
+  }
+
+  .schedule-table::-webkit-scrollbar-track {
+    background: #e7eef3;
+  }
+
+  .schedule-table::-webkit-scrollbar-thumb {
+    border: 2px solid #e7eef3;
+    border-radius: 999px;
+    background: var(--blue);
+  }
+}
+
+@media screen and (min-width: 901px) and (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: 216px minmax(0, 1fr);
+  }
+
+  .workspace {
+    padding: 16px;
+  }
+
+  .admin-home-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-home-content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Navegación tipo app para tablet y celular. */
+@media screen and (max-width: 900px) {
+  body {
+    background: #f6f3ee;
+  }
+
+  .app-shell {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .workspace {
+    width: 100%;
+    padding: 12px 12px calc(86px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 110;
+    min-height: calc(70px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: start;
+    padding: 7px max(8px, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-right));
+    border-top: 1px solid rgba(42, 76, 89, 0.15);
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 -10px 30px rgba(24, 38, 54, 0.12);
+    backdrop-filter: blur(16px);
+  }
+
+  .mobile-nav-item {
+    min-width: 0;
+    min-height: 55px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 2px;
+    border: 0;
+    border-radius: 11px;
+    color: #72808b;
+    background: transparent;
+    font-size: 0.61rem;
+    font-weight: 850;
+    text-transform: none;
+  }
+
+  .mobile-nav-item .ui-icon {
+    width: 21px;
+    height: 21px;
+  }
+
+  .mobile-nav-item.is-active,
+  .mobile-nav-item.has-active-section {
+    color: var(--blue-dark);
+    background: rgba(212, 230, 236, 0.62);
+  }
+
+  .mobile-nav-item:active {
+    transform: scale(0.96);
+  }
+
+  .mobile-more-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    display: block;
+    border: 0;
+    background: rgba(20, 30, 38, 0.5);
+    backdrop-filter: blur(2px);
+  }
+
+  .mobile-more-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(69px + env(safe-area-inset-bottom));
+    z-index: 105;
+    max-height: min(73dvh, 620px);
+    display: block;
+    padding: 8px 16px 18px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 22px 22px 0 0;
+    color: var(--ink);
+    background: #fff;
+    box-shadow: 0 -22px 60px rgba(20, 30, 38, 0.25);
+    animation: mobile-sheet-in 180ms ease both;
+  }
+
+  @keyframes mobile-sheet-in {
+    from { transform: translateY(20px); opacity: 0.6; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .mobile-more-handle {
+    width: 42px;
+    height: 4px;
+    margin: 2px auto 12px;
+    border-radius: 999px;
+    background: #d7dee3;
+  }
+
+  .mobile-more-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mobile-more-header strong,
+  .mobile-more-header small {
+    display: block;
+  }
+
+  .mobile-more-header strong {
+    color: var(--blue-dark);
+    font-size: 1.05rem;
+  }
+
+  .mobile-more-header small {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 0.72rem;
+  }
+
+  .mobile-sheet-close {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 12px;
+    color: var(--blue-dark);
+    background: #edf4f6;
+  }
+
+  .mobile-more-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    padding: 14px 0;
+  }
+
+  .mobile-more-item {
+    min-width: 0;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: var(--blue-dark);
+    background: #fbfdff;
+    text-align: left;
+    font-size: 0.76rem;
+  }
+
+  .mobile-more-item .ui-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .mobile-more-item.is-active {
+    color: #fff;
+    border-color: var(--blue);
+    background: var(--blue);
+  }
+
+  .mobile-more-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  .mobile-user-summary {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--blue-dark);
+  }
+
+  .mobile-user-summary > .ui-icon {
+    width: 38px;
+    height: 38px;
+    padding: 9px;
+    border-radius: 50%;
+    color: #fff;
+    background: var(--coffee);
+  }
+
+  .mobile-user-summary strong,
+  .mobile-user-summary small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-user-summary strong {
+    max-width: 155px;
+    font-size: 0.78rem;
+  }
+
+  .mobile-user-summary small {
+    max-width: 155px;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.67rem;
+  }
+
+  .mobile-session-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .mobile-session-button,
+  .mobile-store-button {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--blue-dark);
+    background: #fff;
+    font-size: 0.7rem;
+  }
+
+  .mobile-store-button {
+    color: #fff;
+    border-color: var(--coffee);
+    background: var(--coffee);
+  }
+
+  /* Inicio */
+  .admin-home-panel {
+    border-radius: 13px;
+  }
+
+  .admin-home-hero {
+    align-items: flex-start;
+    padding: 22px;
+  }
+
+  .admin-home-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    padding: 12px;
+  }
+
+  .admin-home-kpi {
+    min-height: 112px;
+    padding: 14px;
+  }
+
+  .admin-home-content-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  /* Grilla: agenda semanal por defecto, mes completo como alternativa. */
+  #schedulePanel .panel-heading {
+    padding: 13px;
+  }
+
+  #schedulePanel .panel-heading h2 {
+    font-size: 1.08rem;
+  }
+
+  #schedulePanel .legend {
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 2px 0 5px;
+    scrollbar-width: none;
+  }
+
+  #schedulePanel .legend::-webkit-scrollbar {
+    display: none;
+  }
+
+  #schedulePanel .legend-toggle {
+    min-height: 42px;
+    padding: 5px 10px;
+  }
+
+  .mobile-schedule-toolbar {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 40px auto;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    background: #f8fbfc;
+  }
+
+  .mobile-schedule-toolbar .icon-button {
+    width: 40px;
+    min-height: 40px;
+    flex-basis: 40px;
+  }
+
+  .mobile-schedule-period {
+    min-width: 0;
+    text-align: center;
+  }
+
+  .mobile-schedule-period span,
+  .mobile-schedule-period strong {
+    display: block;
+  }
+
+  .mobile-schedule-period span {
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+
+  .mobile-schedule-period strong {
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--blue-dark);
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-schedule-mode {
+    min-height: 40px;
+    padding: 0 10px;
+    white-space: nowrap;
+    font-size: 0.68rem;
+  }
+
+  .mobile-schedule-list {
+    display: grid;
+    gap: 9px;
+    padding: 12px;
+    background: #f6f8f9;
+  }
+
+  #schedulePanel:not(.is-mobile-month-view) > .schedule-table {
+    display: none;
+  }
+
+  #schedulePanel.is-mobile-month-view > .mobile-schedule-list {
+    display: none;
+  }
+
+  #schedulePanel.is-mobile-month-view > .schedule-table {
+    display: block;
+    max-height: min(46dvh, 430px);
+    min-height: 270px;
+    overflow: auto;
+    scrollbar-width: auto;
+    scrollbar-color: var(--blue) #e7eef3;
+  }
+
+  .mobile-schedule-day {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .mobile-schedule-day.is-weekend {
+    border-color: #e5d3b0;
+    background: #fffcf7;
+  }
+
+  .mobile-schedule-day.is-holiday {
+    border-color: rgba(196, 109, 71, 0.38);
+  }
+
+  .mobile-schedule-day > header {
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    border-bottom: 1px solid #edf1f5;
+  }
+
+  .mobile-schedule-day > header strong,
+  .mobile-schedule-day > header small {
+    display: block;
+  }
+
+  .mobile-schedule-day > header strong {
+    color: var(--ink);
+    font-size: 0.88rem;
+  }
+
+  .mobile-schedule-day > header small {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 0.66rem;
+  }
+
+  .mobile-schedule-day > header > span {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border-radius: 99px;
+    color: var(--blue-dark);
+    background: var(--blue-soft);
+    font-size: 0.66rem;
+    font-weight: 850;
+  }
+
+  .mobile-schedule-shifts {
+    display: grid;
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .mobile-schedule-shift {
+    width: 100%;
+    min-height: 50px;
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border: 1px solid #e5ebef;
+    border-radius: 10px;
+    color: var(--ink);
+    background: #fff;
+    text-align: left;
+    text-transform: none;
+  }
+
+  .mobile-schedule-shift.is-editable:active {
+    transform: scale(0.99);
+  }
+
+  .mobile-schedule-shift-swatch {
+    width: 9px;
+    height: 31px;
+    border-radius: 99px;
+    background: var(--shift-color);
+  }
+
+  .mobile-schedule-shift-copy,
+  .mobile-schedule-shift-copy strong,
+  .mobile-schedule-shift-copy small {
+    display: block;
+    min-width: 0;
+  }
+
+  .mobile-schedule-shift-copy strong {
+    overflow: hidden;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-schedule-shift-copy small {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.69rem;
+  }
+
+  .mobile-schedule-shift-hours {
+    color: var(--blue-dark);
+    font-size: 0.7rem;
+    font-weight: 850;
+  }
+
+  .mobile-schedule-empty {
+    margin: 0;
+    padding: 8px;
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  #schedulePanel.is-mobile-month-view .schedule-ruler,
+  #schedulePanel.is-mobile-month-view .day-row {
+    min-width: 1110px;
+    grid-template-columns: 154px minmax(880px, 1fr) 68px;
+  }
+
+  #schedulePanel.is-mobile-month-view .ruler-spacer,
+  #schedulePanel.is-mobile-month-view .day-info {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: #fff;
+  }
+
+  #schedulePanel.is-mobile-month-view .schedule-ruler {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+  }
+
+  #schedulePanel.is-mobile-month-view .ruler-spacer {
+    z-index: 7;
+  }
+
+  #schedulePanel.is-mobile-month-view .day-row.is-weekend .day-info {
+    background: #fffcf7;
+  }
+
+  /* Encabezado mensual y métricas de Grilla */
+  .topbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+    margin-bottom: 12px;
+  }
+
+  .topbar > div:first-child h1 {
+    font-size: clamp(1.35rem, 5.4vw, 1.75rem);
+  }
+
+  .month-controls {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    display: flex;
+    grid-column: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 7px;
+    scrollbar-width: none;
+  }
+
+  .topbar-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .topbar-actions > * {
+    flex: 0 0 auto !important;
+    width: auto !important;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin-bottom: 12px;
+  }
+
+  .metric-card {
+    min-height: 84px;
+    padding: 13px;
+  }
+
+  .metric-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .metric-card strong {
+    margin-top: 6px;
+    font-size: 1.5rem;
+  }
+
+  /* Finanzas y Reportes */
+  #financiasPanel > .fin-heading,
+  #reportsPanel > .reports-heading {
+    min-height: 0;
+    padding: 13px;
+    gap: 10px;
+  }
+
+  #reportsPanel > .reports-heading {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "month" "tabs";
+    align-items: stretch;
+  }
+
+  #reportsMonthNav {
+    width: 100%;
+    justify-self: stretch;
+    justify-content: flex-start;
+  }
+
+  #financiasPanel .fin-subnav,
+  #reportsPanel .fin-subnav {
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  #financiasPanel .fin-subnav::-webkit-scrollbar,
+  #reportsPanel .fin-subnav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fin-tab {
+    min-height: 38px;
+    padding: 0 11px;
+    scroll-snap-align: start;
+    font-size: 0.73rem;
+  }
+
+  .fin-sync-bar {
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .fin-sync-copy strong {
+    font-size: 0.74rem;
+  }
+
+  .fin-sync-copy span {
+    font-size: 0.64rem;
+  }
+
+  .fin-kpi-grid,
+  .fin-resumen-kpi-grid,
+  .analysis-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px;
+    padding: 12px;
+  }
+
+  .fin-kpi-card {
+    min-height: 100px;
+    padding: 12px;
+  }
+
+  .fin-kpi-card span {
+    font-size: 0.73rem;
+  }
+
+  .fin-kpi-card strong {
+    font-size: 1.3rem;
+  }
+
+  .fin-insights,
+  .traffic-visual-grid,
+  .two-column,
+  .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .fin-table-wrap,
+  .analysis-table-wrap,
+  .traffic-table-scroll,
+  .traffic-heatmap-scroll,
+  .contratos-table-wrap {
+    border-radius: 8px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  .fin-table {
+    font-size: 0.78rem;
+  }
+
+  .fin-table th,
+  .fin-table td {
+    padding: 8px 9px;
+  }
+
+  .analysis-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .analysis-export-actions {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+
+  .analysis-export-actions > * {
+    flex: 0 0 auto;
+  }
+
+  .analysis-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    padding: 12px;
+  }
+
+  .analysis-weekday-field {
+    grid-column: 1 / -1;
+  }
+
+  .analysis-weekday-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysis-bar-row {
+    grid-template-columns: minmax(74px, 1fr) minmax(100px, 2.4fr) minmax(55px, auto);
+    gap: 7px;
+    font-size: 0.7rem;
+  }
+
+  .traffic-kpi-scroll,
+  .traffic-heatmap-scroll,
+  .traffic-table-scroll {
+    padding-bottom: 10px;
+  }
+
+  .store-hours-editor {
+    padding: 12px;
+  }
+
+  /* Team */
+  #employee-app {
+    width: 100%;
+    max-width: none;
+    min-height: 100dvh;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  .emp-header {
+    padding: 11px 14px;
+  }
+
+  .emp-exit-btn,
+  .emp-tabs {
+    display: none;
+  }
+
+  .emp-main {
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 12px;
+  }
+
+  .emp-today-card {
+    padding: 22px 18px;
+  }
+
+  .emp-punch-btn,
+  .role-btn {
+    min-height: 52px;
+  }
+
+  .shift-editor-dialog {
+    width: 100%;
+    max-height: calc(94dvh - env(safe-area-inset-bottom));
+    height: auto;
+    align-self: flex-end;
+    padding: 18px 15px calc(18px + env(safe-area-inset-bottom));
+    border-radius: 20px 20px 0 0;
+  }
+
+  .shift-editor-modal {
+    align-items: flex-end;
+  }
+}
+
+@media screen and (max-width: 620px) {
+  #role-screen {
+    align-items: flex-start;
+    padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+  }
+
+  .role-card {
+    margin: auto 0;
+    padding: 28px 18px 22px;
+    border-radius: 18px;
+  }
+
+  .role-card:has(.role-setup-step:not([hidden])) {
+    margin: 0;
+  }
+
+  .role-setup-grid,
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  input,
+  select,
+  textarea,
+  .ghost-button,
+  .primary-button,
+  .icon-button,
+  .mini-button {
+    min-height: 44px;
+  }
+
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .topbar-actions > *,
+  .topbar-actions .ghost-button,
+  .topbar-actions .primary-button,
+  .topbar-actions .pdf-week-picker {
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .admin-home-hero {
+    display: grid;
+    gap: 16px;
+    padding: 19px 17px;
+  }
+
+  .admin-home-copy h1 {
+    font-size: 1.65rem;
+  }
+
+  .admin-home-copy > p:last-child {
+    font-size: 0.78rem;
+  }
+
+  .admin-home-date {
+    width: 100%;
+    min-width: 0;
+    padding: 11px 12px;
+  }
+
+  .admin-home-kpi {
+    min-height: 105px;
+    padding: 12px;
+  }
+
+  .admin-home-kpi-icon {
+    top: 10px;
+    right: 10px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .admin-home-kpi > span:not(.admin-home-kpi-icon) {
+    max-width: calc(100% - 28px);
+    padding-right: 0;
+    font-size: 0.7rem;
+  }
+
+  .admin-home-kpi > strong {
+    margin-top: 15px;
+    font-size: 1.35rem;
+  }
+
+  .admin-home-section {
+    padding: 14px;
+  }
+
+  .admin-home-action {
+    min-height: 62px;
+  }
+
+  .panel,
+  .form-surface,
+  .list-surface {
+    border-radius: 11px;
+  }
+
+  .panel-heading {
+    padding: 13px;
+  }
+
+  .panel-heading h2,
+  .list-heading h3 {
+    font-size: 1rem;
+  }
+
+  .eyebrow {
+    font-size: 0.66rem;
+  }
+
+  .fin-today-projection {
+    min-width: 0;
+    padding: 8px 10px;
+  }
+
+  .fin-month-nav,
+  .traffic-month-nav {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  #finMonthDisplay,
+  #reportsMonthDisplay {
+    min-width: 104px;
+    font-size: 0.8rem;
+  }
+
+  .fin-kpi-grid,
+  .fin-resumen-kpi-grid,
+  .analysis-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .fin-kpi-card {
+    min-height: 96px;
+    padding: 10px;
+  }
+
+  .fin-kpi-card strong {
+    font-size: 1.18rem;
+  }
+
+  .fin-kpi-card small {
+    font-size: 0.65rem;
+  }
+
+  .fin-table-header,
+  .analysis-heading,
+  .list-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 9px;
+  }
+
+  .fin-audit-month-picker {
+    width: 100%;
+    min-width: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    white-space: normal;
+  }
+
+  .fin-audit-month-picker input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pastry-page-heading,
+  .pastry-recipe-card {
+    padding: 14px;
+  }
+
+  .pastry-recipe-tabs {
+    padding: 10px 14px;
+  }
+
+  .pastry-recipe-layout {
+    gap: 12px;
+  }
+
+  .pastry-ingredients,
+  .pastry-procedures {
+    padding: 11px;
+  }
+
+  .waste-modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .waste-dialog {
+    width: 100%;
+    max-height: 92dvh;
+    padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+    border-radius: 20px 20px 0 0;
+  }
+}
+
+@media screen and (max-width: 390px) {
+  .workspace,
+  .emp-main {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .mobile-bottom-nav {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .mobile-nav-item {
+    font-size: 0.57rem;
+  }
+
+  .mobile-nav-item .ui-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .mobile-more-sheet {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .mobile-more-grid {
+    gap: 7px;
+  }
+
+  .mobile-more-item {
+    min-height: 56px;
+    padding: 8px 9px;
+    font-size: 0.69rem;
+  }
+
+  .mobile-user-summary strong,
+  .mobile-user-summary small {
+    max-width: 118px;
+  }
+
+  .admin-home-kpis,
+  .admin-home-content-grid {
+    padding: 9px;
+  }
+
+  .admin-home-kpis {
+    gap: 7px;
+  }
+
+  .admin-home-kpi {
+    min-height: 100px;
+    padding: 10px;
+  }
+
+  .admin-home-kpi > strong {
+    font-size: 1.18rem;
+  }
+
+  .mobile-schedule-toolbar {
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    gap: 5px;
+  }
+
+  .mobile-schedule-mode {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .mobile-schedule-list {
+    padding: 9px;
+  }
+
+  .topbar-actions {
+    padding: 5px;
+  }
+
+  .pdf-week-picker {
+    min-width: 0;
+  }
+
+  .metric-card {
+    padding: 11px;
+  }
+
+  .metric-card span {
+    font-size: 0.74rem;
+  }
+
+  .metric-card strong {
+    font-size: 1.32rem;
+  }
+
+  .fin-kpi-grid,
+  .fin-resumen-kpi-grid,
+  .analysis-kpis {
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .fin-kpi-card {
+    min-height: 92px;
+    padding: 9px;
+  }
+
+  .fin-kpi-card strong {
+    font-size: 1.08rem;
+  }
+
+  .analysis-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-filters > *,
+  .analysis-weekday-field {
+    grid-column: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  .mobile-bottom-nav,
+  .mobile-more-sheet,
+  .mobile-more-backdrop,
+  .mobile-schedule-toolbar,
+  .mobile-schedule-list,
+  .admin-home-panel {
+    display: none !important;
+  }
+}

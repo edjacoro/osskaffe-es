@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=38" />
+    <link rel="stylesheet" href="styles.css?v=40" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -229,6 +229,67 @@
           </div>
         </section>
       </main>
+
+      <nav class="mobile-bottom-nav employee-mobile-nav" id="employeeMobileNav" aria-label="Navegación del Team">
+        <button class="mobile-nav-item is-active" data-employee-mobile-tab="today" type="button">
+          <span class="ui-icon" data-ui-icon="home" aria-hidden="true"></span>
+          <span>Hoy</span>
+        </button>
+        <button class="mobile-nav-item" data-employee-mobile-tab="punch" type="button">
+          <span class="ui-icon" data-ui-icon="clock" aria-hidden="true"></span>
+          <span>Fichar</span>
+        </button>
+        <button class="mobile-nav-item" data-employee-mobile-tab="schedule" type="button">
+          <span class="ui-icon" data-ui-icon="calendar" aria-hidden="true"></span>
+          <span>Turnos</span>
+        </button>
+        <button class="mobile-nav-item" data-employee-mobile-tab="changes" type="button">
+          <span class="ui-icon" data-ui-icon="changes" aria-hidden="true"></span>
+          <span>Cambios</span>
+        </button>
+        <button class="mobile-nav-item mobile-more-trigger" id="employeeMobileMoreButton" type="button" aria-expanded="false" aria-controls="employeeMobileMoreSheet">
+          <span class="ui-icon" data-ui-icon="more" aria-hidden="true"></span>
+          <span>Más</span>
+        </button>
+      </nav>
+
+      <button class="mobile-more-backdrop" id="employeeMobileMoreBackdrop" type="button" aria-label="Cerrar menú" hidden></button>
+      <section class="mobile-more-sheet" id="employeeMobileMoreSheet" role="dialog" aria-modal="true" aria-labelledby="employeeMobileMoreTitle" hidden>
+        <div class="mobile-more-handle" aria-hidden="true"></div>
+        <div class="mobile-more-header">
+          <div>
+            <strong id="employeeMobileMoreTitle">Más secciones</strong>
+            <small id="employeeMobileContext">Team · ÖSS Kaffe</small>
+          </div>
+          <button class="mobile-sheet-close" id="employeeMobileMoreClose" type="button" aria-label="Cerrar menú">
+            <span class="ui-icon" data-ui-icon="close" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="mobile-more-grid">
+          <button class="mobile-more-item" data-employee-mobile-tab="pastry" id="employeeMobilePastry" type="button" hidden>
+            <span class="ui-icon" data-ui-icon="pastry" aria-hidden="true"></span>
+            <span>Pastelería</span>
+          </button>
+          <button class="mobile-more-item" data-employee-mobile-tab="hours" type="button">
+            <span class="ui-icon" data-ui-icon="hours" aria-hidden="true"></span>
+            <span>Mis horas</span>
+          </button>
+          <button class="mobile-more-item" data-employee-mobile-tab="profile" type="button">
+            <span class="ui-icon" data-ui-icon="user" aria-hidden="true"></span>
+            <span>Perfil</span>
+          </button>
+        </div>
+        <div class="mobile-more-footer">
+          <span class="mobile-user-summary">
+            <span class="ui-icon" data-ui-icon="user" aria-hidden="true"></span>
+            <span><strong id="employeeMobileUser">Team</strong><small id="employeeMobileStore">Sucursal</small></span>
+          </span>
+          <button class="mobile-session-button" id="employeeMobileExit" type="button">
+            <span class="ui-icon" data-ui-icon="logout" aria-hidden="true"></span>
+            <span>Salir</span>
+          </button>
+        </div>
+      </section>
     </div>
 
     <div class="waste-modal" id="wasteModal" hidden>
@@ -329,15 +390,16 @@
         </div>
 
         <nav class="nav-list" aria-label="Secciones">
-          <button class="nav-item is-active" data-tab="schedule" type="button">Grilla</button>
-          <button class="nav-item" data-tab="pastry" type="button">Pastelería</button>
-          <button class="nav-item" data-tab="punch" type="button">Fichaje</button>
-          <button class="nav-item" data-tab="changes" type="button">Cambios</button>
-          <button class="nav-item" data-tab="fichas" type="button">Fichas</button>
-          <button class="nav-item" data-tab="traffic" type="button">Carga por hora</button>
-          <button class="nav-item" data-tab="finanzas" type="button">Finanzas</button>
-          <button class="nav-item" data-tab="reports" type="button">Reportes</button>
-          <button class="nav-item" data-tab="settings" type="button">Ajustes</button>
+          <button class="nav-item is-active" data-tab="home" type="button"><span class="ui-icon" data-ui-icon="home" aria-hidden="true"></span><span>Inicio</span></button>
+          <button class="nav-item" data-tab="schedule" type="button"><span class="ui-icon" data-ui-icon="calendar" aria-hidden="true"></span><span>Grilla</span></button>
+          <button class="nav-item" data-tab="pastry" type="button"><span class="ui-icon" data-ui-icon="pastry" aria-hidden="true"></span><span>Pastelería</span></button>
+          <button class="nav-item" data-tab="punch" type="button"><span class="ui-icon" data-ui-icon="clock" aria-hidden="true"></span><span>Fichaje</span></button>
+          <button class="nav-item" data-tab="changes" type="button"><span class="ui-icon" data-ui-icon="changes" aria-hidden="true"></span><span>Cambios</span></button>
+          <button class="nav-item" data-tab="fichas" type="button"><span class="ui-icon" data-ui-icon="id-card" aria-hidden="true"></span><span>Fichas</span></button>
+          <button class="nav-item" data-tab="traffic" type="button"><span class="ui-icon" data-ui-icon="activity" aria-hidden="true"></span><span>Carga por hora</span></button>
+          <button class="nav-item" data-tab="finanzas" type="button"><span class="ui-icon" data-ui-icon="finance" aria-hidden="true"></span><span>Finanzas</span></button>
+          <button class="nav-item" data-tab="reports" type="button"><span class="ui-icon" data-ui-icon="reports" aria-hidden="true"></span><span>Reportes</span></button>
+          <button class="nav-item" data-tab="settings" type="button"><span class="ui-icon" data-ui-icon="settings" aria-hidden="true"></span><span>Ajustes</span></button>
         </nav>
 
         <div class="sidebar-footer">
@@ -351,6 +413,58 @@
       </aside>
 
       <main class="workspace">
+        <section class="panel tab-panel admin-home-panel is-visible" id="homePanel" data-panel="home">
+          <div class="admin-home-hero">
+            <div class="admin-home-copy">
+              <p class="eyebrow">Panel operativo</p>
+              <h1 id="adminHomeTitle">Inicio</h1>
+              <p id="adminHomeSubtitle">Resumen del día y estado de la tienda.</p>
+            </div>
+            <div class="admin-home-date">
+              <span>Hoy</span>
+              <strong id="adminHomeDate">--</strong>
+              <small id="adminHomeSync">Datos disponibles en la aplicación</small>
+            </div>
+          </div>
+
+          <div class="admin-home-kpis" id="adminHomeKpis" aria-label="Indicadores principales"></div>
+
+          <div class="admin-home-content-grid">
+            <section class="admin-home-section" aria-labelledby="adminHomeAccessTitle">
+              <div class="section-heading-compact">
+                <div>
+                  <p class="eyebrow">Accesos principales</p>
+                  <h2 id="adminHomeAccessTitle">Ir directamente</h2>
+                </div>
+              </div>
+              <div class="admin-home-actions">
+                <button class="admin-home-action" data-home-tab="finanzas" type="button">
+                  <span class="ui-icon" data-ui-icon="finance" aria-hidden="true"></span>
+                  <span><strong>Finanzas</strong><small>Ventas, gastos y resultado</small></span>
+                </button>
+                <button class="admin-home-action" data-home-tab="reports" type="button">
+                  <span class="ui-icon" data-ui-icon="reports" aria-hidden="true"></span>
+                  <span><strong>Reportes</strong><small>Auditoría, análisis e IA</small></span>
+                </button>
+                <button class="admin-home-action" data-home-tab="schedule" type="button">
+                  <span class="ui-icon" data-ui-icon="calendar" aria-hidden="true"></span>
+                  <span><strong>Grilla</strong><small>Turnos y cobertura del mes</small></span>
+                </button>
+              </div>
+            </section>
+
+            <section class="admin-home-section" aria-labelledby="adminHomeStatusTitle">
+              <div class="section-heading-compact">
+                <div>
+                  <p class="eyebrow">Lectura rápida</p>
+                  <h2 id="adminHomeStatusTitle">Estado operativo</h2>
+                </div>
+              </div>
+              <div class="admin-home-status" id="adminHomeStatus"></div>
+            </section>
+          </div>
+        </section>
+
         <header class="topbar">
           <div>
             <p class="eyebrow">Planificacion mensual</p>
@@ -389,7 +503,7 @@
           </article>
         </section>
 
-        <section class="panel tab-panel is-visible" id="schedulePanel" data-panel="schedule">
+        <section class="panel tab-panel" id="schedulePanel" data-panel="schedule">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Turnos base + cambios aprobados</p>
@@ -397,6 +511,16 @@
             </div>
             <div class="legend" id="employeeLegend"></div>
           </div>
+          <div class="mobile-schedule-toolbar" id="mobileScheduleToolbar" aria-label="Vista de la grilla">
+            <button class="icon-button" id="mobileSchedulePrevWeek" type="button" aria-label="Semana anterior">&#8249;</button>
+            <div class="mobile-schedule-period">
+              <span>Semana visible</span>
+              <strong id="mobileScheduleWeekLabel">--</strong>
+            </div>
+            <button class="icon-button" id="mobileScheduleNextWeek" type="button" aria-label="Semana siguiente">&#8250;</button>
+            <button class="ghost-button mobile-schedule-mode" id="mobileScheduleMode" type="button">Ver mes</button>
+          </div>
+          <div class="mobile-schedule-list" id="mobileScheduleList" aria-live="polite"></div>
           <div class="schedule-table" id="scheduleTable" aria-live="polite"></div>
           <section class="store-hours-editor" id="storeHoursEditor">
             <div class="store-hours-heading">
@@ -987,6 +1111,75 @@
           </div>
         </section>
       </main>
+
+      <nav class="mobile-bottom-nav admin-mobile-nav" id="adminMobileNav" aria-label="Navegación principal">
+        <button class="mobile-nav-item is-active" data-admin-mobile-tab="home" type="button">
+          <span class="ui-icon" data-ui-icon="home" aria-hidden="true"></span>
+          <span>Inicio</span>
+        </button>
+        <button class="mobile-nav-item" data-admin-mobile-tab="finanzas" type="button">
+          <span class="ui-icon" data-ui-icon="finance" aria-hidden="true"></span>
+          <span>Finanzas</span>
+        </button>
+        <button class="mobile-nav-item" data-admin-mobile-tab="reports" type="button">
+          <span class="ui-icon" data-ui-icon="reports" aria-hidden="true"></span>
+          <span>Reportes</span>
+        </button>
+        <button class="mobile-nav-item" data-admin-mobile-tab="schedule" type="button">
+          <span class="ui-icon" data-ui-icon="calendar" aria-hidden="true"></span>
+          <span>Grilla</span>
+        </button>
+        <button class="mobile-nav-item mobile-more-trigger" id="adminMobileMoreButton" type="button" aria-expanded="false" aria-controls="adminMobileMoreSheet">
+          <span class="ui-icon" data-ui-icon="more" aria-hidden="true"></span>
+          <span>Más</span>
+        </button>
+      </nav>
+
+      <button class="mobile-more-backdrop" id="adminMobileMoreBackdrop" type="button" aria-label="Cerrar menú" hidden></button>
+      <section class="mobile-more-sheet" id="adminMobileMoreSheet" role="dialog" aria-modal="true" aria-labelledby="adminMobileMoreTitle" hidden>
+        <div class="mobile-more-handle" aria-hidden="true"></div>
+        <div class="mobile-more-header">
+          <div>
+            <strong id="adminMobileMoreTitle">Más secciones</strong>
+            <small id="adminMobileContext">Administrador · ÖSS Kaffe</small>
+          </div>
+          <button class="mobile-sheet-close" id="adminMobileMoreClose" type="button" aria-label="Cerrar menú">
+            <span class="ui-icon" data-ui-icon="close" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="mobile-more-grid">
+          <button class="mobile-more-item" data-admin-mobile-tab="pastry" type="button">
+            <span class="ui-icon" data-ui-icon="pastry" aria-hidden="true"></span><span>Pastelería</span>
+          </button>
+          <button class="mobile-more-item" data-admin-mobile-tab="punch" type="button">
+            <span class="ui-icon" data-ui-icon="clock" aria-hidden="true"></span><span>Fichaje</span>
+          </button>
+          <button class="mobile-more-item" data-admin-mobile-tab="changes" type="button">
+            <span class="ui-icon" data-ui-icon="changes" aria-hidden="true"></span><span>Cambios</span>
+          </button>
+          <button class="mobile-more-item" data-admin-mobile-tab="fichas" type="button">
+            <span class="ui-icon" data-ui-icon="id-card" aria-hidden="true"></span><span>Fichas</span>
+          </button>
+          <button class="mobile-more-item" data-admin-mobile-tab="traffic" type="button">
+            <span class="ui-icon" data-ui-icon="activity" aria-hidden="true"></span><span>Carga por hora</span>
+          </button>
+          <button class="mobile-more-item" data-admin-mobile-tab="settings" type="button">
+            <span class="ui-icon" data-ui-icon="settings" aria-hidden="true"></span><span>Ajustes</span>
+          </button>
+        </div>
+        <div class="mobile-more-footer">
+          <span class="mobile-user-summary">
+            <span class="ui-icon" data-ui-icon="user" aria-hidden="true"></span>
+            <span><strong id="adminMobileUser">Administrador</strong><small id="adminMobileStore">Sucursal</small></span>
+          </span>
+          <div class="mobile-session-actions">
+            <button class="mobile-store-button" id="adminMobileStoreSwitch" type="button">BCN</button>
+            <button class="mobile-session-button" id="adminMobileExit" type="button">
+              <span class="ui-icon" data-ui-icon="logout" aria-hidden="true"></span><span>Salir</span>
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
 
     <div class="print-grid-root" id="printGridRoot" aria-hidden="true"></div>
@@ -996,6 +1189,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=69"></script>
+    <script src="app.js?v=70"></script>
   </body>
 </html>

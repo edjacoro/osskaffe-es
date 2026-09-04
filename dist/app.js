@@ -643,6 +643,10 @@ let pendingLocationRole = null;
 let pendingEmployeeLocationId = null;
 let activePastryRecipeId = PASTRY_RECIPES[0].id;
 const pastryRecipeQuantities = Object.fromEntries(PASTRY_RECIPES.map((recipe) => [recipe.id, 1]));
+let activeAdminTab = "home";
+let activeEmployeeTab = "today";
+let selectedMobileWeekStart = "";
+let mobileScheduleFullMonth = false;
 let adminInited = false;
 let empEventsInited = false;
 let activeFichasTab = 'fichas';
@@ -680,6 +684,12 @@ const els = {
   storeHoursNextMonth: document.querySelector("#storeHoursNextMonth"),
   storeHoursDays: document.querySelector("#storeHoursDays"),
   scheduleTable: document.querySelector("#scheduleTable"),
+  schedulePanel: document.querySelector("#schedulePanel"),
+  mobileScheduleList: document.querySelector("#mobileScheduleList"),
+  mobileSchedulePrevWeek: document.querySelector("#mobileSchedulePrevWeek"),
+  mobileScheduleNextWeek: document.querySelector("#mobileScheduleNextWeek"),
+  mobileScheduleWeekLabel: document.querySelector("#mobileScheduleWeekLabel"),
+  mobileScheduleMode: document.querySelector("#mobileScheduleMode"),
   shiftEditorModal: document.querySelector("#shiftEditorModal"),
   shiftEditorForm: document.querySelector("#shiftEditorForm"),
   shiftEditorTitle: document.querySelector("#shiftEditorTitle"),
@@ -695,6 +705,12 @@ const els = {
   plannedHours: document.querySelector("#plannedHours"),
   pendingCount: document.querySelector("#pendingCount"),
   suggestionCount: document.querySelector("#suggestionCount"),
+  adminHomeTitle: document.querySelector("#adminHomeTitle"),
+  adminHomeSubtitle: document.querySelector("#adminHomeSubtitle"),
+  adminHomeDate: document.querySelector("#adminHomeDate"),
+  adminHomeSync: document.querySelector("#adminHomeSync"),
+  adminHomeKpis: document.querySelector("#adminHomeKpis"),
+  adminHomeStatus: document.querySelector("#adminHomeStatus"),
   punchForm: document.querySelector("#punchForm"),
   punchEmployee: document.querySelector("#punchEmployee"),
   punchType: document.querySelector("#punchType"),
@@ -745,6 +761,7 @@ const els = {
 startApp();
 
 function startApp() {
+  initResponsiveNavigation();
   initRoleScreen();
   refreshTeamDirectory();
 }
@@ -879,6 +896,17 @@ function bindEvents() {
     const shiftButton = event.target.closest("[data-edit-shift]");
     if (!shiftButton || appRole !== "admin") return;
     openShiftEditor(shiftButton);
+  });
+  els.mobileScheduleList?.addEventListener("click", (event) => {
+    const shiftButton = event.target.closest("[data-edit-shift]");
+    if (!shiftButton || appRole !== "admin") return;
+    openShiftEditor(shiftButton);
+  });
+  els.mobileSchedulePrevWeek?.addEventListener("click", () => changeMobileScheduleWeek(-1));
+  els.mobileScheduleNextWeek?.addEventListener("click", () => changeMobileScheduleWeek(1));
+  els.mobileScheduleMode?.addEventListener("click", () => {
+    mobileScheduleFullMonth = !mobileScheduleFullMonth;
+    renderSchedule();
   });
   els.shiftEditorClose.addEventListener("click", closeShiftEditor);
   els.shiftEditorModal.addEventListener("click", (event) => {
@@ -1050,6 +1078,10 @@ function updatePastryAccessVisibility() {
   if (adminButton) adminButton.hidden = appRole !== "admin";
   const employeeButton = document.querySelector('.emp-tab[data-emp-tab="pastry"]');
   if (employeeButton) employeeButton.hidden = !(appRole === "employee" && canAccessPastry());
+  const adminMobileButton = document.querySelector('[data-admin-mobile-tab="pastry"]');
+  if (adminMobileButton) adminMobileButton.hidden = appRole !== "admin";
+  const employeeMobileButton = document.querySelector('#employeeMobilePastry');
+  if (employeeMobileButton) employeeMobileButton.hidden = !(appRole === "employee" && canAccessPastry());
 }
 
 function formatPastryQuantity(value, unit) {
@@ -1180,6 +1212,8 @@ function bindPastryEvents(container) {
 
 function setActiveTab(tab) {
   if (tab === "pastry" && appRole !== "admin") return;
+  if (appRole === "visitor" && !["schedule", "finanzas", "reports"].includes(tab)) tab = "schedule";
+  activeAdminTab = tab;
   if (tab === "finanzas") resetFinTodayView();
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tab === tab);
@@ -1195,6 +1229,9 @@ function setActiveTab(tab) {
   if (metricsGrid) metricsGrid.style.display = isSchedule ? "" : "none";
   const topbar = document.querySelector(".topbar");
   if (topbar) topbar.style.display = isSchedule ? "" : "none";
+  syncAdminMobileNavigation();
+  closeMobileMore("admin");
+  if (tab === "home") renderAdminHome();
   if (tab === "finanzas") renderFinanzas();
   if (tab === "reports") setActiveFinTab(activeReportTab);
 }
@@ -1218,6 +1255,7 @@ function render() {
   renderContratosPanel();
   renderPersonnelPanel();
   renderFinanzas();
+  renderAdminHome();
   renderPasteleria();
   saveState();
 }
@@ -1333,6 +1371,103 @@ function renderSchedule() {
     </div>
     ${rows}
   `; 
+  renderMobileSchedule();
+}
+
+function ensureMobileScheduleWeek() {
+  const ranges = getMonthWeekRanges(activeMonth);
+  if (!ranges.some((range) => range.start === selectedMobileWeekStart)) {
+    const todayKey = toDateInput(new Date());
+    selectedMobileWeekStart = ranges.find((range) => todayKey >= range.start && todayKey <= range.end)?.start
+      || ranges[0]?.start
+      || "";
+  }
+  return ranges;
+}
+
+function changeMobileScheduleWeek(direction) {
+  const ranges = ensureMobileScheduleWeek();
+  const index = ranges.findIndex((range) => range.start === selectedMobileWeekStart);
+  const next = Math.max(0, Math.min(ranges.length - 1, index + direction));
+  if (next === index || !ranges[next]) return;
+  selectedMobileWeekStart = ranges[next].start;
+  renderSchedule();
+}
+
+function renderMobileSchedule() {
+  if (!els.mobileScheduleList || !els.schedulePanel) return;
+  const ranges = ensureMobileScheduleWeek();
+  const activeRange = ranges.find((range) => range.start === selectedMobileWeekStart) || ranges[0];
+  const rangeIndex = Math.max(0, ranges.findIndex((range) => range.start === activeRange?.start));
+
+  els.schedulePanel.classList.toggle("is-mobile-month-view", mobileScheduleFullMonth);
+  if (els.mobileScheduleWeekLabel) {
+    els.mobileScheduleWeekLabel.textContent = mobileScheduleFullMonth
+      ? `${MONTH_NAMES[activeMonth.getMonth()]} ${activeMonth.getFullYear()}`
+      : activeRange
+        ? formatWeekPickerRange(activeRange)
+        : "Sin semana";
+  }
+  if (els.mobileScheduleMode) {
+    els.mobileScheduleMode.textContent = mobileScheduleFullMonth ? "Ver semana" : "Ver mes";
+    els.mobileScheduleMode.setAttribute("aria-pressed", mobileScheduleFullMonth ? "true" : "false");
+  }
+  if (els.mobileSchedulePrevWeek) {
+    els.mobileSchedulePrevWeek.disabled = mobileScheduleFullMonth || rangeIndex <= 0;
+  }
+  if (els.mobileScheduleNextWeek) {
+    els.mobileScheduleNextWeek.disabled = mobileScheduleFullMonth || rangeIndex >= ranges.length - 1;
+  }
+
+  if (!activeRange) {
+    els.mobileScheduleList.innerHTML = '<div class="empty-state">No hay días para mostrar.</div>';
+    return;
+  }
+
+  const days = [];
+  const firstWeekDay = parseDateKey(activeRange.start);
+  const lastWeekDay = parseDateKey(activeRange.end);
+  for (let date = new Date(firstWeekDay); date <= lastWeekDay; date.setDate(date.getDate() + 1)) {
+    days.push(new Date(date));
+  }
+
+  els.mobileScheduleList.innerHTML = days.map((date) => {
+    const dateKey = toDateInput(date);
+    const shifts = getVisibleShiftsForDate(dateKey);
+    const totalHours = shifts.reduce((sum, shift) => sum + shift.end - shift.start, 0);
+    const shiftRows = shifts.map((shift) => {
+      const employee = getEmployee(shift.employeeId, dateKey);
+      const editable = appRole === "admin";
+      const tag = editable ? "button" : "div";
+      const attributes = editable
+        ? `type="button" data-edit-shift data-shift-date="${dateKey}" data-shift-employee="${employee.id}" data-shift-start="${formatHour(shift.start)}" data-shift-end="${formatHour(shift.end)}"`
+        : "";
+      return `
+        <${tag} class="mobile-schedule-shift${editable ? " is-editable" : ""}" ${attributes} style="--shift-color:${employee.color}">
+          <span class="mobile-schedule-shift-swatch" aria-hidden="true"></span>
+          <span class="mobile-schedule-shift-copy">
+            <strong>${escapeHtml(employee.label)}</strong>
+            <small>${formatHour(shift.start)} – ${formatHour(shift.end)}</small>
+          </span>
+          <span class="mobile-schedule-shift-hours">${formatHours(shift.end - shift.start)}</span>
+        </${tag}>`;
+    }).join("");
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    const holiday = getHoliday(dateKey);
+    return `
+      <article class="mobile-schedule-day${weekend ? " is-weekend" : ""}${holiday ? " is-holiday" : ""}">
+        <header>
+          <div>
+            <strong>${DAY_NAMES[date.getDay()]} ${date.getDate()}</strong>
+            <small>Atención ${escapeHtml(getOpenLabelForDate(dateKey).replace(" local", ""))}</small>
+          </div>
+          <span>${formatHours(totalHours)} equipo</span>
+        </header>
+        <div class="mobile-schedule-shifts">
+          ${shiftRows || '<p class="mobile-schedule-empty">Sin turnos visibles</p>'}
+        </div>
+      </article>`;
+  }).join("");
 }
 
 function renderDayRow(date) {
@@ -1622,6 +1757,91 @@ function renderMetrics() {
     ? `${formatHours(coverage.freeHours)} de apertura sin ningún empleado asignado`
     : "Todas las horas de apertura tienen al menos un empleado asignado";
   els.suggestionCount.textContent = String(suggestions.length);
+}
+
+function renderAdminHome() {
+  if (!els.adminHomeKpis || !els.adminHomeStatus) return;
+  const now = new Date();
+  const todayKey = toDateInput(now);
+  const metrics = calcDayMetrics(todayKey);
+  const coverage = getMonthlyStoreCoverage(firstDayOfMonth(now));
+  const projection = getMonthSalesProjection(now);
+  const hasDayData = metrics.totalSales > 0 || metrics.totalExpenses > 0;
+  const resultClass = metrics.result >= 0 ? "is-positive" : "is-negative";
+  const dateText = new Intl.DateTimeFormat("es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(now);
+
+  if (els.adminHomeTitle) els.adminHomeTitle.textContent = `Inicio ${getLocation().label}`;
+  if (els.adminHomeSubtitle) {
+    els.adminHomeSubtitle.textContent = "Resumen del día y estado operativo de la tienda.";
+  }
+  if (els.adminHomeDate) {
+    els.adminHomeDate.textContent = dateText.charAt(0).toUpperCase() + dateText.slice(1);
+  }
+
+  els.adminHomeKpis.innerHTML = `
+    <article class="admin-home-kpi">
+      <span class="admin-home-kpi-icon">${uiIcon("finance")}</span>
+      <span>Ventas hoy</span>
+      <strong>${metrics.totalSales > 0 ? formatEur(metrics.totalSales) : "—"}</strong>
+    </article>
+    <article class="admin-home-kpi">
+      <span class="admin-home-kpi-icon">${uiIcon("ticket")}</span>
+      <span>Nº de tickets</span>
+      <strong>${metrics.ticketCount || "—"}</strong>
+    </article>
+    <article class="admin-home-kpi ${resultClass}">
+      <span class="admin-home-kpi-icon">${uiIcon("result")}</span>
+      <span>Resultado hoy</span>
+      <strong>${hasDayData ? `${metrics.result >= 0 ? "+" : ""}${formatEur(metrics.result)}` : "—"}</strong>
+    </article>
+    <article class="admin-home-kpi ${coverage.freeHours > 0 ? "is-warning" : "is-positive"}">
+      <span class="admin-home-kpi-icon">${uiIcon("hours")}</span>
+      <span>H. libres del mes</span>
+      <strong>${formatHours(coverage.freeHours)}</strong>
+    </article>
+  `;
+
+  els.adminHomeStatus.innerHTML = `
+    <div class="admin-home-status-item">
+      <span>Ticket promedio</span>
+      <strong>${metrics.ticketCount ? formatEur(metrics.avgTicket) : "—"}</strong>
+    </div>
+    <div class="admin-home-status-item">
+      <span>Proyección del mes</span>
+      <strong>${projection.projected > 0 ? formatEur(projection.projected) : "—"}</strong>
+    </div>
+    <div class="admin-home-status-item">
+      <span>Horas de tienda este mes</span>
+      <strong>${formatHours(coverage.openHours)}</strong>
+    </div>
+  `;
+
+  renderAdminHomeSyncStatus();
+}
+
+function renderAdminHomeSyncStatus() {
+  if (!els.adminHomeSync || typeof finBistroSync === "undefined") return;
+  if (finBistroSync.syncing) {
+    els.adminHomeSync.textContent = "Bistrosoft sincronizando…";
+    return;
+  }
+  if (finBistroSync.connected && finBistroSync.lastSyncAt) {
+    const syncDate = new Intl.DateTimeFormat("es-ES", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(finBistroSync.lastSyncAt));
+    els.adminHomeSync.textContent = `Bistrosoft actualizado ${syncDate}`;
+    return;
+  }
+  els.adminHomeSync.textContent = finBistroSync.error
+    ? "Mostrando los últimos datos guardados"
+    : "Datos disponibles en la aplicación";
 }
 
 function renderPunches() {
@@ -4168,6 +4388,157 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function uiIcon(name) {
+  const paths = {
+    home: '<path d="M3 10.8 12 3l9 7.8"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-6h5v6"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h2M14 14h2M8 17h2M14 17h2"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    changes: '<path d="M7 7h11l-3-3M17 17H6l3 3"/><path d="m18 7 2 2-2 2M6 17l-2-2 2-2"/>',
+    more: '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+    close: '<path d="m6 6 12 12M18 6 6 18"/>',
+    pastry: '<path d="M5 9h14l-1.3 11H6.3L5 9Z"/><path d="M8 9a4 4 0 0 1 8 0M9 5.5A3 3 0 0 1 12 3a3 3 0 0 1 3 2.5"/>',
+    hours: '<path d="M7 3h10M7 21h10M8 3c0 4 1 6 4 8-3 2-4 4-4 10M16 3c0 4-1 6-4 8 3 2 4 4 4 10"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>',
+    logout: '<path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9"/>',
+    "id-card": '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M5.5 16c.7-1.8 4.3-1.8 5 0M13 10h5M13 14h5"/>',
+    activity: '<path d="M3 12h4l2.2-6 4.1 12 2.2-6H21"/>',
+    finance: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5A4.5 4.5 0 1 0 15.5 15.5M7.5 11h6M7.5 14h5"/>',
+    reports: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/>',
+    ticket: '<path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V6Z"/><path d="M13 9h4M13 12h4M13 15h3M9 8v8"/>',
+    result: '<path d="M4 18V8M4 18h16"/><path d="m7 14 4-4 3 2 5-6"/>',
+  };
+  const content = paths[name] || paths.more;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${content}</svg>`;
+}
+
+function hydrateUiIcons(root = document) {
+  root.querySelectorAll("[data-ui-icon]").forEach((element) => {
+    element.innerHTML = uiIcon(element.dataset.uiIcon);
+  });
+}
+
+function initResponsiveNavigation() {
+  hydrateUiIcons();
+
+  document.querySelectorAll("[data-admin-mobile-tab]").forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.dataset.adminMobileTab));
+  });
+  document.querySelectorAll("[data-employee-mobile-tab]").forEach((button) => {
+    button.addEventListener("click", () => setActiveEmpTab(button.dataset.employeeMobileTab));
+  });
+  document.querySelectorAll("[data-home-tab]").forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.dataset.homeTab));
+  });
+
+  document.querySelector("#adminMobileMoreButton")?.addEventListener("click", () => toggleMobileMore("admin"));
+  document.querySelector("#employeeMobileMoreButton")?.addEventListener("click", () => toggleMobileMore("employee"));
+  document.querySelector("#adminMobileMoreBackdrop")?.addEventListener("click", () => closeMobileMore("admin"));
+  document.querySelector("#employeeMobileMoreBackdrop")?.addEventListener("click", () => closeMobileMore("employee"));
+  document.querySelector("#adminMobileMoreClose")?.addEventListener("click", () => closeMobileMore("admin"));
+  document.querySelector("#employeeMobileMoreClose")?.addEventListener("click", () => closeMobileMore("employee"));
+  document.querySelector("#adminMobileExit")?.addEventListener("click", exitToRoleScreen);
+  document.querySelector("#employeeMobileExit")?.addEventListener("click", exitToRoleScreen);
+  document.querySelector("#adminMobileStoreSwitch")?.addEventListener("click", () => {
+    closeMobileMore("admin");
+    switchAdminLocation();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeMobileMore("admin");
+    closeMobileMore("employee");
+  });
+  syncAdminMobileNavigation();
+  syncEmployeeMobileNavigation();
+  updateMobileNavigationContext();
+}
+
+function mobileMoreElements(kind) {
+  const prefix = kind === "employee" ? "employee" : "admin";
+  return {
+    sheet: document.querySelector(`#${prefix}MobileMoreSheet`),
+    backdrop: document.querySelector(`#${prefix}MobileMoreBackdrop`),
+    trigger: document.querySelector(`#${prefix}MobileMoreButton`),
+  };
+}
+
+function toggleMobileMore(kind) {
+  const elements = mobileMoreElements(kind);
+  const willOpen = Boolean(elements.sheet?.hidden);
+  closeMobileMore(kind === "admin" ? "employee" : "admin");
+  if (!elements.sheet || !elements.backdrop || !elements.trigger) return;
+  elements.sheet.hidden = !willOpen;
+  elements.backdrop.hidden = !willOpen;
+  elements.trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  elements.trigger.classList.toggle("is-active", willOpen);
+  document.body.classList.toggle("mobile-menu-open", willOpen);
+  if (willOpen) elements.sheet.querySelector(".mobile-sheet-close")?.focus();
+}
+
+function closeMobileMore(kind) {
+  const elements = mobileMoreElements(kind);
+  if (elements.sheet) elements.sheet.hidden = true;
+  if (elements.backdrop) elements.backdrop.hidden = true;
+  if (elements.trigger) {
+    elements.trigger.setAttribute("aria-expanded", "false");
+    elements.trigger.classList.remove("is-active");
+  }
+  const adminOpen = !mobileMoreElements("admin").sheet?.hidden;
+  const employeeOpen = !mobileMoreElements("employee").sheet?.hidden;
+  document.body.classList.toggle("mobile-menu-open", adminOpen || employeeOpen);
+}
+
+function syncAdminMobileNavigation() {
+  const primaryTabs = new Set(["home", "finanzas", "reports", "schedule"]);
+  document.querySelectorAll("[data-admin-mobile-tab]").forEach((button) => {
+    const active = button.dataset.adminMobileTab === activeAdminTab;
+    button.classList.toggle("is-active", active);
+    if (button.closest(".mobile-bottom-nav")) button.setAttribute("aria-current", active ? "page" : "false");
+  });
+  const moreButton = document.querySelector("#adminMobileMoreButton");
+  if (moreButton && !primaryTabs.has(activeAdminTab)) moreButton.classList.add("has-active-section");
+  else moreButton?.classList.remove("has-active-section");
+}
+
+function syncEmployeeMobileNavigation() {
+  const primaryTabs = new Set(["today", "punch", "schedule", "changes"]);
+  document.querySelectorAll("[data-employee-mobile-tab]").forEach((button) => {
+    const active = button.dataset.employeeMobileTab === activeEmployeeTab;
+    button.classList.toggle("is-active", active);
+    if (button.closest(".mobile-bottom-nav")) button.setAttribute("aria-current", active ? "page" : "false");
+  });
+  const moreButton = document.querySelector("#employeeMobileMoreButton");
+  if (moreButton && !primaryTabs.has(activeEmployeeTab)) moreButton.classList.add("has-active-section");
+  else moreButton?.classList.remove("has-active-section");
+}
+
+function updateMobileNavigationContext() {
+  const location = getLocation();
+  const isVisitor = appRole === "visitor";
+  const adminRole = isVisitor ? "Visita" : "Administrador";
+  const adminContext = document.querySelector("#adminMobileContext");
+  const adminUser = document.querySelector("#adminMobileUser");
+  const adminStore = document.querySelector("#adminMobileStore");
+  const adminSwitch = document.querySelector("#adminMobileStoreSwitch");
+  if (adminContext) adminContext.textContent = `${adminRole} · ${location.label}`;
+  if (adminUser) adminUser.textContent = adminRole;
+  if (adminStore) adminStore.textContent = `Sucursal ${location.label}`;
+  if (adminSwitch) {
+    adminSwitch.textContent = location.shortLabel;
+    adminSwitch.hidden = appRole !== "admin";
+    adminSwitch.setAttribute("aria-label", `Tienda actual ${location.label}. Cambiar de tienda`);
+  }
+
+  const employee = activeEmployeeId ? getEmployee(activeEmployeeId) : null;
+  const employeeContext = document.querySelector("#employeeMobileContext");
+  const employeeUser = document.querySelector("#employeeMobileUser");
+  const employeeStore = document.querySelector("#employeeMobileStore");
+  if (employeeContext) employeeContext.textContent = employee ? `${employee.label} · ${location.label}` : "Team · ÖSS Kaffe";
+  if (employeeUser) employeeUser.textContent = employee?.label || "Team";
+  if (employeeStore) employeeStore.textContent = `Sucursal ${location.label}`;
+}
+
 // ===========================
 // ROLE MANAGEMENT
 // ===========================
@@ -4289,6 +4660,7 @@ function updateAdminStoreSwitch() {
   button.textContent = currentCode;
   button.title = `Tienda actual: ${getLocation().label}. Cambiar a ${targetLabel}`;
   button.setAttribute('aria-label', button.title);
+  updateMobileNavigationContext();
 }
 
 function switchAdminLocation() {
@@ -4412,7 +4784,8 @@ function setAdminMode(locationId = DEFAULT_LOCATION_ID) {
   activeLocationId = normalizeLocationId(locationId);
   appRole = "admin";
   updatePastryAccessVisibility();
-  document.body.classList.remove("visit-mode");
+  document.body.classList.remove("visit-mode", "employee-mode");
+  document.body.classList.add("admin-mode");
   document.querySelector("#role-screen").hidden = true;
   document.querySelector("#employee-app").hidden = true;
   document.querySelector(".app-shell").hidden = false;
@@ -4428,11 +4801,14 @@ function setAdminMode(locationId = DEFAULT_LOCATION_ID) {
   }
   const teamLocation = document.querySelector('#teamMemberLocation');
   if (teamLocation) teamLocation.value = activeLocationId;
+  updateMobileNavigationContext();
+  setActiveTab("home");
 }
 
 async function enterEmployeeMode(employeeId) {
   appRole = "employee";
-  document.body.classList.remove("visit-mode");
+  document.body.classList.remove("visit-mode", "admin-mode");
+  document.body.classList.add("employee-mode");
   activeEmployeeId = employeeId;
   activeLocationId = getEmployeeLocationId(employeeId);
   document.querySelector("#role-screen").hidden = true;
@@ -4443,6 +4819,7 @@ async function enterEmployeeMode(employeeId) {
   const employee = getEmployee(employeeId);
   document.querySelector("#empGreeting").textContent = `Hola, ${employee.label}`;
   document.querySelector("#empPunchWho").textContent = `Fichando como ${employee.label}`;
+  updateMobileNavigationContext();
 
   if (!empEventsInited) {
     empEventsInited = true;
@@ -4462,6 +4839,7 @@ function setVisitMode(locationId = DEFAULT_LOCATION_ID) {
   activeLocationId = normalizeLocationId(locationId);
   appRole = "visitor";
   activeEmployeeId = null;
+  document.body.classList.remove("admin-mode", "employee-mode");
   document.body.classList.add("visit-mode");
   updatePastryAccessVisibility();
   document.querySelector("#role-screen").hidden = true;
@@ -4480,6 +4858,7 @@ function setVisitMode(locationId = DEFAULT_LOCATION_ID) {
   activeFinTab = 'monthly';
   setActiveFinTab('monthly');
   setActiveTab("schedule");
+  updateMobileNavigationContext();
 }
 
 async function exitToRoleScreen(options = {}) {
@@ -4491,8 +4870,10 @@ async function exitToRoleScreen(options = {}) {
   pendingEmployeeId = null;
   pendingLocationRole = null;
   pendingEmployeeLocationId = null;
+  closeMobileMore("admin");
+  closeMobileMore("employee");
   updateAdminStoreSwitch();
-  document.body.classList.remove("visit-mode");
+  document.body.classList.remove("visit-mode", "admin-mode", "employee-mode");
   document.querySelector(".app-shell").hidden = true;
   document.querySelector("#employee-app").hidden = true;
   showRoleStep("roleStep1");
@@ -4548,12 +4929,15 @@ function bindEmployeeEvents() {
 
 function setActiveEmpTab(tab) {
   if (tab === "pastry" && !canAccessPastry()) tab = "today";
+  activeEmployeeTab = tab;
   document.querySelectorAll(".emp-tab").forEach((btn) => {
     btn.classList.toggle("is-active", btn.dataset.empTab === tab);
   });
   document.querySelectorAll(".emp-panel").forEach((panel) => {
     panel.classList.toggle("is-visible", panel.dataset.empPanel === tab);
   });
+  syncEmployeeMobileNavigation();
+  closeMobileMore("employee");
 }
 
 function renderEmployeeView() {
@@ -7038,6 +7422,7 @@ function renderFinSyncStatus() {
       `${detailJobStoreCode(locationId)} ${month.month}: ${month.detailTickets}/${month.tickets} tickets con detalle`
     ))
     .join(' | ') || 'Completar y verificar productos historicos';
+  renderAdminHomeSyncStatus();
 
   if (dayActive) {
     title.textContent = `Cargando productos de ${dayLabel}`;
@@ -7257,6 +7642,7 @@ function renderFinanzas() {
     if (finAiQuestion) finAiResult = answerFinAiQuestion(finAiQuestion, null, null, getFinAiSelectedPeriod());
     renderFinAi();
   }
+  if (activeAdminTab === 'home') renderAdminHome();
 }
 
 // -------- HOY --------
