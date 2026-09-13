@@ -8,14 +8,17 @@ const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 assert.match(html, /id="shiftEditorModal"/);
 assert.match(html, /id="shiftEditorEmployee"/);
+assert.match(html, /id="addScheduleShift"/);
 assert.match(html, /data-shift-move="-0\.5"/);
 assert.match(html, /data-shift-duration="0\.5"/);
-assert.match(html, /app\.js\?v=70/);
-assert.match(html, /styles\.css\?v=40/);
+assert.match(html, /app\.js\?v=71/);
+assert.match(html, /styles\.css\?v=41/);
 assert.match(appSource, /data-edit-shift/);
 assert.match(appSource, /timeline-open-period/);
 assert.match(appSource, /action: "batch-create"/);
 assert.match(appSource, /status: "approved"/);
+assert.match(appSource, /function openNewShiftEditor/);
+assert.match(appSource, /Refuerzo agregado desde Grilla/);
 assert.doesNotMatch(appSource, /sourceLabel}<\/small>/,
   "Los turnos deben mostrar solo nombre y horario, sin ciclo ni semana.");
 assert.match(css, /\.shift-bar\.is-editable/);
@@ -67,4 +70,4 @@ assert.throws(
   /Solo un administrador/,
 );
 
-console.log("OK: la grilla sombrea la apertura y permite editar, rotar, duplicar o eliminar turnos aprobados.");
+console.log("OK: la grilla permite agregar refuerzos y editar, rotar, duplicar o eliminar turnos aprobados.");

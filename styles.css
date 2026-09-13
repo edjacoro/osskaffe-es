@@ -614,6 +614,32 @@ h3 {
   padding: 15px 20px;
 }
 
+.schedule-heading-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.schedule-heading-actions .legend {
+  min-width: 0;
+}
+
+.schedule-add-shift {
+  min-width: max-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.schedule-add-symbol {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
 .two-column,
 .settings-grid {
   padding: 20px;
@@ -5887,6 +5913,13 @@ textarea:focus-visible {
     font-size: 1.08rem;
   }
 
+  #schedulePanel .schedule-heading-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
   #schedulePanel .legend {
     width: 100%;
     display: flex;
@@ -5895,6 +5928,12 @@ textarea:focus-visible {
     overflow-x: auto;
     padding: 2px 0 5px;
     scrollbar-width: none;
+  }
+
+  #schedulePanel .schedule-add-shift {
+    min-height: 42px;
+    padding: 0 11px;
+    font-size: 0.68rem;
   }
 
   #schedulePanel .legend::-webkit-scrollbar {

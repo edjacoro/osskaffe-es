@@ -678,6 +678,7 @@ const els = {
   pdfWeekPicker: document.querySelector("#pdfWeekPicker"),
   printGridRoot: document.querySelector("#printGridRoot"),
   employeeLegend: document.querySelector("#employeeLegend"),
+  addScheduleShift: document.querySelector("#addScheduleShift"),
   storeHoursEditor: document.querySelector("#storeHoursEditor"),
   storeHoursMonth: document.querySelector("#storeHoursMonth"),
   storeHoursPrevMonth: document.querySelector("#storeHoursPrevMonth"),
@@ -692,6 +693,7 @@ const els = {
   mobileScheduleMode: document.querySelector("#mobileScheduleMode"),
   shiftEditorModal: document.querySelector("#shiftEditorModal"),
   shiftEditorForm: document.querySelector("#shiftEditorForm"),
+  shiftEditorEyebrow: document.querySelector("#shiftEditorEyebrow"),
   shiftEditorTitle: document.querySelector("#shiftEditorTitle"),
   shiftEditorClose: document.querySelector("#shiftEditorClose"),
   shiftEditorEmployee: document.querySelector("#shiftEditorEmployee"),
@@ -892,6 +894,8 @@ function bindEvents() {
     renderMetrics();
   });
 
+  els.addScheduleShift?.addEventListener("click", openNewShiftEditor);
+
   els.scheduleTable.addEventListener("click", (event) => {
     const shiftButton = event.target.closest("[data-edit-shift]");
     if (!shiftButton || appRole !== "admin") return;
@@ -918,7 +922,9 @@ function bindEvents() {
   });
   els.shiftEditorDate.addEventListener("change", () => {
     populateShiftEditorEmployees(els.shiftEditorDate.value, els.shiftEditorEmployee.value);
+    syncShiftEditorHeading();
   });
+  els.shiftEditorEmployee.addEventListener("change", syncShiftEditorHeading);
   els.shiftEditorForm.querySelectorAll("[data-shift-move]").forEach((button) => {
     button.addEventListener("click", () => adjustShiftEditorMove(Number(button.dataset.shiftMove)));
   });
@@ -1551,17 +1557,61 @@ function openShiftEditor(button) {
   const end = button.dataset.shiftEnd;
   if (!isDateKey(date) || !employeeId || !start || !end) return;
 
-  activeShiftEdit = { date, employeeId, start, end };
+  activeShiftEdit = { mode: "edit", date, employeeId, start, end };
   const employee = getEmployee(employeeId, date);
+  if (els.shiftEditorEyebrow) els.shiftEditorEyebrow.textContent = "Editar turno";
   els.shiftEditorTitle.textContent = `${employee.label} · ${formatHumanDate(date)}`;
   els.shiftEditorDate.value = date;
   populateShiftEditorEmployees(date, employeeId);
   els.shiftEditorStart.value = start;
   els.shiftEditorEnd.value = end;
   els.shiftEditorStatus.textContent = "";
+  els.shiftEditorDuplicate.hidden = false;
+  els.shiftEditorDelete.hidden = false;
   syncShiftEditorDuration();
   els.shiftEditorModal.hidden = false;
   setTimeout(() => els.shiftEditorEmployee.focus(), 0);
+}
+
+function getDefaultNewShiftDate() {
+  const today = new Date();
+  if (
+    today.getFullYear() === activeMonth.getFullYear()
+    && today.getMonth() === activeMonth.getMonth()
+  ) return toDateInput(today);
+  return toDateInput(firstDayOfMonth(activeMonth));
+}
+
+function openNewShiftEditor() {
+  if (appRole !== "admin") return;
+  const date = getDefaultNewShiftDate();
+  activeShiftEdit = { mode: "create" };
+  if (els.shiftEditorEyebrow) els.shiftEditorEyebrow.textContent = "Agregar refuerzo";
+  els.shiftEditorDate.value = date;
+  populateShiftEditorEmployees(date);
+  els.shiftEditorStart.value = "";
+  els.shiftEditorEnd.value = "";
+  els.shiftEditorStatus.textContent = "";
+  els.shiftEditorDuplicate.hidden = true;
+  els.shiftEditorDelete.hidden = true;
+  syncShiftEditorHeading();
+  syncShiftEditorDuration();
+  els.shiftEditorModal.hidden = false;
+  setTimeout(() => els.shiftEditorEmployee.focus(), 0);
+}
+
+function syncShiftEditorHeading() {
+  if (!activeShiftEdit || !isDateKey(els.shiftEditorDate.value)) return;
+  const employeeId = els.shiftEditorEmployee.value;
+  if (activeShiftEdit.mode === "create") {
+    const employee = employeeId ? getEmployee(employeeId, els.shiftEditorDate.value) : null;
+    els.shiftEditorTitle.textContent = employee
+      ? `Nuevo turno · ${employee.label}`
+      : `Nuevo turno · ${formatHumanDate(els.shiftEditorDate.value)}`;
+    return;
+  }
+  const employee = employeeId ? getEmployee(employeeId, els.shiftEditorDate.value) : null;
+  if (employee) els.shiftEditorTitle.textContent = `${employee.label} · ${formatHumanDate(els.shiftEditorDate.value)}`;
 }
 
 function closeShiftEditor() {
@@ -1680,6 +1730,19 @@ async function saveShiftEditorChanges(event) {
     els.shiftEditorStatus.textContent = values.error;
     return;
   }
+  if (activeShiftEdit.mode === "create") {
+    const employee = getEmployee(values.employeeId, values.date);
+    const reinforcement = makeApprovedGridChange({
+      date: values.date,
+      employeeId: values.employeeId,
+      action: "extra",
+      start: values.start,
+      end: values.end,
+      note: `Refuerzo agregado desde Grilla para ${employee.label}.`,
+    });
+    await persistGridShiftChanges([reinforcement], "Turno agregado.");
+    return;
+  }
   if (
     values.date === activeShiftEdit.date
     && values.employeeId === activeShiftEdit.employeeId
@@ -1714,6 +1777,7 @@ async function saveShiftEditorChanges(event) {
 }
 
 async function duplicateShiftFromEditor() {
+  if (activeShiftEdit?.mode === "create") return;
   const values = getShiftEditorValues();
   if (values.error) {
     els.shiftEditorStatus.textContent = values.error;
@@ -1732,7 +1796,7 @@ async function duplicateShiftFromEditor() {
 }
 
 async function deleteShiftFromEditor() {
-  if (!activeShiftEdit) return;
+  if (!activeShiftEdit || activeShiftEdit.mode === "create") return;
   const employee = getEmployee(activeShiftEdit.employeeId, activeShiftEdit.date);
   if (!window.confirm(`¿Eliminar el turno de ${employee.label} ${activeShiftEdit.start}-${activeShiftEdit.end}?`)) return;
   const removal = makeApprovedGridChange({

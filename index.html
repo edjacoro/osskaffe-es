@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=40" />
+    <link rel="stylesheet" href="styles.css?v=41" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -323,7 +323,7 @@
       <aside class="shift-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="shiftEditorTitle">
         <div class="shift-editor-header">
           <div>
-            <p class="eyebrow">Editar turno</p>
+            <p class="eyebrow" id="shiftEditorEyebrow">Editar turno</p>
             <h3 id="shiftEditorTitle">Turno</h3>
           </div>
           <button class="shift-editor-close" id="shiftEditorClose" type="button" aria-label="Cerrar editor">&#215;</button>
@@ -509,7 +509,13 @@
               <p class="eyebrow">Turnos base + cambios aprobados</p>
               <h2>Grilla principal</h2>
             </div>
-            <div class="legend" id="employeeLegend"></div>
+            <div class="schedule-heading-actions">
+              <div class="legend" id="employeeLegend"></div>
+              <button class="primary-button schedule-add-shift" id="addScheduleShift" type="button">
+                <span class="schedule-add-symbol" aria-hidden="true">+</span>
+                <span>Agregar turno</span>
+              </button>
+            </div>
           </div>
           <div class="mobile-schedule-toolbar" id="mobileScheduleToolbar" aria-label="Vista de la grilla">
             <button class="icon-button" id="mobileSchedulePrevWeek" type="button" aria-label="Semana anterior">&#8249;</button>
@@ -1189,6 +1195,6 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=70"></script>
+    <script src="app.js?v=71"></script>
   </body>
 </html>
