@@ -3340,9 +3340,7 @@ function getEmployee(id, dateKey = toDateInput(new Date())) {
     color: "#667481",
     active: false,
   };
-  if (employee.id !== "third") return employee;
-  const label = dateKey >= getLocationSettings(employee.locationId).palomaLeaveDate ? "Reemplazo Paloma" : "Paloma";
-  return { ...employee, label };
+  return employee;
 }
 
 function getPunchStatus(employeeId, dateKey, timestamp, geoResult) {
