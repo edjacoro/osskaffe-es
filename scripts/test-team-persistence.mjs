@@ -138,7 +138,7 @@ assert.match(appSource, /employee\.testEmployee !== true/,
 assert.match(appSource, /data-delete-test-employee/,
   "Fichas debe ofrecer borrado definitivo solo para empleados de prueba.");
 assert.match(htmlSource, /id="teamMemberIsTest"/);
-assert.match(htmlSource, /app\.js\?v=72/);
+assert.match(htmlSource, /app\.js\?v=73/);
 assert.doesNotMatch(appSource, /Reemplazo Paloma/,
   "La grilla debe respetar el nombre actual de la ficha y no imponer una etiqueta historica.");
 

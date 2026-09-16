@@ -2869,30 +2869,11 @@ function getShiftsForDate(dateKey) {
     change.status === "approved" && changeAppliesToDate(change, dateKey)
   );
   shifts = applyApprovedChangesToShifts(shifts, approved);
-  shifts = constrainShiftsToOpeningPeriods(shifts, getOpeningPeriodsForDate(dateKey));
 
   return shifts
     .filter((shift) => getEmployeeLocationId(shift.employeeId) === activeLocationId)
     .filter((shift) => isEmployeeActiveOnDate(getEmployee(shift.employeeId, dateKey), dateKey))
     .sort((a, b) => a.start - b.start || a.end - b.end);
-}
-
-function constrainShiftsToOpeningPeriods(shifts, openingPeriods) {
-  if (!Array.isArray(openingPeriods) || !openingPeriods.length) return [];
-  const periods = openingPeriods
-    .filter((period) => Number.isFinite(period?.open) && Number.isFinite(period?.close) && period.close > period.open)
-    .slice()
-    .sort((a, b) => a.open - b.open);
-
-  return shifts.flatMap((shift) => periods.flatMap((period, index) => {
-    // El turno debe tocar el horario real de atención. El margen no permite
-    // conservar un turno que esté completamente antes o después de la tienda.
-    if (shift.end <= period.open || shift.start >= period.close) return [];
-    const preparationMargin = index === 0 ? 0.5 : 0;
-    const start = Math.max(shift.start, period.open - preparationMargin);
-    const end = Math.min(shift.end, period.close + 0.5);
-    return end > start ? [{ ...shift, start, end }] : [];
-  }));
 }
 
 function getOpenLabel(day) {

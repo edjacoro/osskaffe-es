@@ -11,7 +11,7 @@ assert.match(html, /id="shiftEditorEmployee"/);
 assert.match(html, /id="addScheduleShift"/);
 assert.match(html, /data-shift-move="-0\.5"/);
 assert.match(html, /data-shift-duration="0\.5"/);
-assert.match(html, /app\.js\?v=72/);
+assert.match(html, /app\.js\?v=73/);
 assert.match(html, /styles\.css\?v=41/);
 assert.match(appSource, /data-edit-shift/);
 assert.match(appSource, /timeline-open-period/);

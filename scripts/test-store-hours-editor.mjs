@@ -18,7 +18,7 @@ assert.match(appSource, /Guardado en Netlify/, "Debe confirmar visualmente la pe
 assert.match(appSource, /const editorLocationId = activeLocationId;/, "El editor debe conservar la tienda que se esta modificando.");
 assert.match(appSource, /getLocationSettings\(locationId\)/, "Los horarios deben guardarse por separado para cada tienda.");
 assert.match(html, /presioná GUARDAR en cada día modificado/);
-assert.match(html, /app\.js\?v=72/);
+assert.match(html, /app\.js\?v=73/);
 
 const openingStart = appSource.indexOf("function getDefaultOpeningPeriodsForDate");
 const openingEnd = appSource.indexOf("function getDefaultOpeningForDate", openingStart);
@@ -53,59 +53,19 @@ assert.equal(
   "El horario historico hasta el 30/08 debe quedar intacto.",
 );
 
-const constraintStart = appSource.indexOf("function constrainShiftsToOpeningPeriods");
-const constraintEnd = appSource.indexOf("function getOpenLabel", constraintStart);
-assert.ok(constraintStart >= 0 && constraintEnd > constraintStart, "Debe existir el ajuste de turnos al horario de tienda.");
-const constrainShiftsToOpeningPeriods = new Function(
-  `${appSource.slice(constraintStart, constraintEnd)}\nreturn constrainShiftsToOpeningPeriods;`,
-)();
-
-const shortened = constrainShiftsToOpeningPeriods([
-  { employeeId: "apertura", start: 8, end: 14, source: "manual" },
-  { employeeId: "cierre", start: 12, end: 20, source: "manual" },
-  { employeeId: "tarde", start: 16, end: 20, source: "base" },
-], [{ open: 8.5, close: 14 }]);
-assert.deepEqual(shortened, [
-  { employeeId: "apertura", start: 8, end: 14, source: "manual" },
-  { employeeId: "cierre", start: 12, end: 14.5, source: "manual" },
-], "Debe conservar media hora de apertura/cierre y anular los turnos posteriores.");
-assert.deepEqual(
-  constrainShiftsToOpeningPeriods([{ employeeId: "ana", start: 8, end: 20 }], []),
-  [],
-  "Un dia cerrado no puede conservar horas cargadas.",
-);
-assert.deepEqual(
-  constrainShiftsToOpeningPeriods(
-    [{ employeeId: "ana", start: 8, end: 20.5 }],
-    [{ open: 8.5, close: 14 }, { open: 16, close: 20 }],
-  ),
-  [
-    { employeeId: "ana", start: 8, end: 14.5 },
-    { employeeId: "ana", start: 16, end: 20.5 },
-  ],
-  "El horario partido debe quitar el tramo en que la tienda permanece cerrada.",
-);
-assert.deepEqual(
-  constrainShiftsToOpeningPeriods(
-    [{ employeeId: "tarde", start: 15.5, end: 20 }],
-    [{ open: 8.5, close: 14 }, { open: 16, close: 20 }],
-  ),
-  [{ employeeId: "tarde", start: 16, end: 20 }],
-  "La reapertura de la tarde no debe agregar media hora de preparacion.",
-);
-assert.deepEqual(
-  constrainShiftsToOpeningPeriods([
-    { employeeId: "micaela", start: 7.5, end: 14.5 },
-    { employeeId: "guillermo", start: 9, end: 14 },
-    { employeeId: "barista-tarde", start: 14.5, end: 19.5 },
-  ], [{ open: 8, close: 19 }]),
-  [
-    { employeeId: "micaela", start: 7.5, end: 14.5 },
-    { employeeId: "guillermo", start: 9, end: 14 },
-    { employeeId: "barista-tarde", start: 14.5, end: 19.5 },
-  ],
-  "El horario continuo no debe recortar los turnos del PDF.",
-);
+const shiftResolverStart = appSource.indexOf("function getShiftsForDate");
+const shiftResolverEnd = appSource.indexOf("function getOpenLabel", shiftResolverStart);
+assert.ok(shiftResolverStart >= 0 && shiftResolverEnd > shiftResolverStart,
+  "Debe poder comprobarse la resolucion final de turnos.");
+const shiftResolverSource = appSource.slice(shiftResolverStart, shiftResolverEnd);
+assert.match(shiftResolverSource, /applyApprovedChangesToShifts/,
+  "Los cambios aprobados deben seguir aplicandose a la grilla.");
+assert.doesNotMatch(shiftResolverSource, /getOpeningPeriodsForDate|constrainShiftsToOpeningPeriods/,
+  "Los horarios comerciales no deben recortar ni eliminar turnos de empleados.");
+assert.doesNotMatch(appSource, /function constrainShiftsToOpeningPeriods/,
+  "No debe quedar activa la antigua regla de media hora antes o despues del local.");
+assert.match(appSource, /calculateStoreCoverage\(getOpeningPeriodsForDate\(dateKey\), getShiftsForDate\(dateKey\)\)/,
+  "La apertura debe seguir usandose para calcular cobertura y horas libres.");
 
 const initial = {
   sales: [{ id: "venta-historica", items: [{ name: "Flat White", qty: 1 }] }],
@@ -141,4 +101,4 @@ const reset = applyStoreHoursUpdate(saved, {
 });
 assert.equal(reset.locationSettings.madrid.monthlyOpeningHours["2026-08-03"], undefined);
 
-console.log("OK: los horarios se guardan por dia sin reenviar la base completa a Netlify.");
+console.log("OK: los horarios comerciales se guardan por tienda y no limitan los turnos de empleados.");
