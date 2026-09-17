@@ -113,7 +113,7 @@ assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
 assert.match(html, /styles\.css\?v=41/);
-assert.match(html, /app\.js\?v=73/);
+assert.match(html, /app\.js\?v=74/);
 assert.match(html, /id="finExpenseCategorySummary"/);
 assert.match(html, /id="finExpCategoryMonth"/);
 assert.match(html, /id="finExpenseList" class="event-list fin-expense-list"/);

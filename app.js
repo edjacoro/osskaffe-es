@@ -2828,37 +2828,45 @@ function getSchedulePlanShiftsForDate(schedulePlans, locationId, dateKey) {
 
 function getBaseShifts(dateKey) {
   const planned = getSchedulePlanShiftsForDate(state.schedulePlans, activeLocationId, dateKey);
+  const date = parseDateKey(dateKey);
+  const day = date.getDay();
+  const shifts = [];
+  const employees = getAllEmployees(true)
+    .filter((employee) => normalizeLocationId(employee.locationId) === activeLocationId);
+  const employeeIds = new Set(employees.map((employee) => employee.id));
+  const overriddenEmployeeIds = new Set(employees
+    .filter((employee) => getEmployeeScheduleVersionForDate(employee.id, dateKey))
+    .map((employee) => employee.id));
+  const plannedEmployeeIds = new Set((planned?.plan?.weeks || [])
+    .flatMap((week) => week.shifts || [])
+    .map((shift) => shift.employeeId));
+
   if (planned) {
-    const employeeIds = new Set(getAllEmployees(true).map((employee) => employee.id));
-    return planned.shifts
-      .filter((shift) => employeeIds.has(shift.employeeId))
-      .map((shift) => makeShift(
+    planned.shifts
+      .filter((shift) => employeeIds.has(shift.employeeId) && !overriddenEmployeeIds.has(shift.employeeId))
+      .forEach((shift) => shifts.push(makeShift(
         shift.employeeId,
         timeToDecimal(shift.start),
         timeToDecimal(shift.end),
         `${planned.plan.sourceLabel || "Grilla programada"} · S${planned.weekIndex + 1}`,
-      ));
+      )));
   }
 
-  const date = parseDateKey(dateKey);
-  const day = date.getDay();
-  const shifts = [];
-
-  getAllEmployees(true)
-    .filter((employee) => normalizeLocationId(employee.locationId) === activeLocationId)
-    .forEach((employee) => {
-      const schedule = getEmployeeBaseSchedule(employee.id);
-      const weekKey = getScheduleWeekKey(schedule, dateKey);
-      const dayShifts = schedule.weeks?.[weekKey]?.[day] || [];
-      dayShifts.forEach((shift) => {
-        shifts.push(makeShift(
-          employee.id,
-          timeToDecimal(shift.start),
-          timeToDecimal(shift.end),
-          schedule.mode === "biweekly" ? `Semana ${weekKey.toUpperCase()}` : "base",
-        ));
-      });
+  employees.forEach((employee) => {
+    const hasDatedOverride = overriddenEmployeeIds.has(employee.id);
+    if (planned && plannedEmployeeIds.has(employee.id) && !hasDatedOverride) return;
+    const schedule = getEmployeeScheduleForDate(employee.id, dateKey);
+    const weekKey = getScheduleWeekKey(schedule, dateKey);
+    const dayShifts = schedule.weeks?.[weekKey]?.[day] || [];
+    dayShifts.forEach((shift) => {
+      shifts.push(makeShift(
+        employee.id,
+        timeToDecimal(shift.start),
+        timeToDecimal(shift.end),
+        schedule.mode === "biweekly" ? `Semana ${weekKey.toUpperCase()}` : "base",
+      ));
     });
+  });
 
   return shifts;
 }
@@ -3195,6 +3203,47 @@ function saveEmployeeBaseSchedule(employeeId, schedule) {
   state.baseSchedules[employeeId] = normalizeBaseSchedule(schedule);
 }
 
+function selectScheduleVersion(schedule, dateKey) {
+  return (schedule.versions || [])
+    .filter((version) => isDateKey(version.effectiveFrom) && version.effectiveFrom <= dateKey)
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0] || null;
+}
+
+function upsertScheduleVersion(schedule, version) {
+  return {
+    ...schedule,
+    versions: [
+      ...(schedule.versions || []).filter((candidate) => candidate.effectiveFrom !== version.effectiveFrom),
+      version,
+    ].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)),
+  };
+}
+
+function getEmployeeScheduleVersionForDate(employeeId, dateKey) {
+  return selectScheduleVersion(getEmployeeBaseSchedule(employeeId), dateKey);
+}
+
+function getEmployeeScheduleForDate(employeeId, dateKey) {
+  const schedule = getEmployeeBaseSchedule(employeeId);
+  const version = getEmployeeScheduleVersionForDate(employeeId, dateKey);
+  return version || normalizeScheduleDefinition(schedule);
+}
+
+function saveEmployeeBaseScheduleVersion(employeeId, schedule, effectiveFrom) {
+  if (!isDateKey(effectiveFrom)) return false;
+  const current = getEmployeeBaseSchedule(employeeId);
+  const version = {
+    effectiveFrom,
+    ...normalizeScheduleDefinition(schedule),
+  };
+  state.baseSchedules[employeeId] = upsertScheduleVersion(current, version);
+  return true;
+}
+
+function scheduleDefinitionsEqual(first, second) {
+  return JSON.stringify(normalizeScheduleDefinition(first)) === JSON.stringify(normalizeScheduleDefinition(second));
+}
+
 function getScheduleWeekKey(schedule, dateKey) {
   if (schedule.mode !== "biweekly") return "a";
   const anchor = parseDateKey(schedule.anchorDate || DEFAULT_SCHEDULE_ANCHOR);
@@ -3214,7 +3263,7 @@ function getScheduleWeekHours(week = {}) {
 }
 
 function getBaseScheduleSummary(employeeId) {
-  const schedule = getEmployeeBaseSchedule(employeeId);
+  const schedule = getEmployeeScheduleForDate(employeeId, toDateInput(new Date()));
   const weekAHours = getScheduleWeekHours(schedule.weeks.a);
   const weekBHours = getScheduleWeekHours(schedule.weeks.b);
   const weekADays = SCHEDULE_DAY_ORDER.filter((day) => (schedule.weeks.a[day] || []).length).length;
@@ -4132,6 +4181,22 @@ function mergeBaseSchedules(defaultSchedules = {}, savedSchedules = {}, employee
 }
 
 function normalizeBaseSchedule(schedule = {}) {
+  const normalized = normalizeScheduleDefinition(schedule);
+  const versionsByDate = new Map();
+  (Array.isArray(schedule.versions) ? schedule.versions : []).forEach((version) => {
+    if (!isDateKey(version?.effectiveFrom)) return;
+    versionsByDate.set(version.effectiveFrom, {
+      effectiveFrom: version.effectiveFrom,
+      ...normalizeScheduleDefinition(version),
+    });
+  });
+  return {
+    ...normalized,
+    versions: [...versionsByDate.values()].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)),
+  };
+}
+
+function normalizeScheduleDefinition(schedule = {}) {
   return {
     mode: schedule.mode === "biweekly" ? "biweekly" : "weekly",
     anchorDate: isDateKey(schedule.anchorDate) ? schedule.anchorDate : DEFAULT_SCHEDULE_ANCHOR,
@@ -5690,7 +5755,7 @@ function renderPersonnelPanel() {
   const container = document.querySelector('#teamMemberList');
   if (!container) return;
   const today = toDateInput(new Date());
-  const employees = getAllEmployees(true).filter((employee) => !employee.system);
+  const employees = getAllEmployees(true);
   const currentEmployees = employees.filter((employee) => isEmployeeActiveOnDate(employee, today));
   const upcomingEmployees = employees.filter((employee) => employee.active !== false && employee.activeFrom && employee.activeFrom > today);
   const formerEmployees = employees.filter((employee) =>
@@ -5738,16 +5803,13 @@ function renderPersonnelPanel() {
         </div>
         <div class="event-actions">
           <button class="mini-button" type="button" data-save-team="${employee.id}">Guardar rol y color</button>
-          ${former ? `
-            <button class="mini-button" type="button" data-reactivate-team="${employee.id}">Reactivar desde hoy</button>
-          ` : `
-            <label class="team-end-date">Baja desde
-              <input type="date" data-team-end-date="${employee.id}" value="${escapeHtml(employee.inactiveFrom || today)}" min="${escapeHtml(employee.activeFrom || '')}" />
-            </label>
-            <button class="mini-button danger" type="button" data-terminate-team="${employee.id}">
-              ${scheduledEnd ? 'Actualizar baja' : 'Programar baja'}
-            </button>
-          `}
+          <label class="team-end-date">Baja desde
+            <input type="date" data-team-end-date="${employee.id}" value="${escapeHtml(employee.inactiveFrom || today)}" min="${escapeHtml(employee.activeFrom || '')}" />
+          </label>
+          <button class="mini-button danger" type="button" data-terminate-team="${employee.id}">
+            ${former || scheduledEnd ? 'Actualizar baja' : 'Programar baja'}
+          </button>
+          ${former ? `<button class="mini-button" type="button" data-reactivate-team="${employee.id}">Reactivar desde hoy</button>` : ''}
         </div>
       </article>`;
   };
@@ -5820,7 +5882,8 @@ function renderPersonnelPanel() {
       if (employee.activeFrom && inactiveFrom < employee.activeFrom) {
         return alert('La baja no puede ser anterior a la fecha de alta.');
       }
-      if (!confirm(`¿Programar la baja de ${employee.label} desde ${formatHumanDate(inactiveFrom)}? Su historial se conservará.`)) return;
+      const actionLabel = employee.inactiveFrom ? 'Actualizar' : 'Programar';
+      if (!confirm(`¿${actionLabel} la baja de ${employee.label} desde ${formatHumanDate(inactiveFrom)}? Su historial se conservará.`)) return;
       const previousEmployee = structuredClone(employee);
       employee.active = false;
       employee.inactiveFrom = inactiveFrom;
@@ -6194,6 +6257,7 @@ function renderContratosPanel() {
 function renderAdminFichas() {
   const container = document.querySelector("#fichasGrid");
   if (!container) return;
+  const today = toDateInput(new Date());
 
   if (activeAdminFichaEditId) {
     const activeForm = container.querySelector(`[data-ficha-form="${activeAdminFichaEditId}"]`);
@@ -6227,8 +6291,8 @@ function renderAdminFichas() {
       ? { locationId: emp.locationId, ...profile, ...adminFichaEditDraft }
       : { locationId: emp.locationId, ...profile };
     const formSchedule = isEditing && adminBaseScheduleEditDraft
-      ? normalizeBaseSchedule(adminBaseScheduleEditDraft)
-      : getEmployeeBaseSchedule(emp.id);
+      ? normalizeScheduleDefinition(adminBaseScheduleEditDraft)
+      : getEmployeeScheduleForDate(emp.id, today);
     const schedulePlanSummary = getEmployeeSchedulePlanSummary(emp.id);
     const rows = fields
       .map((f) => {
@@ -6350,7 +6414,7 @@ function renderAdminFichas() {
       const id = button.dataset.editFicha;
       activeAdminFichaEditId = id;
       adminFichaEditDraft = { ...getProfile(id) };
-      adminBaseScheduleEditDraft = structuredClone(getEmployeeBaseSchedule(id));
+      adminBaseScheduleEditDraft = structuredClone(getEmployeeScheduleForDate(id, toDateInput(new Date())));
       renderAdminFichas();
     });
   });
@@ -6411,7 +6475,12 @@ function renderAdminFichas() {
       const previousSchedule = state.baseSchedules?.[employeeId]
         ? structuredClone(state.baseSchedules[employeeId])
         : null;
-      saveEmployeeBaseSchedule(employeeId, readBaseScheduleForm(form));
+      const effectiveFrom = toDateInput(new Date());
+      const previousEffectiveSchedule = getEmployeeScheduleForDate(employeeId, effectiveFrom);
+      const nextSchedule = readBaseScheduleForm(form);
+      if (!scheduleDefinitionsEqual(previousEffectiveSchedule, nextSchedule)) {
+        saveEmployeeBaseScheduleVersion(employeeId, nextSchedule, effectiveFrom);
+      }
       applyProfileData(employeeId, data);
       if (!await persistTeamMemberNow(employeeId)) {
         Object.assign(employee, previousEmployee);
@@ -6436,15 +6505,15 @@ function renderAdminFichas() {
 function renderBaseScheduleEditor(employee, schedule) {
   const normalized = normalizeBaseSchedule(schedule);
   const schedulePlanSummary = getEmployeeSchedulePlanSummary(employee.id);
-  const locked = Boolean(schedulePlanSummary);
+  const effectiveFrom = toDateInput(new Date());
   return `
-    <section class="base-schedule-editor" data-base-schedule-editor${locked ? ' data-schedule-locked="true"' : ''}>
+    <section class="base-schedule-editor" data-base-schedule-editor>
       <div class="base-schedule-head">
         <div>
-          <h4>${locked ? 'Grilla histórica' : 'Grilla base'}</h4>
-          <p class="form-note">${locked
-            ? `Se conserva para las fechas anteriores al ${formatHumanDate(schedulePlanSummary.plan.effectiveFrom)}. La nueva programación usa un ciclo de ${schedulePlanSummary.weeklyHours.length} semanas.`
-            : 'Define los turnos recurrentes. Para excepciones puntuales segui usando Cambios.'}</p>
+          <h4>Grilla editable</h4>
+          <p class="form-note">Los horarios que modifiques se aplicarán desde ${formatHumanDate(effectiveFrom)}. Las fechas anteriores quedan intactas.${schedulePlanSummary
+            ? ` La programación histórica conserva su ciclo de ${schedulePlanSummary.weeklyHours.length} semanas hasta esa fecha.`
+            : ''}</p>
         </div>
         <label>
           Tipo de grilla
@@ -6520,12 +6589,6 @@ function readBaseScheduleForm(form) {
 function bindBaseScheduleEditor(form) {
   const editor = form.querySelector("[data-base-schedule-editor]");
   if (!editor) return;
-  if (editor.dataset.scheduleLocked === "true") {
-    editor.querySelectorAll("input, select, button").forEach((control) => {
-      control.disabled = true;
-    });
-    return;
-  }
   syncBaseScheduleMode(form);
   syncBaseScheduleRows(form);
 

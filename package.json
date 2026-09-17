@@ -11,6 +11,7 @@
     "test:pastry": "node scripts/test-pastry-recipes.mjs",
     "test:finance": "node scripts/test-finance-audit-consistency.mjs",
     "test:store-hours": "node scripts/test-store-hours-editor.mjs",
+    "test:schedule-versions": "node scripts/test-schedule-versioning.mjs",
     "test:changes": "node scripts/test-change-ranges.mjs",
     "test:schedule-plan": "node scripts/test-madrid-schedule-plan.mjs",
     "test:shift-editor": "node scripts/test-grid-shift-editor.mjs",

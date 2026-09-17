@@ -43,6 +43,21 @@ assert(publicTeamEmployees(JSON.parse(JSON.stringify(persistedState)), "2026-08-
   .some((employee) => employee.id === "ana-prueba"), "El alta debe aparecer en una sesion sin cache.");
 
 persistedState = upsertTeamMemberState(persistedState, {
+  employee: persistedState.employees.find((employee) => employee.id === "ana-prueba"),
+  baseSchedule: {
+    mode: "weekly",
+    weeks: { a: {}, b: {} },
+    versions: [{
+      effectiveFrom: "2026-09-17",
+      mode: "weekly",
+      weeks: { a: { 1: [{ start: "08:00", end: "15:00" }] }, b: {} },
+    }],
+  },
+});
+assert.equal(persistedState.baseSchedules["ana-prueba"].versions[0].effectiveFrom, "2026-09-17",
+  "Las nuevas grillas fechadas deben persistir completas en Netlify.");
+
+persistedState = upsertTeamMemberState(persistedState, {
   employee: {
     ...persistedState.employees.find((employee) => employee.id === "ana-prueba"),
     active: false,
@@ -56,6 +71,17 @@ assert(!publicTeamEmployees(persistedState, "2026-08-20").some((employee) => emp
   "La baja debe aplicarse en la fecha elegida.");
 assert(persistedState.employees.some((employee) => employee.id === "ana-prueba"),
   "La baja no debe borrar al empleado del historial.");
+
+persistedState = upsertTeamMemberState(persistedState, {
+  employee: {
+    ...persistedState.employees.find((employee) => employee.id === "ana-prueba"),
+    inactiveFrom: "2026-08-25",
+  },
+});
+assert.equal(persistedState.employees.find((employee) => employee.id === "ana-prueba")?.inactiveFrom, "2026-08-25",
+  "La fecha de una baja ya aplicada debe poder corregirse sin borrar la ficha.");
+assert(publicTeamEmployees(persistedState, "2026-08-24").some((employee) => employee.id === "ana-prueba"),
+  "Si la baja se corrige hacia adelante, el empleado debe volver a estar disponible hasta esa fecha.");
 
 persistedState = upsertTeamMemberState(persistedState, {
   employee: {
@@ -138,8 +164,12 @@ assert.match(appSource, /employee\.testEmployee !== true/,
 assert.match(appSource, /data-delete-test-employee/,
   "Fichas debe ofrecer borrado definitivo solo para empleados de prueba.");
 assert.match(htmlSource, /id="teamMemberIsTest"/);
-assert.match(htmlSource, /app\.js\?v=73/);
+assert.match(htmlSource, /app\.js\?v=74/);
 assert.doesNotMatch(appSource, /Reemplazo Paloma/,
   "La grilla debe respetar el nombre actual de la ficha y no imponer una etiqueta historica.");
+assert.doesNotMatch(appSource, /getAllEmployees\(true\)\.filter\(\(employee\) => !employee\.system\)/,
+  "El personal precargado tambien debe poder editarse.");
+assert.match(appSource, /former \|\| scheduledEnd \? 'Actualizar baja' : 'Programar baja'/,
+  "Una baja ya aplicada debe permitir corregir su fecha.");
 
 console.log("OK: altas, bajas, empleados de prueba y borrado definitivo persisten correctamente.");
