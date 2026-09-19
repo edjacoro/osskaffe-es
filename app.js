@@ -658,8 +658,11 @@ let sharedStateSaveTimer = null;
 let sharedStatePollTimer = null;
 let sharedStateSaving = false;
 let sharedStatePending = false;
+let sharedStateRetryCount = 0;
 let suppressSharedStateSave = false;
 let sharedMutationQueue = Promise.resolve();
+let madridScheduleRetryTimer = null;
+let madridScheduleRetryCount = 0;
 let pendingTeamRecoverySnapshot = { employees: [], profiles: {}, baseSchedules: {}, contracts: {} };
 let pendingEmployeeId = null;
 let empHoursMonth = firstDayOfMonth(new Date());
@@ -1713,10 +1716,19 @@ async function persistGridShiftChanges(changes, successMessage) {
   const storedChanges = Array.isArray(result.payload?.changes) && result.payload.changes.length
     ? result.payload.changes
     : changes;
+  if (!result.local) {
+    const confirmedIds = new Set(storedChanges.map((change) => change?.id).filter(Boolean));
+    const missingIds = changes.map((change) => change.id).filter((id) => !confirmedIds.has(id));
+    if (missingIds.length) {
+      setShiftEditorBusy(false, "Netlify no confirmó todos los turnos. Volvé a guardar el cambio.");
+      setSharedSaveStatus("Grilla sin confirmar", "error");
+      return false;
+    }
+  }
   const existingIds = new Set((state.changes || []).map((change) => change.id));
   state.changes.push(...storedChanges.filter((change) => !existingIds.has(change.id)));
   saveState({ shared: false });
-  setShiftEditorBusy(false, successMessage);
+  setShiftEditorBusy(false, result.local ? `${successMessage} Copia local.` : `${successMessage} Confirmado en Netlify.`);
   closeShiftEditor();
   render();
   return true;
@@ -2395,6 +2407,33 @@ async function parseApiError(response, fallback) {
   }
 }
 
+function isLocalAppRuntime() {
+  const hostname = String(window.location.hostname || "").toLowerCase();
+  return !hostname || hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function setSharedSaveStatus(message = "Datos guardados", status = "saved") {
+  const label = document.querySelector(".sidebar-save-label");
+  const dot = document.querySelector(".status-dot");
+  if (label) label.textContent = message;
+  if (!dot) return;
+  const colors = {
+    saved: ["#5eead4", "rgba(94, 234, 212, 0.12)"],
+    saving: ["#fbbf24", "rgba(251, 191, 36, 0.16)"],
+    pending: ["#fb923c", "rgba(251, 146, 60, 0.16)"],
+    error: ["#f87171", "rgba(248, 113, 113, 0.16)"],
+  };
+  const [color, halo] = colors[status] || colors.saved;
+  dot.dataset.status = status;
+  dot.style.background = color;
+  dot.style.boxShadow = `0 0 0 4px ${halo}`;
+}
+
+function markSharedSaveComplete() {
+  if (sharedStatePending || sharedStateSaving || madridScheduleRetryTimer) return;
+  setSharedSaveStatus("Datos guardados", "saved");
+}
+
 function enqueueSharedMutation(task) {
   const run = sharedMutationQueue.then(task, task);
   sharedMutationQueue = run.catch(() => {});
@@ -2402,9 +2441,15 @@ function enqueueSharedMutation(task) {
 }
 
 async function sendSharedMutation(url, body, fallback, method = "PUT") {
-  if (!sharedStateEnabled) return { ok: true, local: true, payload: null };
+  if (!sharedStateEnabled) {
+    if (isLocalAppRuntime()) return { ok: true, local: true, payload: null };
+    const error = "No hay una sesión activa con Netlify. Volvé a ingresar antes de guardar.";
+    setSharedSaveStatus("Sin conexión con Netlify", "error");
+    return { ok: false, error };
+  }
   return enqueueSharedMutation(async () => {
     let lastError = fallback;
+    setSharedSaveStatus("Guardando en Netlify...", "saving");
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
         const response = await fetch(url, {
@@ -2414,7 +2459,10 @@ async function sendSharedMutation(url, body, fallback, method = "PUT") {
           body: JSON.stringify(body),
         });
         const payload = await response.json().catch(() => ({}));
-        if (response.ok && payload.ok) return { ok: true, payload };
+        if (response.ok && payload.ok) {
+          markSharedSaveComplete();
+          return { ok: true, payload };
+        }
         lastError = payload.error || `${fallback} (HTTP ${response.status})`;
         if (![409, 429, 500, 502, 503, 504].includes(response.status)) break;
       } catch (_) {
@@ -2422,6 +2470,7 @@ async function sendSharedMutation(url, body, fallback, method = "PUT") {
       }
       await waitForStateSave(180 * (attempt + 1));
     }
+    setSharedSaveStatus("Guardado pendiente", "error");
     return { ok: false, error: lastError };
   });
 }
@@ -3002,6 +3051,8 @@ function getMonthlyStoreCoverage(monthDate = activeMonth) {
 }
 
 async function saveOpeningOverride(dateKey, values, locationId = activeLocationId) {
+  const result = await persistStoreHoursChange("save", dateKey, values, locationId);
+  if (!result.ok) return result;
   const settings = getLocationSettings(locationId);
   updateLocationSettings({
     monthlyOpeningHours: {
@@ -3016,10 +3067,12 @@ async function saveOpeningOverride(dateKey, values, locationId = activeLocationI
     renderMetrics();
     renderContratosPanel();
   }
-  return persistStoreHoursChange("save", dateKey, values, locationId);
+  return result;
 }
 
 async function resetOpeningOverride(dateKey, locationId = activeLocationId) {
+  const result = await persistStoreHoursChange("reset", dateKey, null, locationId);
+  if (!result.ok) return result;
   const monthlyOpeningHours = { ...(getLocationSettings(locationId).monthlyOpeningHours || {}) };
   delete monthlyOpeningHours[dateKey];
   updateLocationSettings({ monthlyOpeningHours }, locationId);
@@ -3030,7 +3083,7 @@ async function resetOpeningOverride(dateKey, locationId = activeLocationId) {
     renderMetrics();
     renderContratosPanel();
   }
-  return persistStoreHoursChange("reset", dateKey, null, locationId);
+  return result;
 }
 
 async function persistStoreHoursChange(action, date, values, locationId) {
@@ -3538,7 +3591,11 @@ function renderHourlyHeatmap(analysis) {
   const hourlyTotals = hours.map((hour) => dayOrder.reduce((total, day) => {
     return total + Number(byDayHour.get(`${day}-${hour}`)?.tickets || 0);
   }, 0));
+  const totalTicketsWithHour = hourlyTotals.reduce((total, tickets) => total + tickets, 0);
   const rows = dayOrder.map((day) => {
+    const dayTickets = hours.reduce((total, hour) => {
+      return total + Number(byDayHour.get(`${day}-${hour}`)?.tickets || 0);
+    }, 0);
     const cells = hours.map((hour) => {
       const item = byDayHour.get(`${day}-${hour}`);
       const pct = item ? item.tickets / maxTickets : 0;
@@ -3548,22 +3605,32 @@ function renderHourlyHeatmap(analysis) {
         ${item ? `<strong>${item.tickets}</strong>` : ''}
       </td>`;
     }).join('');
-    return `<tr><th>${DAY_NAMES[day]}</th>${cells}</tr>`;
+    const dayEstimatedSales = dayTickets * averageTicket;
+    return `<tr><th>${DAY_NAMES[day]}</th>${cells}
+      <td class="heatmap-day-total-cell" title="${dayTickets.toLocaleString('es-ES')} pedidos · ${escapeHtml(formatEur(dayEstimatedSales))} estimados">
+        <strong>${dayTickets.toLocaleString('es-ES')}</strong>
+        <small>${formatEur(dayEstimatedSales)}</small>
+      </td>
+    </tr>`;
   }).join('');
   const ticketTotalsRow = hourlyTotals.map((tickets) => `
     <td class="heatmap-summary-cell"><strong>${tickets.toLocaleString('es-ES')}</strong></td>`).join('');
   const estimatedSalesRow = hourlyTotals.map((tickets) => `
     <td class="heatmap-summary-cell heatmap-summary-money"><strong>${formatEur(tickets * averageTicket)}</strong></td>`).join('');
+  const dailyGrandTicketTotal = `
+    <td class="heatmap-summary-cell heatmap-day-total-cell"><strong>${totalTicketsWithHour.toLocaleString('es-ES')}</strong></td>`;
+  const dailyGrandEstimatedTotal = `
+    <td class="heatmap-summary-cell heatmap-summary-money heatmap-day-total-cell"><strong>${formatEur(totalTicketsWithHour * averageTicket)}</strong></td>`;
   return `
     <section class="traffic-heatmap-panel">
       <h3>Mapa de calor <small>tickets por día y hora · valor estimado con ticket promedio ${formatEur(averageTicket)}</small></h3>
       <div class="traffic-heatmap-scroll">
       <table class="fin-table heatmap-table">
-        <thead><tr><th>Día</th>${hours.map((hour) => `<th>${String(hour).padStart(2, '0')}h</th>`).join('')}</tr></thead>
+        <thead><tr><th>Día</th>${hours.map((hour) => `<th>${String(hour).padStart(2, '0')}h</th>`).join('')}<th class="heatmap-day-total-header">Total día<small>pedidos · €</small></th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
-          <tr class="heatmap-summary-row"><th>Total pedidos</th>${ticketTotalsRow}</tr>
-          <tr class="heatmap-summary-row heatmap-summary-value-row"><th>Valor estimado</th>${estimatedSalesRow}</tr>
+          <tr class="heatmap-summary-row"><th>Total pedidos</th>${ticketTotalsRow}${dailyGrandTicketTotal}</tr>
+          <tr class="heatmap-summary-row heatmap-summary-value-row"><th>Valor estimado</th>${estimatedSalesRow}${dailyGrandEstimatedTotal}</tr>
         </tfoot>
       </table>
       </div>
@@ -3758,15 +3825,18 @@ function saveState(options = {}) {
   if (options.shared !== false) scheduleSharedStateSave();
 }
 
-function scheduleSharedStateSave() {
+function scheduleSharedStateSave(delay = 250) {
   if (!sharedStateEnabled || suppressSharedStateSave || appRole === 'visitor') return;
   sharedStatePending = true;
   clearTimeout(sharedStateSaveTimer);
-  sharedStateSaveTimer = setTimeout(flushSharedState, 250);
+  setSharedSaveStatus("Guardando en Netlify...", "saving");
+  sharedStateSaveTimer = setTimeout(flushSharedState, delay);
 }
 
 async function flushSharedState() {
   if (!sharedStateEnabled || sharedStateSaving || !sharedStatePending) return;
+  clearTimeout(sharedStateSaveTimer);
+  sharedStateSaveTimer = null;
   sharedStatePending = false;
   sharedStateSaving = true;
   try {
@@ -3786,12 +3856,22 @@ async function flushSharedState() {
       const detail = await parseApiError(response, 'No se pudo guardar el estado compartido.');
       throw new Error(`${detail} (HTTP ${response.status})`);
     }
+    sharedStateRetryCount = 0;
+    setSharedSaveStatus("Datos guardados", "saved");
   } catch (error) {
     console.warn(error.message);
     sharedStatePending = true;
+    sharedStateRetryCount += 1;
+    setSharedSaveStatus("Guardado pendiente · reintentando", "pending");
   } finally {
     sharedStateSaving = false;
-    if (sharedStatePending) scheduleSharedStateSave();
+    if (sharedStatePending) {
+      const retryDelay = Math.min(30000, 750 * (2 ** Math.min(sharedStateRetryCount - 1, 5)));
+      scheduleSharedStateSave(retryDelay);
+      setSharedSaveStatus("Guardado pendiente · reintentando", "pending");
+    } else {
+      markSharedSaveComplete();
+    }
   }
 }
 
@@ -3900,6 +3980,12 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
       const madridScheduleSeed = role === "admin"
         ? await persistMadridScheduleSeedToServer(payload.state || {})
         : { updated: 0, failed: 0, stateSaved: false };
+      if (role === "admin" && (madridScheduleSeed.stateSaved === false || madridScheduleSeed.failed > 0)) {
+        scheduleMadridScheduleSeedRetry();
+      } else if (role === "admin") {
+        madridScheduleRetryCount = 0;
+        markSharedSaveComplete();
+      }
       if (role !== 'visitor') saveLocalStateSnapshot();
       clearInterval(sharedStatePollTimer);
       sharedStatePollTimer = setInterval(refreshSharedState, 15000);
@@ -3920,6 +4006,9 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
     return { available: true, authenticated: true, error: null };
   } catch (error) {
     sharedStateEnabled = false;
+    if (role === "admin" && !isLocalAppRuntime()) {
+      setSharedSaveStatus("Sin conexión con Netlify", "error");
+    }
     return {
       available: false,
       authenticated: role === 'admin',
@@ -3956,6 +4045,9 @@ async function refreshSharedState() {
 async function disconnectSharedState(options = {}) {
   clearInterval(sharedStatePollTimer);
   sharedStatePollTimer = null;
+  clearTimeout(madridScheduleRetryTimer);
+  madridScheduleRetryTimer = null;
+  madridScheduleRetryCount = 0;
   if (sharedStateEnabled) {
     if (options.savePending !== false) {
       await persistSharedStateNow();
@@ -4877,9 +4969,6 @@ async function tryAdminPin() {
     if (sharedLogin.failedTeamRecoveries) {
       alert(`No se pudieron recuperar ${sharedLogin.failedTeamRecoveries} empleado(s). Siguen visibles en este navegador; revisÃ¡ la conexiÃ³n y volvÃ© a guardar sus fichas.`);
     }
-    if (sharedLogin.madridScheduleSeed?.stateSaved === false) {
-      alert("La nueva grilla de Madrid se ve localmente, pero Netlify no confirmó todavía todos sus datos. Cerrá y volvé a ingresar como administrador para reintentar el guardado.");
-    }
   } else {
     pinError.textContent = sharedLogin.error || "PIN incorrecto. Intentá de nuevo.";
     pinError.hidden = false;
@@ -5666,6 +5755,37 @@ async function persistMadridScheduleSeedToServer(remoteState = {}) {
     if (result.ok) state.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
   }
   return { updated, failed, stateSaved };
+}
+
+function scheduleMadridScheduleSeedRetry(delay = 1500) {
+  if (!sharedStateEnabled) return;
+  clearTimeout(madridScheduleRetryTimer);
+  setSharedSaveStatus("Grilla pendiente · reintentando", "pending");
+  madridScheduleRetryTimer = setTimeout(retryMadridScheduleSeedToServer, delay);
+}
+
+async function retryMadridScheduleSeedToServer() {
+  madridScheduleRetryTimer = null;
+  if (!sharedStateEnabled) return;
+  try {
+    const response = await fetch('/api/state', { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) throw new Error(`No se pudo verificar la grilla (HTTP ${response.status}).`);
+    const payload = await response.json();
+    const result = await persistMadridScheduleSeedToServer(payload.state || {});
+    if (!result.stateSaved || result.failed > 0) throw new Error("Netlify no confirmó toda la grilla.");
+    madridScheduleRetryCount = 0;
+    saveLocalStateSnapshot();
+    markSharedSaveComplete();
+  } catch (error) {
+    console.warn(error.message || "No se pudo confirmar la grilla de Madrid.");
+    madridScheduleRetryCount += 1;
+    if (madridScheduleRetryCount < 6) {
+      const delay = Math.min(30000, 1500 * (2 ** Math.min(madridScheduleRetryCount - 1, 4)));
+      scheduleMadridScheduleSeedRetry(delay);
+    } else {
+      setSharedSaveStatus("Grilla sin confirmar · reingresá", "error");
+    }
+  }
 }
 
 function removeTestEmployeeFromLocalState(employeeId) {

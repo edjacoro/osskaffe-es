@@ -3538,7 +3538,11 @@ function renderHourlyHeatmap(analysis) {
   const hourlyTotals = hours.map((hour) => dayOrder.reduce((total, day) => {
     return total + Number(byDayHour.get(`${day}-${hour}`)?.tickets || 0);
   }, 0));
+  const totalTicketsWithHour = hourlyTotals.reduce((total, tickets) => total + tickets, 0);
   const rows = dayOrder.map((day) => {
+    const dayTickets = hours.reduce((total, hour) => {
+      return total + Number(byDayHour.get(`${day}-${hour}`)?.tickets || 0);
+    }, 0);
     const cells = hours.map((hour) => {
       const item = byDayHour.get(`${day}-${hour}`);
       const pct = item ? item.tickets / maxTickets : 0;
@@ -3548,22 +3552,32 @@ function renderHourlyHeatmap(analysis) {
         ${item ? `<strong>${item.tickets}</strong>` : ''}
       </td>`;
     }).join('');
-    return `<tr><th>${DAY_NAMES[day]}</th>${cells}</tr>`;
+    const dayEstimatedSales = dayTickets * averageTicket;
+    return `<tr><th>${DAY_NAMES[day]}</th>${cells}
+      <td class="heatmap-day-total-cell" title="${dayTickets.toLocaleString('es-ES')} pedidos · ${escapeHtml(formatEur(dayEstimatedSales))} estimados">
+        <strong>${dayTickets.toLocaleString('es-ES')}</strong>
+        <small>${formatEur(dayEstimatedSales)}</small>
+      </td>
+    </tr>`;
   }).join('');
   const ticketTotalsRow = hourlyTotals.map((tickets) => `
     <td class="heatmap-summary-cell"><strong>${tickets.toLocaleString('es-ES')}</strong></td>`).join('');
   const estimatedSalesRow = hourlyTotals.map((tickets) => `
     <td class="heatmap-summary-cell heatmap-summary-money"><strong>${formatEur(tickets * averageTicket)}</strong></td>`).join('');
+  const dailyGrandTicketTotal = `
+    <td class="heatmap-summary-cell heatmap-day-total-cell"><strong>${totalTicketsWithHour.toLocaleString('es-ES')}</strong></td>`;
+  const dailyGrandEstimatedTotal = `
+    <td class="heatmap-summary-cell heatmap-summary-money heatmap-day-total-cell"><strong>${formatEur(totalTicketsWithHour * averageTicket)}</strong></td>`;
   return `
     <section class="traffic-heatmap-panel">
       <h3>Mapa de calor <small>tickets por día y hora · valor estimado con ticket promedio ${formatEur(averageTicket)}</small></h3>
       <div class="traffic-heatmap-scroll">
       <table class="fin-table heatmap-table">
-        <thead><tr><th>Día</th>${hours.map((hour) => `<th>${String(hour).padStart(2, '0')}h</th>`).join('')}</tr></thead>
+        <thead><tr><th>Día</th>${hours.map((hour) => `<th>${String(hour).padStart(2, '0')}h</th>`).join('')}<th class="heatmap-day-total-header">Total día<small>pedidos · €</small></th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
-          <tr class="heatmap-summary-row"><th>Total pedidos</th>${ticketTotalsRow}</tr>
-          <tr class="heatmap-summary-row heatmap-summary-value-row"><th>Valor estimado</th>${estimatedSalesRow}</tr>
+          <tr class="heatmap-summary-row"><th>Total pedidos</th>${ticketTotalsRow}${dailyGrandTicketTotal}</tr>
+          <tr class="heatmap-summary-row heatmap-summary-value-row"><th>Valor estimado</th>${estimatedSalesRow}${dailyGrandEstimatedTotal}</tr>
         </tfoot>
       </table>
       </div>

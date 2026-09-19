@@ -3015,6 +3015,57 @@ textarea {
   font-size: 0.72rem;
 }
 
+.heatmap-day-total-header,
+.heatmap-day-total-cell {
+  position: sticky;
+  right: 0;
+  min-width: 92px !important;
+  border-left: 2px solid var(--blue-soft);
+  box-shadow: -5px 0 9px rgba(20, 62, 82, 0.08);
+}
+
+.heatmap-day-total-header {
+  z-index: 3;
+  background: #e8f1f5 !important;
+  color: var(--ink);
+}
+
+.heatmap-day-total-header small,
+.heatmap-day-total-cell small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.heatmap-day-total-header small {
+  color: var(--muted);
+}
+
+.heatmap-day-total-cell {
+  z-index: 2;
+  background: #f2f7f9;
+}
+
+.heatmap-day-total-cell strong {
+  display: block;
+  font-size: 0.8rem;
+}
+
+.heatmap-day-total-cell small {
+  color: var(--coffee-dark);
+}
+
+.heatmap-summary-row .heatmap-day-total-cell {
+  z-index: 3;
+  background: #e4eff3;
+}
+
+.heatmap-summary-value-row .heatmap-day-total-cell {
+  background: #fff0d9;
+}
+
 .traffic-visual-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.75fr) minmax(420px, 1.25fr);

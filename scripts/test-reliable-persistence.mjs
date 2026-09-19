@@ -84,6 +84,7 @@ const reviewed = applyChangeMutation(created, { action: "review", id: "lic-2", s
 assert.equal(reviewed.changes.find((change) => change.id === "lic-2").status, "approved");
 
 const appSource = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+const redirects = fs.readFileSync(new URL("../_redirects", import.meta.url), "utf8");
 assert.match(appSource, /let sharedMutationQueue = Promise\.resolve\(\)/);
 assert.match(appSource, /await sharedMutationQueue\.catch/);
 assert.match(appSource, /sendSharedMutation\("\/api\/store-hours"/);
@@ -91,5 +92,21 @@ assert.match(appSource, /sendSharedMutation\(\s*"\/api\/schedule-plan"/);
 assert.match(appSource, /sendSharedMutation\("\/api\/changes"/);
 assert.match(appSource, /"\/api\/employee-profile"/);
 assert.match(appSource, /async function handleEmpProfileForm[\s\S]*?await saveProfileData\(activeEmployeeId, data\)/);
+assert.match(
+  redirects,
+  /^\/api\/schedule-plan\s+\/\.netlify\/functions\/schedule-plan\s+200$/m,
+  "La grilla programada debe tener una ruta publicada en Netlify.",
+);
+assert.match(appSource, /function scheduleMadridScheduleSeedRetry\([\s\S]*?retryMadridScheduleSeedToServer/);
+assert.doesNotMatch(
+  appSource,
+  /La nueva grilla de Madrid se ve localmente/,
+  "Un fallo temporal debe reintentarse sin bloquear cada inicio con un cartel.",
+);
+assert.match(
+  appSource,
+  /if \(!sharedStateEnabled\) \{[\s\S]*?isLocalAppRuntime\(\)[\s\S]*?return \{ ok: false, error \}/,
+  "La web publicada no debe presentar como guardado un cambio que quedo solo en el navegador.",
+);
 
 console.log("OK: horarios, empleados y cambios resisten escrituras simultaneas y cierres de sesion.");

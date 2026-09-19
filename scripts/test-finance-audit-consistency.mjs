@@ -65,6 +65,41 @@ assert.match(
   "La proxima apertura debe lanzar una nueva revision de dias historicos incompletos.",
 );
 
+const heatmapStart = appSource.indexOf("function renderHourlyHeatmap");
+const heatmapEnd = appSource.indexOf("function itemName", heatmapStart);
+assert.ok(heatmapStart >= 0 && heatmapEnd > heatmapStart, "Debe poder aislarse el mapa de calor.");
+const buildHourlyHeatmap = new Function(
+  "DAY_NAMES",
+  "formatEur",
+  "escapeHtml",
+  `${appSource.slice(heatmapStart, heatmapEnd)}\nreturn renderHourlyHeatmap;`,
+);
+const renderHourlyHeatmap = buildHourlyHeatmap(
+  ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
+  (value) => `${Number(value).toFixed(2)} €`,
+  (value) => String(value),
+);
+const heatmapHtml = renderHourlyHeatmap({
+  hourlyRows: [
+    { date: "2026-09-14", hour: 8, tickets: 3, sales: 30 },
+    { date: "2026-09-14", hour: 9, tickets: 2, sales: 20 },
+    { date: "2026-09-15", hour: 8, tickets: 4, sales: 40 },
+  ],
+  totalTickets: 9,
+  totalSales: 90,
+});
+assert.match(heatmapHtml, /class="heatmap-day-total-header">Total día/);
+assert.match(
+  heatmapHtml,
+  /<th>Lunes<\/th>[\s\S]*?<td class="heatmap-day-total-cell"[^>]*>[\s\S]*?<strong>5<\/strong>[\s\S]*?<small>50\.00 €<\/small>/,
+  "El margen derecho debe totalizar los pedidos y el valor estimado de cada día.",
+);
+assert.match(
+  heatmapHtml,
+  /heatmap-summary-cell heatmap-day-total-cell"><strong>9<\/strong>/,
+  "El extremo inferior derecho debe totalizar todos los pedidos con hora.",
+);
+
 const metricStart = appSource.indexOf("const COFFEE_ITEM_PATTERN");
 const metricEnd = appSource.indexOf("function calculateItemMetrics", metricStart);
 assert.ok(metricStart >= 0 && metricEnd > metricStart, "Debe poder aislarse el calculo de cross-selling.");
@@ -112,8 +147,9 @@ assert.match(appSource, /id="finAiDateFrom" type="date"/);
 assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
-assert.match(html, /styles\.css\?v=41/);
-assert.match(html, /app\.js\?v=74/);
+assert.match(html, /styles\.css\?v=42/);
+assert.match(html, /app\.js\?v=76/);
+assert.match(styles, /\.heatmap-day-total-cell \{[\s\S]*?position: sticky;[\s\S]*?right: 0;/);
 assert.match(html, /id="finExpenseCategorySummary"/);
 assert.match(html, /id="finExpCategoryMonth"/);
 assert.match(html, /id="finExpenseList" class="event-list fin-expense-list"/);
