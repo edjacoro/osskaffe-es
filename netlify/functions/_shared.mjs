@@ -170,9 +170,18 @@ export async function updateState(mutator) {
     const entry = await store.getWithMetadata(STATE_KEY, { type: "json", consistency: "strong" });
     const current = entry?.data || null;
     const next = await mutator(current);
+    if (next === current) return current;
+    const stamped = {
+      ...(next || {}),
+      _meta: {
+        ...(next?._meta || {}),
+        revision: Number(current?._meta?.revision || 0) + 1,
+        updatedAt: new Date().toISOString(),
+      },
+    };
     const options = entry?.etag ? { onlyIfMatch: entry.etag } : { onlyIfNew: true };
-    const result = await store.setJSON(STATE_KEY, next, options);
-    if (result.modified) return next;
+    const result = await store.setJSON(STATE_KEY, stamped, options);
+    if (result.modified) return stamped;
     await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1) + Math.floor(Math.random() * 35)));
   }
   throw new Error("No se pudo guardar el estado por escrituras simultaneas.");
@@ -182,8 +191,7 @@ export async function replaceState(nextState) {
   if (!nextState || typeof nextState !== "object") {
     throw new Error("Estado invalido.");
   }
-  await stateStore().setJSON(STATE_KEY, nextState);
-  return nextState;
+  return updateState(() => nextState);
 }
 
 export async function replaceStateFromJsonText(stateJson) {
@@ -191,8 +199,7 @@ export async function replaceStateFromJsonText(stateJson) {
   if (!nextState || typeof nextState !== "object") {
     throw new Error("Estado invalido.");
   }
-  await stateStore().set(STATE_KEY, stateJson);
-  return nextState;
+  return replaceState(nextState);
 }
 
 export function isActiveEmployee(fullState, employeeId) {

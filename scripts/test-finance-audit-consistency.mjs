@@ -99,6 +99,8 @@ assert.match(
   /heatmap-summary-cell heatmap-day-total-cell"><strong>9<\/strong>/,
   "El extremo inferior derecho debe totalizar todos los pedidos con hora.",
 );
+assert.match(heatmapHtml, /<col class="heatmap-day-column">/);
+assert.match(heatmapHtml, /<col class="heatmap-total-column">/);
 
 const metricStart = appSource.indexOf("const COFFEE_ITEM_PATTERN");
 const metricEnd = appSource.indexOf("function calculateItemMetrics", metricStart);
@@ -143,13 +145,19 @@ assert.match(styles, /\.fin-import-layout \{[\s\S]*?0\.72fr[\s\S]*?1\.45fr/);
 assert.match(appSource, /id="analysisExportCsv">Exportar CSV/);
 assert.match(appSource, /function exportFinAnalysisCsv\(filters, groups\)/);
 assert.match(appSource, /getAnalysisFilterSummary\(filters\)/);
+assert.match(appSource, /function createAnalysisBaristaResolver\(\)/);
+assert.match(appSource, /if \(!shiftsByDate\.has\(sale\.date\)\) shiftsByDate\.set\(sale\.date, getShiftsForDate\(sale\.date\)\)/);
+assert.match(appSource, /const baristas = getAnalysisBaristaOptions\(allLocationSales\)/);
+assert.doesNotMatch(appSource, /allLocationSales\.flatMap\(saleBaristaLabels\)/);
 assert.match(appSource, /id="finAiDateFrom" type="date"/);
 assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
-assert.match(html, /styles\.css\?v=42/);
-assert.match(html, /app\.js\?v=76/);
+assert.match(html, /styles\.css\?v=44/);
+assert.match(html, /app\.js\?v=79/);
 assert.match(styles, /\.heatmap-day-total-cell \{[\s\S]*?position: sticky;[\s\S]*?right: 0;/);
+assert.match(styles, /@media \(min-width: 1100px\) \{[\s\S]*?\.traffic-visual-grid \{[\s\S]*?0\.34fr[\s\S]*?1\.66fr/);
+assert.match(styles, /\.traffic-visual-grid \.traffic-heatmap-scroll \{[\s\S]*?overflow-x: hidden/);
 assert.match(html, /id="finExpenseCategorySummary"/);
 assert.match(html, /id="finExpCategoryMonth"/);
 assert.match(html, /id="finExpenseList" class="event-list fin-expense-list"/);
@@ -238,7 +246,7 @@ const reportsSubnav = html.slice(html.indexOf('aria-label="Secciones de reportes
 assert.match(reportsSubnav, /data-fin-tab="audit"/);
 assert.match(reportsSubnav, /data-fin-tab="analysis"/);
 assert.match(reportsSubnav, /data-fin-tab="ai"/);
-assert.match(appSource, /let activeReportTab = 'audit'/);
+assert.match(appSource, /let activeReportTab = 'executive'/);
 assert.match(appSource, /function captureFinAiEditorState\(container\)/);
 assert.match(appSource, /finAiQuestionDraft = event\.currentTarget\.value/);
 assert.match(appSource, /restoreFinAiEditorState\(editorState\)/);

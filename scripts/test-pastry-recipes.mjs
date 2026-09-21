@@ -6,7 +6,7 @@ const match = source.match(/const PASTRY_RECIPES = (\[[\s\S]*?\n\]);\n\nconst DE
 assert.ok(match, "No se encontró el catálogo de recetas en app.js.");
 
 const recipes = Function(`"use strict"; return (${match[1]});`)();
-assert.equal(recipes.length, 6, "Deben existir exactamente seis recetas.");
+assert.equal(recipes.length, 7, "Deben existir exactamente siete recetas.");
 
 const expected = new Set([
   "Banana Bread",
@@ -15,6 +15,7 @@ const expected = new Set([
   "Budín de limón y amapola",
   "Carrot Cake",
   "Cookies de chocolate",
+  "Barritas raw de coco, naranja y dátiles",
 ]);
 
 recipes.forEach((recipe) => {
@@ -31,4 +32,10 @@ recipes.forEach((recipe) => {
 });
 
 assert.equal(expected.size, 0, `Faltan recetas: ${[...expected].join(", ")}`);
-console.log("OK: seis recetas, ingredientes, procedimientos y cantidades escalables.");
+const rawBars = recipes.find((recipe) => recipe.id === "raw-coconut-orange-date-bars");
+assert.ok(rawBars, "Debe estar incorporada la receta de barritas raw.");
+assert.equal(rawBars.ingredients.find((ingredient) => ingredient.name === "Chocolate negro 70%")?.quantity, 180);
+assert.equal(rawBars.ingredients.find((ingredient) => ingredient.name === "Ralladura de naranja")?.asNeeded, true);
+assert.match(rawBars.yieldLabel, /10 × 2,5 cm/);
+
+console.log("OK: siete recetas, ingredientes, procedimientos y cantidades escalables.");

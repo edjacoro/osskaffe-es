@@ -18,7 +18,7 @@ assert.match(appSource, /Guardado en Netlify/, "Debe confirmar visualmente la pe
 assert.match(appSource, /const editorLocationId = activeLocationId;/, "El editor debe conservar la tienda que se esta modificando.");
 assert.match(appSource, /getLocationSettings\(locationId\)/, "Los horarios deben guardarse por separado para cada tienda.");
 assert.match(html, /presioná GUARDAR en cada día modificado/);
-assert.match(html, /app\.js\?v=76/);
+assert.match(html, /app\.js\?v=79/);
 
 const openingStart = appSource.indexOf("function getDefaultOpeningPeriodsForDate");
 const openingEnd = appSource.indexOf("function getDefaultOpeningForDate", openingStart);
@@ -64,7 +64,7 @@ assert.doesNotMatch(shiftResolverSource, /getOpeningPeriodsForDate|constrainShif
   "Los horarios comerciales no deben recortar ni eliminar turnos de empleados.");
 assert.doesNotMatch(appSource, /function constrainShiftsToOpeningPeriods/,
   "No debe quedar activa la antigua regla de media hora antes o despues del local.");
-assert.match(appSource, /calculateStoreCoverage\(getOpeningPeriodsForDate\(dateKey\), getShiftsForDate\(dateKey\)\)/,
+assert.match(appSource, /calculateStoreCoverage\(\s*getOpeningPeriodsForDate\(dateKey,\s*resolvedLocationId\),\s*getShiftsForDate\(dateKey,\s*resolvedLocationId\),?\s*\)/,
   "La apertura debe seguir usandose para calcular cobertura y horas libres.");
 
 const saveOpeningStart = appSource.indexOf("async function saveOpeningOverride");

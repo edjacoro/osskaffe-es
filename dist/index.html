@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=42" />
+    <link rel="stylesheet" href="styles.css?v=44" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -420,14 +420,40 @@
               <h1 id="adminHomeTitle">Inicio</h1>
               <p id="adminHomeSubtitle">Resumen del día y estado de la tienda.</p>
             </div>
-            <div class="admin-home-date">
-              <span>Hoy</span>
-              <strong id="adminHomeDate">--</strong>
-              <small id="adminHomeSync">Datos disponibles en la aplicación</small>
+            <div class="admin-home-hero-actions">
+              <div class="admin-home-scope" role="group" aria-label="Alcance del resumen">
+                <button type="button" data-home-scope="store">Tienda actual</button>
+                <button class="is-active" type="button" data-home-scope="both">Ambas tiendas</button>
+              </div>
+              <div class="admin-home-date">
+                <span>Hoy</span>
+                <strong id="adminHomeDate">--</strong>
+                <small id="adminHomeSync">Datos disponibles en la aplicación</small>
+              </div>
             </div>
           </div>
 
           <div class="admin-home-kpis" id="adminHomeKpis" aria-label="Indicadores principales"></div>
+
+          <section class="admin-home-section admin-home-wide-section" aria-labelledby="adminHomeComparisonTitle">
+            <div class="section-heading-compact">
+              <div>
+                <p class="eyebrow">Comparación operativa</p>
+                <h2 id="adminHomeComparisonTitle">Tiendas</h2>
+              </div>
+            </div>
+            <div class="executive-store-grid" id="adminHomeComparison"></div>
+          </section>
+
+          <section class="admin-home-section admin-home-wide-section" aria-labelledby="adminHomeConfidenceTitle">
+            <div class="section-heading-compact">
+              <div>
+                <p class="eyebrow">Fiabilidad</p>
+                <h2 id="adminHomeConfidenceTitle">Estado de los datos</h2>
+              </div>
+            </div>
+            <div class="data-confidence-grid" id="adminHomeConfidence"></div>
+          </section>
 
           <div class="admin-home-content-grid">
             <section class="admin-home-section" aria-labelledby="adminHomeAccessTitle">
@@ -1007,7 +1033,7 @@
         <section class="panel tab-panel" id="reportsPanel" data-panel="reports">
           <div class="panel-heading reports-heading">
             <div>
-              <p class="eyebrow">Auditoría · análisis · consultas</p>
+              <p class="eyebrow">Gestión · auditoría · análisis · consultas</p>
               <h2>Reportes</h2>
             </div>
             <div class="fin-month-nav" id="reportsMonthNav">
@@ -1016,13 +1042,18 @@
               <button id="reportsNextMonth" class="icon-button" type="button" title="Mes siguiente">&#8250;</button>
             </div>
             <nav class="fin-subnav" aria-label="Secciones de reportes">
-              <button class="fin-tab is-active" data-fin-tab="audit" type="button">Auditoría</button>
+              <button class="fin-tab is-active" data-fin-tab="executive" type="button">Ejecutivo</button>
+              <button class="fin-tab" data-fin-tab="audit" type="button">Auditoría</button>
               <button class="fin-tab" data-fin-tab="analysis" type="button">Análisis</button>
               <button class="fin-tab" data-fin-tab="ai" type="button">IA</button>
             </nav>
           </div>
 
-          <div class="fin-panel is-visible" data-fin-panel="audit">
+          <div class="fin-panel is-visible" data-fin-panel="executive">
+            <div id="finExecutiveContent" style="padding:20px"></div>
+          </div>
+
+          <div class="fin-panel" data-fin-panel="audit">
             <div id="finAuditContent" style="padding:20px"></div>
           </div>
 
@@ -1195,6 +1226,8 @@
       <div class="empty-state">Sin registros por ahora.</div>
     </template>
 
-    <script src="app.js?v=75"></script>
+    <script src="app-core.js?v=1"></script>
+    <script src="app-insights.js?v=1"></script>
+    <script src="app.js?v=79"></script>
   </body>
 </html>

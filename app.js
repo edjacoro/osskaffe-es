@@ -606,6 +606,54 @@ const PASTRY_RECIPES = [
       },
     ],
   },
+  {
+    id: "raw-coconut-orange-date-bars",
+    name: "Barritas raw de coco, naranja y dátiles",
+    yieldLabel: "Molde de 200 g · corte de 10 × 2,5 cm",
+    ingredients: [
+      { group: "Base", name: "Dátiles hidratados y escurridos", quantity: 180, unit: "g" },
+      { group: "Base", name: "Harina de almendra", quantity: 120, unit: "g" },
+      { group: "Base", name: "Coco rallado", quantity: 40, unit: "g" },
+      { group: "Base", name: "Cacao", quantity: 20, unit: "g" },
+      { group: "Base", name: "Aceite de coco", quantity: 15, unit: "g" },
+      { group: "Base", name: "Sal", quantity: 1, unit: "pizca" },
+      { group: "Relleno", name: "Crema de coco", quantity: 250, unit: "g" },
+      { group: "Relleno", name: "Coco fino", quantity: 120, unit: "g" },
+      { group: "Relleno", name: "Miel", quantity: 40, unit: "g" },
+      { group: "Relleno", name: "Aceite de coco", quantity: 25, unit: "g" },
+      { group: "Relleno", name: "Ralladura de naranja", quantity: 0, unit: "a gusto", asNeeded: true },
+      { group: "Relleno", name: "Manteca de cacao", quantity: 20, unit: "g" },
+      { group: "Cobertura", name: "Chocolate negro 70%", quantity: 180, unit: "g" },
+      { group: "Cobertura", name: "Aceite de coco", quantity: 10, unit: "g" },
+    ],
+    procedures: [
+      {
+        title: "Base",
+        steps: [
+          "Procesar todos los ingredientes de la base hasta obtener una pasta.",
+          "Extender 200 g de preparación por molde o budinera con papel de horno.",
+          "Compactar y refrigerar.",
+        ],
+      },
+      {
+        title: "Relleno",
+        note: "Retirar la crema de coco de la nevera con anticipación.",
+        steps: [
+          "Mezclar la crema de coco con la miel y la ralladura de naranja.",
+          "Añadir el coco fino, la manteca de cacao fundida y el aceite de coco.",
+          "Extender el relleno sobre la base y refrigerar.",
+        ],
+      },
+      {
+        title: "Cobertura y corte",
+        steps: [
+          "Fundir el chocolate negro con el aceite de coco.",
+          "Colocar la cobertura sobre el relleno y dejar que tome frío.",
+          "Cortar las barritas en piezas de 10 × 2,5 cm.",
+        ],
+      },
+    ],
+  },
 ];
 
 const DEFAULT_STATE = {
@@ -644,6 +692,7 @@ let pendingEmployeeLocationId = null;
 let activePastryRecipeId = PASTRY_RECIPES[0].id;
 const pastryRecipeQuantities = Object.fromEntries(PASTRY_RECIPES.map((recipe) => [recipe.id, 1]));
 let activeAdminTab = "home";
+let adminHomeScope = "both";
 let activeEmployeeTab = "today";
 let selectedMobileWeekStart = "";
 let mobileScheduleFullMonth = false;
@@ -655,10 +704,12 @@ let adminFichaEditDraft = null;
 let adminBaseScheduleEditDraft = null;
 let sharedStateEnabled = false;
 let sharedStateSaveTimer = null;
-let sharedStatePollTimer = null;
 let sharedStateSaving = false;
 let sharedStatePending = false;
 let sharedStateRetryCount = 0;
+let sharedStateRevision = 0;
+let sharedStateEtag = null;
+let sharedStateMutationId = null;
 let suppressSharedStateSave = false;
 let sharedMutationQueue = Promise.resolve();
 let madridScheduleRetryTimer = null;
@@ -666,9 +717,14 @@ let madridScheduleRetryCount = 0;
 let pendingTeamRecoverySnapshot = { employees: [], profiles: {}, baseSchedules: {}, contracts: {} };
 let pendingEmployeeId = null;
 let empHoursMonth = firstDayOfMonth(new Date());
-let shiftNotificationTimer = null;
 let activeShiftEdit = null;
 const notifiedShiftKeys = new Set();
+const derivedDataCache = OssAppCore.createRevisionedCache();
+const backgroundCoordinator = OssAppCore.createBackgroundCoordinator();
+const bistroStatusByLocation = {
+  barcelona: { configured: null, connected: false, lastSyncAt: null, lastError: null },
+  madrid: { configured: null, connected: false, lastSyncAt: null, lastError: null },
+};
 
 const els = {
   monthTitle: document.querySelector("#monthTitle"),
@@ -716,6 +772,8 @@ const els = {
   adminHomeSync: document.querySelector("#adminHomeSync"),
   adminHomeKpis: document.querySelector("#adminHomeKpis"),
   adminHomeStatus: document.querySelector("#adminHomeStatus"),
+  adminHomeComparison: document.querySelector("#adminHomeComparison"),
+  adminHomeConfidence: document.querySelector("#adminHomeConfidence"),
   punchForm: document.querySelector("#punchForm"),
   punchEmployee: document.querySelector("#punchEmployee"),
   punchType: document.querySelector("#punchType"),
@@ -863,6 +921,16 @@ async function loadHistoricalData(version) {
 function bindEvents() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+  });
+
+  document.querySelectorAll("[data-home-scope]").forEach((button) => {
+    button.addEventListener("click", () => {
+      adminHomeScope = button.dataset.homeScope === "store" ? "store" : "both";
+      document.querySelectorAll("[data-home-scope]").forEach((candidate) => {
+        candidate.classList.toggle("is-active", candidate.dataset.homeScope === adminHomeScope);
+      });
+      renderAdminHome();
+    });
   });
 
   els.prevMonth.addEventListener("click", () => {
@@ -1093,7 +1161,8 @@ function updatePastryAccessVisibility() {
   if (employeeMobileButton) employeeMobileButton.hidden = !(appRole === "employee" && canAccessPastry());
 }
 
-function formatPastryQuantity(value, unit) {
+function formatPastryQuantity(value, unit, asNeeded = false) {
+  if (asNeeded) return "A gusto";
   const amount = Number.isFinite(value) ? value : 0;
   const formatted = new Intl.NumberFormat("es-ES", {
     minimumFractionDigits: 0,
@@ -1113,9 +1182,9 @@ function renderPastryIngredientRows(recipe, multiplier) {
     return `${groupRow}
       <tr>
         <td>${escapeHtml(ingredient.name)}</td>
-        <td>${formatPastryQuantity(ingredient.quantity, ingredient.unit)}</td>
-        <td class="pastry-required" data-pastry-total data-quantity="${ingredient.quantity}" data-unit="${escapeHtml(ingredient.unit)}">
-          ${formatPastryQuantity(ingredient.quantity * multiplier, ingredient.unit)}
+        <td>${formatPastryQuantity(ingredient.quantity, ingredient.unit, ingredient.asNeeded)}</td>
+        <td class="pastry-required" data-pastry-total data-quantity="${ingredient.quantity}" data-unit="${escapeHtml(ingredient.unit)}" data-as-needed="${ingredient.asNeeded ? "true" : "false"}">
+          ${formatPastryQuantity(ingredient.quantity * multiplier, ingredient.unit, ingredient.asNeeded)}
         </td>
       </tr>`;
   }).join("");
@@ -1199,7 +1268,7 @@ function updatePastryCalculation(container, recipeId, value) {
   pastryRecipeQuantities[recipeId] = multiplier;
   container.querySelectorAll("[data-pastry-total]").forEach((cell) => {
     const baseQuantity = Number(cell.dataset.quantity || 0);
-    cell.textContent = formatPastryQuantity(baseQuantity * multiplier, cell.dataset.unit || "");
+    cell.textContent = formatPastryQuantity(baseQuantity * multiplier, cell.dataset.unit || "", cell.dataset.asNeeded === "true");
   });
 }
 
@@ -1240,9 +1309,31 @@ function setActiveTab(tab) {
   if (topbar) topbar.style.display = isSchedule ? "" : "none";
   syncAdminMobileNavigation();
   closeMobileMore("admin");
+  if (tab === "reports") {
+    setActiveFinTab(activeReportTab);
+    return;
+  }
+  renderActiveAdminPanel(tab);
+}
+
+function renderActiveAdminPanel(tab = activeAdminTab) {
   if (tab === "home") renderAdminHome();
-  if (tab === "finanzas") renderFinanzas();
-  if (tab === "reports") setActiveFinTab(activeReportTab);
+  else if (tab === "schedule") {
+    renderPdfWeekPicker();
+    renderLegend();
+    renderSchedule();
+    renderStoreHoursEditor();
+    renderMetrics();
+  } else if (tab === "pastry") renderPasteleria();
+  else if (tab === "punch") renderPunches();
+  else if (tab === "changes") renderChanges();
+  else if (tab === "fichas") {
+    renderAdminFichas();
+    renderContratosPanel();
+    renderPersonnelPanel();
+  } else if (tab === "traffic") renderTraffic();
+  else if (tab === "finanzas" || tab === "reports") renderFinanzas();
+  else if (tab === "settings") renderHolidays();
 }
 
 function render() {
@@ -1250,23 +1341,7 @@ function render() {
   const month = activeMonth.getMonth();
   els.monthTitle.textContent = `Grilla ${getLocation().label} · ${MONTH_NAMES[month]} ${year}`;
   els.monthPicker.value = `${year}-${String(month + 1).padStart(2, "0")}`;
-
-  renderPdfWeekPicker();
-  renderLegend();
-  renderSchedule();
-  renderStoreHoursEditor();
-  renderMetrics();
-  renderPunches();
-  renderChanges();
-  renderTraffic();
-  renderHolidays();
-  renderAdminFichas();
-  renderContratosPanel();
-  renderPersonnelPanel();
-  renderFinanzas();
-  renderAdminHome();
-  renderPasteleria();
-  saveState();
+  renderActiveAdminPanel();
 }
 
 function getMondayForDate(date) {
@@ -1835,13 +1910,221 @@ function renderMetrics() {
   els.suggestionCount.textContent = String(suggestions.length);
 }
 
+const EXECUTIVE_LOCATION_IDS = Object.keys(LOCATIONS);
+
+function getMonthMetricsForLocation(monthDate, locationId) {
+  const monthKey = monthInputValue(monthDate);
+  const sales = getLocationSales(locationId).filter((sale) => sale.date.startsWith(monthKey));
+  const expenses = getLocationExpenses(locationId).filter((expense) => {
+    const effectiveDate = expense.isDiferido && expense.dueDate ? expense.dueDate : expense.date;
+    return String(effectiveDate || "").startsWith(monthKey);
+  });
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+  const ticketCount = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  return {
+    locationId,
+    totalSales,
+    ticketCount,
+    avgTicket: ticketCount > 0 ? totalSales / ticketCount : 0,
+    totalExpenses,
+    result: totalSales - totalExpenses,
+    sales,
+    expenses,
+  };
+}
+
+function getScheduledHoursForLocationMonth(monthDate, locationId) {
+  return getMonthDays(monthDate).reduce((total, date) => {
+    const dateKey = toDateInput(date);
+    return total + getShiftsForDate(dateKey, locationId)
+      .reduce((dayTotal, shift) => dayTotal + Math.max(0, shift.end - shift.start), 0);
+  }, 0);
+}
+
+function getRecordedLaborCost(monthMetrics) {
+  const laborCategories = new Set(["nominas", "mano_obra", "seguridad_social"]);
+  return monthMetrics.expenses
+    .filter((expense) => laborCategories.has(expense.category))
+    .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+}
+
+function getEstimatedLaborExtras(monthDate, locationId) {
+  const monthKey = monthInputValue(monthDate);
+  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+  const monthFactor = daysInMonth / 7;
+  const holidays = new Set(
+    (getLocationSettings(locationId).holidays || [])
+      .filter((holiday) => holiday.date.startsWith(monthKey))
+      .map((holiday) => holiday.date)
+  );
+  const monthEnd = toDateInput(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0));
+  const monthStart = `${monthKey}-01`;
+  let overtimeCost = 0;
+  let holidayCost = 0;
+  let configuredEmployees = 0;
+
+  // Recorremos la grilla mensual una sola vez. Antes se volvía a calcular
+  // el mes completo por cada empleado (y otra vez por los feriados), algo muy
+  // costoso en el informe ejecutivo.
+  const plannedHoursByEmployee = new Map();
+  const holidayHoursByEmployee = new Map();
+  getMonthDays(monthDate).forEach((date) => {
+    const dateKey = toDateInput(date);
+    const isHoliday = holidays.has(dateKey);
+    getShiftsForDate(dateKey, locationId).forEach((shift) => {
+      const duration = Math.max(0, shift.end - shift.start);
+      plannedHoursByEmployee.set(
+        shift.employeeId,
+        (plannedHoursByEmployee.get(shift.employeeId) || 0) + duration
+      );
+      if (isHoliday) {
+        holidayHoursByEmployee.set(
+          shift.employeeId,
+          (holidayHoursByEmployee.get(shift.employeeId) || 0) + duration
+        );
+      }
+    });
+  });
+
+  getAllEmployees(true)
+    .filter((employee) => !employee.system && employee.testEmployee !== true)
+    .filter((employee) => normalizeLocationId(employee.locationId) === normalizeLocationId(locationId))
+    .filter((employee) => (!employee.activeFrom || employee.activeFrom <= monthEnd) && (!employee.inactiveFrom || employee.inactiveFrom > monthStart))
+    .forEach((employee) => {
+      const contract = state.contracts?.[employee.id] || {};
+      const regularRate = Number(contract.hourlyRate || 0);
+      const overtimeRate = Number(contract.overtimeRate || (regularRate * Number(contract.overtimeMultiplier || 1.25)));
+      const holidayRate = Number(contract.holidayRate || 0);
+      if (regularRate > 0 || overtimeRate > 0 || holidayRate > 0) configuredEmployees += 1;
+      const plannedHours = plannedHoursByEmployee.get(employee.id) || 0;
+      const contractedHours = Number(contract.hoursPerWeek ?? 40) * monthFactor;
+      overtimeCost += Math.max(0, plannedHours - contractedHours) * overtimeRate;
+      holidayCost += (holidayHoursByEmployee.get(employee.id) || 0) * holidayRate;
+    });
+
+  return { overtimeCost, holidayCost, configuredEmployees };
+}
+
+function getLaborProductivityForLocation(monthDate, locationId, monthMetrics = null) {
+  const metrics = monthMetrics || getMonthMetricsForLocation(monthDate, locationId);
+  const plannedHours = getScheduledHoursForLocationMonth(monthDate, locationId);
+  const punchedHours = getRealHoursForMonth(monthDate, locationId);
+  const laborCost = getRecordedLaborCost(metrics);
+  return {
+    ...OssInsights.calculateLaborProductivity({
+      sales: metrics.totalSales,
+      plannedHours,
+      punchedHours,
+      laborCost,
+    }),
+    ...getEstimatedLaborExtras(monthDate, locationId),
+  };
+}
+
+function getDataConfidenceForLocation(monthDate, locationId) {
+  const monthKey = monthInputValue(monthDate);
+  const monthStart = `${monthKey}-01`;
+  const monthEnd = toDateInput(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0));
+  const today = toDateInput(new Date());
+  const observedEnd = monthStart > today ? null : (monthEnd > today ? today : monthEnd);
+  const sales = getLocationSales(locationId).filter((sale) => sale.date.startsWith(monthKey));
+  const ticketCount = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const detailTickets = sales.reduce((sum, sale) =>
+    sum + (Array.isArray(sale.items) && sale.items.length ? Number(sale.count || 1) : 0), 0);
+  const salesDates = new Set(sales.filter((sale) => Number(sale.count || 1) > 0).map((sale) => sale.date));
+  const missingOpenDates = [];
+  if (observedEnd) {
+    const cursor = parseDateKey(monthStart);
+    const last = parseDateKey(observedEnd);
+    while (cursor <= last) {
+      const dateKey = toDateInput(cursor);
+      if (getOpeningPeriodsForDate(dateKey, locationId).length && !salesDates.has(dateKey)) missingOpenDates.push(dateKey);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+  const syncStatus = bistroStatusByLocation[locationId] || {};
+  const status = OssInsights.buildConfidenceStatus({
+    ticketCount,
+    detailTickets,
+    missingOpenDays: missingOpenDates.length,
+    syncError: syncStatus.lastError,
+  });
+  return {
+    locationId,
+    ticketCount,
+    detailTickets,
+    missingOpenDates,
+    lastSaleDate: sales.map((sale) => sale.date).sort().at(-1) || null,
+    lastSyncAt: syncStatus.lastSyncAt || null,
+    configured: syncStatus.configured,
+    connected: syncStatus.connected,
+    syncError: syncStatus.lastError || null,
+    ...status,
+  };
+}
+
+function formatSyncMoment(value) {
+  if (!value) return "Sin confirmación reciente";
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function renderDataConfidenceCard(confidence) {
+  const location = getLocation(confidence.locationId);
+  const missingLabel = confidence.missingOpenDates.length
+    ? `${confidence.missingOpenDates.length} día${confidence.missingOpenDates.length === 1 ? "" : "s"}`
+    : "0 días";
+  return `
+    <article class="data-confidence-card is-${confidence.tone}">
+      <div class="data-confidence-title">
+        <div><span>${escapeHtml(location.shortLabel || location.label)}</span><strong>${escapeHtml(location.label)}</strong></div>
+        <span class="confidence-badge">${escapeHtml(confidence.label)}</span>
+      </div>
+      <dl>
+        <div><dt>Última sincronización</dt><dd>${escapeHtml(formatSyncMoment(confidence.lastSyncAt))}</dd></div>
+        <div><dt>Detalle de productos</dt><dd>${confidence.detailTickets.toLocaleString("es-ES")} / ${confidence.ticketCount.toLocaleString("es-ES")} tickets</dd></div>
+        <div><dt>Días abiertos sin ventas</dt><dd>${missingLabel}</dd></div>
+        <div><dt>Último día con ventas</dt><dd>${confidence.lastSaleDate ? formatNumericDate(confidence.lastSaleDate) : "—"}</dd></div>
+      </dl>
+    </article>`;
+}
+
+function renderExecutiveStoreCard(locationId, dayMetrics, monthMetrics, coverage) {
+  const location = getLocation(locationId);
+  const resultClass = monthMetrics.result >= 0 ? "is-positive" : "is-negative";
+  return `
+    <article class="executive-store-card">
+      <header><div><span>${escapeHtml(location.shortLabel || location.label)}</span><h3>${escapeHtml(location.label)}</h3></div><strong>${dayMetrics.totalSales ? formatEur(dayMetrics.totalSales) : "—"}<small>hoy</small></strong></header>
+      <div class="executive-store-metrics">
+        <div><span>Ventas mes</span><strong>${monthMetrics.totalSales ? formatEur(monthMetrics.totalSales) : "—"}</strong></div>
+        <div><span>Tickets mes</span><strong>${monthMetrics.ticketCount ? monthMetrics.ticketCount.toLocaleString("es-ES") : "—"}</strong></div>
+        <div class="${resultClass}"><span>Resultado mes</span><strong>${monthMetrics.totalSales || monthMetrics.totalExpenses ? `${monthMetrics.result >= 0 ? "+" : ""}${formatEur(monthMetrics.result)}` : "—"}</strong></div>
+        <div class="${coverage.freeHours > 0 ? "is-warning" : "is-positive"}"><span>H. libres</span><strong>${formatHours(coverage.freeHours)}</strong></div>
+      </div>
+    </article>`;
+}
+
 function renderAdminHome() {
   if (!els.adminHomeKpis || !els.adminHomeStatus) return;
   const now = new Date();
   const todayKey = toDateInput(now);
-  const metrics = calcDayMetrics(todayKey);
-  const coverage = getMonthlyStoreCoverage(firstDayOfMonth(now));
-  const projection = getMonthSalesProjection(now);
+  const monthDate = firstDayOfMonth(now);
+  const locationIds = adminHomeScope === "both" ? EXECUTIVE_LOCATION_IDS : [activeLocationId];
+  const dayRows = locationIds.map((locationId) => calcDayMetricsForLocation(todayKey, locationId));
+  const metrics = OssInsights.combineFinancialMetrics(dayRows);
+  const monthRows = locationIds.map((locationId) => getMonthMetricsForLocation(monthDate, locationId));
+  const coverages = locationIds.map((locationId) => getMonthlyStoreCoverage(monthDate, locationId));
+  const coverage = coverages.reduce((total, item) => ({
+    openHours: total.openHours + item.openHours,
+    coveredHours: total.coveredHours + item.coveredHours,
+    freeHours: total.freeHours + item.freeHours,
+  }), { openHours: 0, coveredHours: 0, freeHours: 0 });
+  const projected = locationIds.reduce((sum, locationId) => sum + getMonthSalesProjection(now, locationId).projected, 0);
   const hasDayData = metrics.totalSales > 0 || metrics.totalExpenses > 0;
   const resultClass = metrics.result >= 0 ? "is-positive" : "is-negative";
   const dateText = new Intl.DateTimeFormat("es-ES", {
@@ -1850,9 +2133,14 @@ function renderAdminHome() {
     month: "long",
   }).format(now);
 
-  if (els.adminHomeTitle) els.adminHomeTitle.textContent = `Inicio ${getLocation().label}`;
+  document.querySelectorAll("[data-home-scope]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.homeScope === adminHomeScope);
+  });
+  if (els.adminHomeTitle) els.adminHomeTitle.textContent = adminHomeScope === "both" ? "Inicio ÖSS Kaffe" : `Inicio ${getLocation().label}`;
   if (els.adminHomeSubtitle) {
-    els.adminHomeSubtitle.textContent = "Resumen del día y estado operativo de la tienda.";
+    els.adminHomeSubtitle.textContent = adminHomeScope === "both"
+      ? "Resumen consolidado de Barcelona y Madrid."
+      : "Resumen del día y estado operativo de la tienda.";
   }
   if (els.adminHomeDate) {
     els.adminHomeDate.textContent = dateText.charAt(0).toUpperCase() + dateText.slice(1);
@@ -1888,7 +2176,7 @@ function renderAdminHome() {
     </div>
     <div class="admin-home-status-item">
       <span>Proyección del mes</span>
-      <strong>${projection.projected > 0 ? formatEur(projection.projected) : "—"}</strong>
+      <strong>${projected > 0 ? formatEur(projected) : "—"}</strong>
     </div>
     <div class="admin-home-status-item">
       <span>Horas de tienda este mes</span>
@@ -1896,13 +2184,36 @@ function renderAdminHome() {
     </div>
   `;
 
+  if (els.adminHomeComparison) {
+    els.adminHomeComparison.innerHTML = locationIds.map((locationId, index) =>
+      renderExecutiveStoreCard(locationId, dayRows[index], monthRows[index], coverages[index])
+    ).join("");
+  }
+  if (els.adminHomeConfidence) {
+    els.adminHomeConfidence.innerHTML = locationIds
+      .map((locationId) => renderDataConfidenceCard(getDataConfidenceForLocation(monthDate, locationId)))
+      .join("");
+  }
+
   renderAdminHomeSyncStatus();
 }
 
 function renderAdminHomeSyncStatus() {
   if (!els.adminHomeSync || typeof finBistroSync === "undefined") return;
+  if (sharedStateSaving || sharedStatePending) {
+    els.adminHomeSync.textContent = "Guardando cambios en Netlify…";
+    return;
+  }
   if (finBistroSync.syncing) {
     els.adminHomeSync.textContent = "Bistrosoft sincronizando…";
+    return;
+  }
+  if (adminHomeScope === "both") {
+    els.adminHomeSync.textContent = EXECUTIVE_LOCATION_IDS.map((locationId) => {
+      const status = bistroStatusByLocation[locationId] || {};
+      const code = getLocation(locationId).shortLabel || getLocation(locationId).label;
+      return `${code}: ${status.lastSyncAt ? formatSyncMoment(status.lastSyncAt) : "sin confirmar"}`;
+    }).join(" · ");
     return;
   }
   if (finBistroSync.connected && finBistroSync.lastSyncAt) {
@@ -1918,6 +2229,39 @@ function renderAdminHomeSyncStatus() {
   els.adminHomeSync.textContent = finBistroSync.error
     ? "Mostrando los últimos datos guardados"
     : "Datos disponibles en la aplicación";
+}
+
+async function refreshBistroStatusOverview() {
+  if (appRole !== "admin") return;
+  await Promise.all(EXECUTIVE_LOCATION_IDS.map(async (locationId) => {
+    try {
+      const response = await fetch(`/api/bistrosoft/status?location=${encodeURIComponent(locationId)}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const status = await response.json();
+      bistroStatusByLocation[locationId] = {
+        configured: !!status.configured,
+        connected: !!status.connected,
+        lastSyncAt: status.lastSyncAt || null,
+        lastError: status.lastError || null,
+      };
+    } catch (error) {
+      bistroStatusByLocation[locationId] = {
+        ...bistroStatusByLocation[locationId],
+        lastError: error?.message || "No se pudo consultar Bistrosoft.",
+      };
+    }
+  }));
+  if (activeAdminTab === "home") renderAdminHome();
+  else if (activeAdminTab === "reports" && activeFinTab === "executive") renderFinExecutive();
+}
+
+function startBistroStatusOverview() {
+  if (appRole !== "admin") return;
+  refreshBistroStatusOverview();
+  backgroundCoordinator.start("bistro-status-overview", refreshBistroStatusOverview, 60000);
 }
 
 function renderPunches() {
@@ -2144,6 +2488,7 @@ function renderHolidays() {
       updateLocationSettings({
         holidays: (getLocationSettings().holidays || []).filter((holiday) => holiday.date !== button.dataset.removeHoliday),
       });
+      saveState();
       render();
     });
   });
@@ -2174,6 +2519,7 @@ async function handlePunch(event) {
   });
 
   els.geoStatus.textContent = geoResult.message;
+  saveState();
   render();
 }
 
@@ -2212,6 +2558,7 @@ function createMockPunches() {
     geoLabel: "Simulado",
   });
   els.geoStatus.textContent = "Fichaje simulado creado.";
+  saveState();
   render();
 }
 
@@ -2310,6 +2657,7 @@ function saveSettings() {
     geoRadius: Number(els.geoRadius.value || 120),
     lateTolerance: Number(els.lateTolerance.value || 5),
   });
+  saveState();
   render();
 }
 
@@ -2579,6 +2927,7 @@ function addHoliday() {
     ],
   });
   els.holidayName.value = "";
+  saveState();
   render();
 }
 
@@ -2875,13 +3224,14 @@ function getSchedulePlanShiftsForDate(schedulePlans, locationId, dateKey) {
   return { plan, weekIndex, shifts };
 }
 
-function getBaseShifts(dateKey) {
-  const planned = getSchedulePlanShiftsForDate(state.schedulePlans, activeLocationId, dateKey);
+function getBaseShifts(dateKey, locationId = activeLocationId) {
+  const resolvedLocationId = normalizeLocationId(locationId);
+  const planned = getSchedulePlanShiftsForDate(state.schedulePlans, resolvedLocationId, dateKey);
   const date = parseDateKey(dateKey);
   const day = date.getDay();
   const shifts = [];
   const employees = getAllEmployees(true)
-    .filter((employee) => normalizeLocationId(employee.locationId) === activeLocationId);
+    .filter((employee) => normalizeLocationId(employee.locationId) === resolvedLocationId);
   const employeeIds = new Set(employees.map((employee) => employee.id));
   const overriddenEmployeeIds = new Set(employees
     .filter((employee) => getEmployeeScheduleVersionForDate(employee.id, dateKey))
@@ -2920,17 +3270,20 @@ function getBaseShifts(dateKey) {
   return shifts;
 }
 
-function getShiftsForDate(dateKey) {
-  let shifts = getBaseShifts(dateKey);
-  const approved = getLocationChanges().filter((change) =>
-    change.status === "approved" && changeAppliesToDate(change, dateKey)
-  );
-  shifts = applyApprovedChangesToShifts(shifts, approved);
+function getShiftsForDate(dateKey, locationId = activeLocationId) {
+  const resolvedLocationId = normalizeLocationId(locationId);
+  return derivedDataCache.get(`shifts:${resolvedLocationId}:${dateKey}`, () => {
+    let shifts = getBaseShifts(dateKey, resolvedLocationId);
+    const approved = getLocationChanges(resolvedLocationId).filter((change) =>
+      change.status === "approved" && changeAppliesToDate(change, dateKey)
+    );
+    shifts = applyApprovedChangesToShifts(shifts, approved);
 
-  return shifts
-    .filter((shift) => getEmployeeLocationId(shift.employeeId) === activeLocationId)
-    .filter((shift) => isEmployeeActiveOnDate(getEmployee(shift.employeeId, dateKey), dateKey))
-    .sort((a, b) => a.start - b.start || a.end - b.end);
+    return shifts
+      .filter((shift) => getEmployeeLocationId(shift.employeeId) === resolvedLocationId)
+      .filter((shift) => isEmployeeActiveOnDate(getEmployee(shift.employeeId, dateKey), dateKey))
+      .sort((a, b) => a.start - b.start || a.end - b.end);
+  });
 }
 
 function getOpenLabel(day) {
@@ -2944,55 +3297,59 @@ function getOpeningOverride(dateKey, locationId = activeLocationId) {
 }
 
 function getDefaultOpeningPeriodsForDate(dateKey, locationId = activeLocationId) {
+  const resolvedLocationId = normalizeLocationId(locationId);
   const day = new Date(`${dateKey}T12:00:00`).getDay();
-  if (normalizeLocationId(locationId) === "madrid" && dateKey >= MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM) {
+  if (resolvedLocationId === "madrid" && dateKey >= MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM) {
     return day >= 1 && day <= 5
       ? [{ open: "08:00", close: "19:00" }]
       : [{ open: "10:00", close: "20:00" }];
   }
-  const holiday = getHoliday(dateKey);
+  const holiday = getHoliday(dateKey, resolvedLocationId);
   if (holiday) return [{ open: holiday.open || "10:00", close: holiday.close || "19:00" }];
-  return getRegularOpeningPeriods(day).map((period) => ({
+  return getRegularOpeningPeriods(day, resolvedLocationId).map((period) => ({
     open: formatHour(period.open),
     close: formatHour(period.close),
   }));
 }
 
-function getDefaultOpeningForDate(dateKey) {
-  const periods = getDefaultOpeningPeriodsForDate(dateKey);
+function getDefaultOpeningForDate(dateKey, locationId = activeLocationId) {
+  const periods = getDefaultOpeningPeriodsForDate(dateKey, locationId);
   return {
     open: String(periods[0].open),
     close: String(periods[periods.length - 1].close),
   };
 }
 
-function getOpenLabelForDate(dateKey) {
-  const override = getOpeningOverride(dateKey);
-  const holiday = getHoliday(dateKey);
+function getOpenLabelForDate(dateKey, locationId = activeLocationId) {
+  const override = getOpeningOverride(dateKey, locationId);
+  const holiday = getHoliday(dateKey, locationId);
   if (override?.closed) return holiday ? `${holiday.name || "Feriado"} · cerrado` : "Cerrado";
   if (override?.open && override?.close) {
     return `${holiday ? `${holiday.name || "Feriado"} · ` : ""}${override.open}-${override.close} local`;
   }
-  const defaults = getDefaultOpeningForDate(dateKey);
+  const defaults = getDefaultOpeningForDate(dateKey, locationId);
   return `${holiday ? `${holiday.name || "Feriado"} · ` : ""}${defaults.open}-${defaults.close} local`;
 }
 
-function getOpeningPeriodsForDate(dateKey) {
-  const override = getOpeningOverride(dateKey);
-  if (override?.closed) return [];
+function getOpeningPeriodsForDate(dateKey, locationId = activeLocationId) {
+  const resolvedLocationId = normalizeLocationId(locationId);
+  return derivedDataCache.get(`opening:${resolvedLocationId}:${dateKey}`, () => {
+    const override = getOpeningOverride(dateKey, resolvedLocationId);
+    if (override?.closed) return [];
 
-  let periods;
-  if (override?.open && override?.close) {
-    periods = [{ open: override.open, close: override.close }];
-  } else {
-    periods = getDefaultOpeningPeriodsForDate(dateKey);
-  }
+    let periods;
+    if (override?.open && override?.close) {
+      periods = [{ open: override.open, close: override.close }];
+    } else {
+      periods = getDefaultOpeningPeriodsForDate(dateKey, resolvedLocationId);
+    }
 
-  return periods.map((period) => {
-    const open = typeof period.open === "number" ? period.open : timeToDecimal(period.open);
-    const close = typeof period.close === "number" ? period.close : timeToDecimal(period.close);
-    return { open, close };
-  }).filter((period) => Number.isFinite(period.open) && Number.isFinite(period.close) && period.close > period.open);
+    return periods.map((period) => {
+      const open = typeof period.open === "number" ? period.open : timeToDecimal(period.open);
+      const close = typeof period.close === "number" ? period.close : timeToDecimal(period.close);
+      return { open, close };
+    }).filter((period) => Number.isFinite(period.open) && Number.isFinite(period.close) && period.close > period.open);
+  });
 }
 
 function calculateStoreCoverage(openingPeriods = [], shifts = []) {
@@ -3022,11 +3379,17 @@ function calculateStoreCoverage(openingPeriods = [], shifts = []) {
   };
 }
 
-function getStoreCoverageForDate(dateKey) {
-  return calculateStoreCoverage(getOpeningPeriodsForDate(dateKey), getShiftsForDate(dateKey));
+function getStoreCoverageForDate(dateKey, locationId = activeLocationId) {
+  const resolvedLocationId = normalizeLocationId(locationId);
+  return derivedDataCache.get(`coverage:${resolvedLocationId}:${dateKey}`, () =>
+    calculateStoreCoverage(
+      getOpeningPeriodsForDate(dateKey, resolvedLocationId),
+      getShiftsForDate(dateKey, resolvedLocationId),
+    )
+  );
 }
 
-function getStoreCoverageForRange(dateFrom, dateTo) {
+function getStoreCoverageForRange(dateFrom, dateTo, locationId = activeLocationId) {
   const result = { openHours: 0, coveredHours: 0, freeHours: 0, days: [] };
   if (!dateFrom || !dateTo || dateFrom > dateTo) return result;
 
@@ -3034,7 +3397,7 @@ function getStoreCoverageForRange(dateFrom, dateTo) {
   const last = parseDateKey(dateTo);
   while (cursor <= last) {
     const dateKey = toDateInput(cursor);
-    const coverage = getStoreCoverageForDate(dateKey);
+    const coverage = getStoreCoverageForDate(dateKey, locationId);
     result.openHours += coverage.openHours;
     result.coveredHours += coverage.coveredHours;
     result.freeHours += coverage.freeHours;
@@ -3044,10 +3407,10 @@ function getStoreCoverageForRange(dateFrom, dateTo) {
   return result;
 }
 
-function getMonthlyStoreCoverage(monthDate = activeMonth) {
+function getMonthlyStoreCoverage(monthDate = activeMonth, locationId = activeLocationId) {
   const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const last = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
-  return getStoreCoverageForRange(toDateInput(first), toDateInput(last));
+  return getStoreCoverageForRange(toDateInput(first), toDateInput(last), locationId);
 }
 
 async function saveOpeningOverride(dateKey, values, locationId = activeLocationId) {
@@ -3212,8 +3575,8 @@ function renderStoreHoursEditor() {
   });
 }
 
-function getRegularOpeningPeriods(day) {
-  if (activeLocationId === "madrid") {
+function getRegularOpeningPeriods(day, locationId = activeLocationId) {
+  if (normalizeLocationId(locationId) === "madrid") {
     if (day === 1) return [{ open: 8.5, close: 14 }, { open: 16, close: 19 }];
     if (day >= 2 && day <= 5) return [{ open: 8.5, close: 14 }, { open: 16, close: 20 }];
     if (day === 6) return [{ open: 9, close: 14 }, { open: 16, close: 20 }];
@@ -3224,16 +3587,16 @@ function getRegularOpeningPeriods(day) {
   return [{ open: 8.5, close: 19 }];
 }
 
-function getRegularOpeningHours(day) {
-  const periods = getRegularOpeningPeriods(day);
+function getRegularOpeningHours(day, locationId = activeLocationId) {
+  const periods = getRegularOpeningPeriods(day, locationId);
   if (Array.isArray(periods)) {
     return { open: periods[0].open, close: periods[periods.length - 1].close };
   }
   return periods;
 }
 
-function getHoliday(dateKey) {
-  return (getLocationSettings().holidays || []).find((holiday) => holiday.date === dateKey);
+function getHoliday(dateKey, locationId = activeLocationId) {
+  return (getLocationSettings(locationId).holidays || []).find((holiday) => holiday.date === dateKey);
 }
 
 function makeShift(employeeId, start, end, source) {
@@ -3438,9 +3801,9 @@ function getPunchStatus(employeeId, dateKey, timestamp, geoResult) {
   return timestamp.getTime() > scheduledStart.getTime() + tolerance ? "late" : geoResult.status;
 }
 
-function getRealHoursForMonth(monthDate) {
+function getRealHoursForMonth(monthDate, locationId = activeLocationId) {
   const monthKey = monthInputValue(monthDate);
-  const punches = getLocationPunches()
+  const punches = getLocationPunches(locationId)
     .filter((punch) => punch.date.startsWith(monthKey))
     .slice()
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -3625,7 +3988,8 @@ function renderHourlyHeatmap(analysis) {
     <section class="traffic-heatmap-panel">
       <h3>Mapa de calor <small>tickets por día y hora · valor estimado con ticket promedio ${formatEur(averageTicket)}</small></h3>
       <div class="traffic-heatmap-scroll">
-      <table class="fin-table heatmap-table">
+      <table class="fin-table heatmap-table${hours.length > 14 ? ' is-dense' : ''}">
+        <colgroup><col class="heatmap-day-column">${hours.map(() => '<col class="heatmap-hour-column">').join('')}<col class="heatmap-total-column"></colgroup>
         <thead><tr><th>Día</th>${hours.map((hour) => `<th>${String(hour).padStart(2, '0')}h</th>`).join('')}<th class="heatmap-day-total-header">Total día<small>pedidos · €</small></th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
@@ -3821,12 +4185,15 @@ function saveLocalStateSnapshot() {
 }
 
 function saveState(options = {}) {
+  if (options.invalidate !== false) invalidateDerivedData();
   saveLocalStateSnapshot();
   if (options.shared !== false) scheduleSharedStateSave();
 }
 
-function scheduleSharedStateSave(delay = 250) {
+function scheduleSharedStateSave(delay = 250, options = {}) {
   if (!sharedStateEnabled || suppressSharedStateSave || appRole === 'visitor') return;
+  if (options.retry !== true) sharedStateMutationId = createId();
+  else if (!sharedStateMutationId) sharedStateMutationId = createId();
   sharedStatePending = true;
   clearTimeout(sharedStateSaveTimer);
   setSharedSaveStatus("Guardando en Netlify...", "saving");
@@ -3839,12 +4206,13 @@ async function flushSharedState() {
   sharedStateSaveTimer = null;
   sharedStatePending = false;
   sharedStateSaving = true;
+  const mutationId = sharedStateMutationId || createId();
   try {
     const response = await enqueueSharedMutation(() => fetch('/api/state', {
       method: 'PUT',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state }),
+      body: JSON.stringify({ state, baseRevision: sharedStateRevision, mutationId }),
     }));
     if (response.status === 403 && appRole === 'employee') {
       sharedStatePending = false;
@@ -3856,6 +4224,10 @@ async function flushSharedState() {
       const detail = await parseApiError(response, 'No se pudo guardar el estado compartido.');
       throw new Error(`${detail} (HTTP ${response.status})`);
     }
+    const payload = await response.json().catch(() => ({}));
+    sharedStateRevision = Math.max(sharedStateRevision, Number(payload.revision || 0));
+    sharedStateEtag = response.headers.get('etag') || sharedStateEtag;
+    if (sharedStateMutationId === mutationId) sharedStateMutationId = null;
     sharedStateRetryCount = 0;
     setSharedSaveStatus("Datos guardados", "saved");
   } catch (error) {
@@ -3867,7 +4239,7 @@ async function flushSharedState() {
     sharedStateSaving = false;
     if (sharedStatePending) {
       const retryDelay = Math.min(30000, 750 * (2 ** Math.min(sharedStateRetryCount - 1, 5)));
-      scheduleSharedStateSave(retryDelay);
+      scheduleSharedStateSave(retryDelay, { retry: true });
       setSharedSaveStatus("Guardado pendiente · reintentando", "pending");
     } else {
       markSharedSaveComplete();
@@ -3920,6 +4292,8 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
     const stateResponse = await fetch('/api/state', { credentials: 'same-origin', cache: 'no-store' });
     if (!stateResponse.ok) throw new Error('No se pudo cargar el estado compartido.');
     const payload = await stateResponse.json();
+    sharedStateRevision = Math.max(0, Number(payload.revision || payload.state?._meta?.revision || 0));
+    sharedStateEtag = stateResponse.headers.get('etag') || null;
 
     if (payload.state) {
       const localSnapshot = state;
@@ -3955,6 +4329,7 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
         }
       });
       state = serverState;
+      invalidateDerivedData();
       let recoveredTeamMembers = 0;
       const failedRecoveryIds = new Set();
       for (const employee of recoverableEmployees) {
@@ -3987,8 +4362,7 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
         markSharedSaveComplete();
       }
       if (role !== 'visitor') saveLocalStateSnapshot();
-      clearInterval(sharedStatePollTimer);
-      sharedStatePollTimer = setInterval(refreshSharedState, 15000);
+      backgroundCoordinator.start("shared-state", refreshSharedState, 15000);
       return {
         available: true,
         authenticated: true,
@@ -4001,8 +4375,7 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
       scheduleSharedStateSave();
     }
 
-    clearInterval(sharedStatePollTimer);
-    sharedStatePollTimer = setInterval(refreshSharedState, 15000);
+    backgroundCoordinator.start("shared-state", refreshSharedState, 15000);
     return { available: true, authenticated: true, error: null };
   } catch (error) {
     sharedStateEnabled = false;
@@ -4020,7 +4393,12 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
 async function refreshSharedState() {
   if (!sharedStateEnabled || sharedStateSaving || sharedStatePending) return;
   try {
-    const response = await fetch('/api/state', { credentials: 'same-origin', cache: 'no-store' });
+    const response = await fetch('/api/state', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: sharedStateEtag ? { 'If-None-Match': sharedStateEtag } : {},
+    });
+    if (response.status === 304) return;
     if (response.status === 403 && appRole === 'employee') {
       alert('Tu acceso fue dado de baja por el administrador.');
       exitToRoleScreen({ savePending: false });
@@ -4032,6 +4410,9 @@ async function refreshSharedState() {
 
     suppressSharedStateSave = true;
     state = seedDefaultHolidays(mergeState(DEFAULT_STATE, payload.state));
+    sharedStateRevision = Math.max(0, Number(payload.revision || payload.state?._meta?.revision || 0));
+    sharedStateEtag = response.headers.get('etag') || sharedStateEtag;
+    invalidateDerivedData();
     saveLocalStateSnapshot();
     if ((appRole === 'admin' || appRole === 'visitor') && adminInited) render();
     else if (appRole === 'employee') renderEmployeeView();
@@ -4043,8 +4424,9 @@ async function refreshSharedState() {
 }
 
 async function disconnectSharedState(options = {}) {
-  clearInterval(sharedStatePollTimer);
-  sharedStatePollTimer = null;
+  backgroundCoordinator.stop("shared-state");
+  backgroundCoordinator.stop("bistro-sync");
+  backgroundCoordinator.stop("bistro-status-overview");
   clearTimeout(madridScheduleRetryTimer);
   madridScheduleRetryTimer = null;
   madridScheduleRetryCount = 0;
@@ -4056,6 +4438,9 @@ async function disconnectSharedState(options = {}) {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
   }
   sharedStateEnabled = false;
+  sharedStateRevision = 0;
+  sharedStateEtag = null;
+  sharedStateMutationId = null;
 }
 
 function mergeState(base, saved) {
@@ -4408,9 +4793,9 @@ function belongsToActiveLocation(item) {
 
 function getLocationSettings(locationId = activeLocationId) {
   const id = normalizeLocationId(locationId);
-  if (!state.locationSettings) state.locationSettings = structuredClone(DEFAULT_LOCATION_SETTINGS);
-  if (!state.locationSettings[id]) state.locationSettings[id] = structuredClone(DEFAULT_LOCATION_SETTINGS[id]);
-  return state.locationSettings[id];
+  return state.locationSettings?.[id]
+    || DEFAULT_LOCATION_SETTINGS[id]
+    || DEFAULT_LOCATION_SETTINGS[DEFAULT_LOCATION_ID];
 }
 
 function updateLocationSettings(values, locationId = activeLocationId) {
@@ -4427,37 +4812,55 @@ function updateLocationSettings(values, locationId = activeLocationId) {
   }
 }
 
-function getLocationSales(locationId = activeLocationId) {
+function invalidateDerivedData() {
+  derivedDataCache.invalidate();
+}
+
+function getCachedLocationRecords(cacheKey, records, locationId) {
   const id = normalizeLocationId(locationId);
-  return (state.sales || []).filter((sale) => normalizeLocationId(sale.locationId) === id);
+  return derivedDataCache.get(`${cacheKey}:${id}`, () =>
+    (records || []).filter((record) => normalizeLocationId(record.locationId) === id)
+  );
+}
+
+function getLocationSales(locationId = activeLocationId) {
+  return getCachedLocationRecords("sales", state.sales, locationId);
 }
 
 function getLocationExpenses(locationId = activeLocationId) {
-  const id = normalizeLocationId(locationId);
-  return (state.expenses || []).filter((expense) => normalizeLocationId(expense.locationId) === id);
+  return getCachedLocationRecords("expenses", state.expenses, locationId);
 }
 
 function getLocationWasteRecords(locationId = activeLocationId) {
-  const id = normalizeLocationId(locationId);
-  return (state.wasteRecords || []).filter((record) => normalizeLocationId(record.locationId) === id);
+  return getCachedLocationRecords("waste", state.wasteRecords, locationId);
 }
 
 function getLocationPunches(locationId = activeLocationId) {
   const id = normalizeLocationId(locationId);
-  return (state.punches || []).filter((punch) => normalizeLocationId(punch.locationId || getEmployeeLocationId(punch.employeeId)) === id);
+  return derivedDataCache.get(`punches:${id}`, () =>
+    (state.punches || []).filter((punch) => normalizeLocationId(punch.locationId || getEmployeeLocationId(punch.employeeId)) === id)
+  );
 }
 
 function getLocationChanges(locationId = activeLocationId) {
   const id = normalizeLocationId(locationId);
-  return (state.changes || []).filter((change) => normalizeLocationId(change.locationId || getEmployeeLocationId(change.employeeId)) === id);
+  return derivedDataCache.get(`changes:${id}`, () =>
+    (state.changes || []).filter((change) => normalizeLocationId(change.locationId || getEmployeeLocationId(change.employeeId)) === id)
+  );
 }
 
 function getLocationTrafficData(locationId = activeLocationId) {
-  const id = normalizeLocationId(locationId);
-  return (state.trafficData || []).filter((item) => normalizeLocationId(item.locationId) === id);
+  return getCachedLocationRecords("traffic", state.trafficData, locationId);
 }
 
 function getLocationBudgets(locationId = activeLocationId) {
+  const id = normalizeLocationId(locationId);
+  return state.locationBudgets?.[id]
+    || (id === DEFAULT_LOCATION_ID ? state.budgets : null)
+    || {};
+}
+
+function ensureLocationBudgets(locationId = activeLocationId) {
   const id = normalizeLocationId(locationId);
   if (!state.locationBudgets) {
     state.locationBudgets = {
@@ -5000,6 +5403,7 @@ function setAdminMode(locationId = DEFAULT_LOCATION_ID) {
   if (teamLocation) teamLocation.value = activeLocationId;
   updateMobileNavigationContext();
   setActiveTab("home");
+  startBistroStatusOverview();
 }
 
 async function enterEmployeeMode(employeeId) {
@@ -5485,7 +5889,7 @@ async function startShiftNotifications() {
   }
   if (Notification.permission !== 'granted') return;
   checkShiftNotifications();
-  shiftNotificationTimer = setInterval(checkShiftNotifications, 60000);
+  backgroundCoordinator.start("shift-notifications", checkShiftNotifications, 60000);
 }
 
 function checkShiftNotifications() {
@@ -5512,8 +5916,7 @@ function checkShiftNotifications() {
 }
 
 function stopShiftNotifications() {
-  clearInterval(shiftNotificationTimer);
-  shiftNotificationTimer = null;
+  backgroundCoordinator.stop("shift-notifications");
   notifiedShiftKeys.clear();
 }
 
@@ -6251,9 +6654,7 @@ function renderContratosPanel() {
     && (!employee.activeFrom || employee.activeFrom <= monthEnd)
     && (!employee.inactiveFrom || employee.inactiveFrom > monthStart)
   );
-  if (!state.payrollSettlements[activeLocationId]) state.payrollSettlements[activeLocationId] = {};
-  if (!state.payrollSettlements[activeLocationId][monthKey]) state.payrollSettlements[activeLocationId][monthKey] = {};
-  const monthSettlements = state.payrollSettlements[activeLocationId][monthKey];
+  const monthSettlements = state.payrollSettlements?.[activeLocationId]?.[monthKey] || {};
   const liquidationData = [];
 
   const rows = contractEmployees.map((employee) => {
@@ -6366,8 +6767,13 @@ function renderContratosPanel() {
     input.addEventListener('change', () => {
       const employeeId = input.dataset.settlement;
       const field = input.dataset.settlementField;
-      if (!monthSettlements[employeeId]) monthSettlements[employeeId] = {};
-      monthSettlements[employeeId][field] = Math.max(0, parseFloat(input.value) || 0);
+      if (!state.payrollSettlements) state.payrollSettlements = {};
+      if (!state.payrollSettlements[activeLocationId]) state.payrollSettlements[activeLocationId] = {};
+      if (!state.payrollSettlements[activeLocationId][monthKey]) state.payrollSettlements[activeLocationId][monthKey] = {};
+      if (!state.payrollSettlements[activeLocationId][monthKey][employeeId]) {
+        state.payrollSettlements[activeLocationId][monthKey][employeeId] = {};
+      }
+      state.payrollSettlements[activeLocationId][monthKey][employeeId][field] = Math.max(0, parseFloat(input.value) || 0);
       saveState();
       renderContratosPanel();
     });
@@ -6911,7 +7317,7 @@ function applyExpenseCategoryOverride(expense, overrides = state?.expenseCategor
 }
 
 let activeFinTab = 'hoy';
-let activeReportTab = 'audit';
+let activeReportTab = 'executive';
 let finActiveMonth = firstDayOfMonth(new Date()); // mes propio de Finanzas (independiente de la grilla)
 let finTodayDate = toDateInput(new Date());
 let finPnlYear = new Date().getFullYear();
@@ -6949,7 +7355,7 @@ function changeFinActiveMonth(delta) {
   finActiveMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() + delta, 1);
   renderFinMonthNav();
   renderFinanzas();
-  if (activeFinTab === 'audit') syncBistrosoftAuditMonth();
+  if (activeFinTab === 'audit' || activeFinTab === 'executive') syncBistrosoftAuditMonth();
   else syncBistrosoftMonth(true);
 }
 
@@ -7009,6 +7415,7 @@ function initFinanzas() {
   document.querySelector('#finClearSales').addEventListener('click', () => {
     if (confirm('¿Borrar todas las ventas importadas?')) {
       state.sales = (state.sales || []).filter((sale) => !belongsToActiveLocation(sale));
+      saveState();
       render();
     }
   });
@@ -7061,8 +7468,7 @@ async function handleBistrosoftSyncClick() {
 }
 
 async function initBistrosoftSync() {
-  clearInterval(finBistroSync.timer);
-  finBistroSync.timer = null;
+  backgroundCoordinator.stop("bistro-sync");
   finBistroSync.available = null;
   finBistroSync.backendAvailable = null;
   finBistroSync.connected = false;
@@ -7084,6 +7490,12 @@ async function initBistrosoftSync() {
     finBistroSync.connected = !!status.connected;
     finBistroSync.lastSyncAt = status.lastSyncAt || null;
     finBistroSync.error = status.lastError || null;
+    bistroStatusByLocation[activeLocationId] = {
+      configured: !!status.configured,
+      connected: !!status.connected,
+      lastSyncAt: status.lastSyncAt || null,
+      lastError: status.lastError || null,
+    };
     renderFinSyncStatus();
 
     if (!finBistroSync.available) return;
@@ -7092,18 +7504,22 @@ async function initBistrosoftSync() {
     await syncBistrosoftRecent();
     startBistrosoftMissingBackfillOnce();
 
-    if (!finBistroSync.timer) {
-      finBistroSync.timer = setInterval(() => {
+    backgroundCoordinator.start("bistro-sync", async () => {
         syncBistrosoftRecent();
         refreshBistroDetailStatus();
         startBistrosoftMissingBackfillOnce();
       }, BISTROSOFT_SYNC_INTERVAL_MS);
-    }
   } catch (_) {
     finBistroSync.backendAvailable = false;
     finBistroSync.available = false;
     finBistroSync.connected = false;
     finBistroSync.error = 'Cerra esta pestaña y ejecuta ABRIR APLICACION.cmd desde la carpeta de la aplicacion.';
+    bistroStatusByLocation[activeLocationId] = {
+      ...bistroStatusByLocation[activeLocationId],
+      configured: false,
+      connected: false,
+      lastError: finBistroSync.error,
+    };
     renderFinSyncStatus();
   }
 }
@@ -7734,7 +8150,7 @@ function renderFinSyncStatus() {
 function setActiveFinTab(tab) {
   if (tab === 'hoy' && activeFinTab !== 'hoy') finTodayDate = toDateInput(new Date());
   activeFinTab = tab;
-  if (['audit', 'analysis', 'ai'].includes(tab)) activeReportTab = tab;
+  if (['executive', 'audit', 'analysis', 'ai'].includes(tab)) activeReportTab = tab;
   document.querySelectorAll('.fin-tab').forEach((btn) => {
     btn.classList.toggle('is-active', btn.dataset.finTab === tab);
   });
@@ -7742,7 +8158,7 @@ function setActiveFinTab(tab) {
     panel.classList.toggle('is-visible', panel.dataset.finPanel === tab);
   });
   renderFinanzas();
-  if (tab === 'audit') syncBistrosoftAuditMonth();
+  if (tab === 'audit' || tab === 'executive') syncBistrosoftAuditMonth();
 }
 
 function resetFinTodayView() {
@@ -7816,6 +8232,7 @@ async function syncBistrosoftAuditRange(from, until) {
     });
     saveState({ shared: payloads.some(({ payload }) => !payload.persisted) });
     if (activeFinTab === 'audit') renderFinAudit();
+    else if (activeFinTab === 'executive') renderFinExecutive();
   } catch (_) {
     // La auditoria conserva los ultimos datos disponibles si una sucursal no responde.
   }
@@ -7827,7 +8244,7 @@ function renderFinMonthNav() {
   const projection = document.querySelector('#finTodayProjection');
   const isTodayTab = activeFinTab === 'hoy';
   if (nav) nav.hidden = isTodayTab;
-  if (reportsNav) reportsNav.hidden = activeFinTab !== 'audit';
+  if (reportsNav) reportsNav.hidden = !['executive', 'audit'].includes(activeFinTab);
   if (projection) {
     projection.hidden = !isTodayTab;
     if (isTodayTab) renderFinTodayProjection();
@@ -7854,6 +8271,7 @@ function renderFinanzas() {
   renderFinSyncStatus();
   renderFinMonthNav();
   if (activeFinTab === 'hoy') renderFinHoy();
+  else if (activeFinTab === 'executive') renderFinExecutive();
   else if (activeFinTab === 'resumen') renderFinResumen();
   else if (activeFinTab === 'import') renderFinImport();
   else if (activeFinTab === 'expenses') renderFinExpenses();
@@ -7873,14 +8291,14 @@ function renderFinanzas() {
 
 // -------- HOY --------
 
-function getMonthSalesProjection(referenceDate = new Date()) {
+function getMonthSalesProjection(referenceDate = new Date(), locationId = activeLocationId) {
   const year = referenceDate.getFullYear();
   const month = referenceDate.getMonth();
   const from = toDateInput(new Date(year, month, 1));
   const until = toDateInput(referenceDate);
   const elapsedDays = referenceDate.getDate();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const soldToDate = getLocationSales()
+  const soldToDate = getLocationSales(locationId)
     .filter((sale) => sale.date >= from && sale.date <= until)
     .reduce((sum, sale) => sum + Number(sale.total || 0), 0);
   const dailyAverage = elapsedDays > 0 ? soldToDate / elapsedDays : 0;
@@ -8019,6 +8437,7 @@ function renderFinImport() {
   list.querySelectorAll('[data-delete-day]').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.sales = state.sales.filter((s) => !(belongsToActiveLocation(s) && s.date === btn.dataset.deleteDay));
+      saveState();
       render();
     });
   });
@@ -8708,6 +9127,7 @@ function handleManualSaleForm(event) {
 
   document.querySelector('#finManualSaleCount').value = '';
   document.querySelector('#finManualSaleTotal').value = '';
+  saveState();
   render();
   alert(`Venta manual agregada: ${count} ticket${count !== 1 ? 's' : ''} · ${formatEur(total)}.`);
 }
@@ -8748,6 +9168,7 @@ async function handleSalesCsvImport(event) {
   document.querySelector('#finFileInput').value = '';
   document.querySelector('#finFileInfo').style.display = 'none';
 
+  saveState();
   render();
   const importedTickets = imported.reduce((s, t) => s + (t.count || 1), 0);
   alert(`✓ ${importedTickets} tickets importados (${dates.length} día${dates.length > 1 ? 's' : ''}: ${dates[0]}${dates.length > 1 ? ' → ' + dates[dates.length - 1] : ''})`);
@@ -9222,16 +9643,14 @@ function renderFinPresupuesto() {
   const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
 
   const locationBudgets = getLocationBudgets();
-  if (!Object.prototype.hasOwnProperty.call(locationBudgets, monthKey)) {
+  let budget = locationBudgets[monthKey];
+  if (!budget) {
     const previousMonth = new Date(finActiveMonth.getFullYear(), finActiveMonth.getMonth() - 1, 1);
     const previousKey = monthInputValue(previousMonth);
-    locationBudgets[monthKey] = locationBudgets[previousKey]
+    budget = locationBudgets[previousKey]
       ? structuredClone(locationBudgets[previousKey])
       : {};
-    if (activeLocationId === DEFAULT_LOCATION_ID) state.budgets = locationBudgets;
-    saveState();
   }
-  const budget = locationBudgets[monthKey] || {};
 
   // Gastos reales del mes por categoría
   const realExp = {};
@@ -9378,7 +9797,7 @@ function renderFinPresupuesto() {
       const key   = ev.target.dataset.bkey;
       const month = ev.target.dataset.bmonth;
       const val   = parseFloat(ev.target.value) || 0;
-      const budgets = getLocationBudgets();
+      const budgets = ensureLocationBudgets();
       if (!budgets[month]) budgets[month] = {};
       if (val > 0) budgets[month][key] = val;
       else         delete budgets[month][key];
@@ -9557,6 +9976,108 @@ function renderFinResumen() {
 
 // -------- AUDITORIA SUCURSALES --------
 
+function getBudgetSalesForLocation(monthDate, locationId) {
+  const monthKey = monthInputValue(monthDate);
+  const locationBudgets = state.locationBudgets?.[locationId]
+    || (locationId === DEFAULT_LOCATION_ID ? state.budgets : null)
+    || {};
+  return Number(locationBudgets?.[monthKey]?.ventas || 0);
+}
+
+function formatExecutiveDelta(current, previous) {
+  const delta = OssInsights.percentChange(current, previous);
+  if (delta === null) return '<span class="executive-delta is-neutral">Sin base anterior</span>';
+  const rounded = delta.toLocaleString("es-ES", { maximumFractionDigits: 1 });
+  const tone = delta > 0.05 ? "is-positive" : delta < -0.05 ? "is-negative" : "is-neutral";
+  return `<span class="executive-delta ${tone}">${delta > 0 ? "+" : ""}${rounded}%</span>`;
+}
+
+function renderFinExecutive() {
+  const container = document.querySelector("#finExecutiveContent");
+  if (!container) return;
+  const previousMonth = addMonths(finActiveMonth, -1);
+  const monthRows = EXECUTIVE_LOCATION_IDS.map((locationId) => getMonthMetricsForLocation(finActiveMonth, locationId));
+  const previousRows = EXECUTIVE_LOCATION_IDS.map((locationId) => getMonthMetricsForLocation(previousMonth, locationId));
+  const combined = OssInsights.combineFinancialMetrics(monthRows);
+  const previousCombined = OssInsights.combineFinancialMetrics(previousRows);
+  const budgetSales = EXECUTIVE_LOCATION_IDS.reduce((sum, locationId) =>
+    sum + getBudgetSalesForLocation(finActiveMonth, locationId), 0);
+  const budgetExecution = budgetSales > 0 ? (combined.totalSales / budgetSales) * 100 : null;
+  const monthLabel = `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+
+  const storeRows = EXECUTIVE_LOCATION_IDS.map((locationId, index) => {
+    const metrics = monthRows[index];
+    const previous = previousRows[index];
+    const budget = getBudgetSalesForLocation(finActiveMonth, locationId);
+    const resultClass = metrics.result >= 0 ? "fin-cell-positive" : "fin-cell-negative";
+    return `<tr>
+      <th>${escapeHtml(getLocation(locationId).label)}</th>
+      <td class="fin-cell-num"><strong>${metrics.totalSales ? formatEur(metrics.totalSales) : "—"}</strong></td>
+      <td class="fin-cell-num">${formatExecutiveDelta(metrics.totalSales, previous.totalSales)}</td>
+      <td class="fin-cell-num">${metrics.ticketCount ? metrics.ticketCount.toLocaleString("es-ES") : "—"}</td>
+      <td class="fin-cell-num">${metrics.ticketCount ? formatEur(metrics.avgTicket) : "—"}</td>
+      <td class="fin-cell-num">${metrics.totalExpenses ? formatEur(metrics.totalExpenses) : "—"}</td>
+      <td class="fin-cell-num ${resultClass}">${metrics.totalSales || metrics.totalExpenses ? `${metrics.result >= 0 ? "+" : ""}${formatEur(metrics.result)}` : "—"}</td>
+      <td class="fin-cell-num">${budget > 0 ? `${(metrics.totalSales / budget * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })}%` : "—"}</td>
+    </tr>`;
+  }).join("");
+
+  const productivityRows = EXECUTIVE_LOCATION_IDS.map((locationId, index) => {
+    const productivity = getLaborProductivityForLocation(finActiveMonth, locationId, monthRows[index]);
+    const hoursDifferenceClass = productivity.punchedHours > 0
+      ? (productivity.hoursDifference > 0.05 ? "fin-cell-negative" : productivity.hoursDifference < -0.05 ? "fin-cell-positive" : "")
+      : "";
+    const estimatedExtras = productivity.overtimeCost + productivity.holidayCost;
+    return `<tr>
+      <th>${escapeHtml(getLocation(locationId).label)}</th>
+      <td class="fin-cell-num">${formatHours(productivity.plannedHours)}</td>
+      <td class="fin-cell-num">${productivity.punchedHours > 0 ? formatHours(productivity.punchedHours) : "—"}</td>
+      <td class="fin-cell-num ${hoursDifferenceClass}">${productivity.punchedHours > 0 ? `${productivity.hoursDifference >= 0 ? "+" : ""}${formatHours(productivity.hoursDifference)}` : "—"}</td>
+      <td class="fin-cell-num">${productivity.salesPerPlannedHour > 0 ? formatEur(productivity.salesPerPlannedHour) : "—"}</td>
+      <td class="fin-cell-num">${productivity.salesPerPunchedHour > 0 ? formatEur(productivity.salesPerPunchedHour) : "—"}</td>
+      <td class="fin-cell-num">${productivity.laborCost > 0 ? formatEur(productivity.laborCost) : "—"}</td>
+      <td class="fin-cell-num">${productivity.laborCostPercent > 0 ? `${productivity.laborCostPercent.toLocaleString("es-ES", { maximumFractionDigits: 1 })}%` : "—"}</td>
+      <td class="fin-cell-num">${productivity.configuredEmployees > 0 ? formatEur(estimatedExtras) : "—"}</td>
+    </tr>`;
+  }).join("");
+
+  const confidenceCards = EXECUTIVE_LOCATION_IDS
+    .map((locationId) => renderDataConfidenceCard(getDataConfidenceForLocation(finActiveMonth, locationId)))
+    .join("");
+
+  container.innerHTML = `
+    <section class="executive-report-heading">
+      <div><p class="eyebrow">Barcelona + Madrid</p><h3>Resumen ejecutivo · ${monthLabel}</h3></div>
+      <p>Comparación mensual construida con ventas, gastos, grilla, fichajes y estado de Bistrosoft.</p>
+    </section>
+    <div class="executive-kpi-grid">
+      <article><span>Ventas del mes</span><strong>${combined.totalSales ? formatEur(combined.totalSales) : "—"}</strong>${formatExecutiveDelta(combined.totalSales, previousCombined.totalSales)}</article>
+      <article><span>Tickets</span><strong>${combined.ticketCount ? combined.ticketCount.toLocaleString("es-ES") : "—"}</strong><small>Ticket promedio ${combined.ticketCount ? formatEur(combined.avgTicket) : "—"}</small></article>
+      <article class="${combined.result >= 0 ? "is-positive" : "is-negative"}"><span>Resultado</span><strong>${combined.totalSales || combined.totalExpenses ? `${combined.result >= 0 ? "+" : ""}${formatEur(combined.result)}` : "—"}</strong><small>Gastos ${combined.totalExpenses ? formatEur(combined.totalExpenses) : "—"}</small></article>
+      <article><span>Objetivo de ventas</span><strong>${budgetSales > 0 ? formatEur(budgetSales) : "—"}</strong><small>${budgetExecution === null ? "Sin presupuesto cargado" : `${budgetExecution.toLocaleString("es-ES", { maximumFractionDigits: 1 })}% ejecutado`}</small></article>
+    </div>
+    <section class="executive-report-section">
+      <div class="section-heading-compact"><div><p class="eyebrow">Comparación</p><h3>Rendimiento por tienda</h3></div></div>
+      <div class="fin-table-wrap"><table class="fin-table executive-table">
+        <thead><tr><th>Tienda</th><th class="fin-cell-num">Ventas</th><th class="fin-cell-num">Vs. mes anterior</th><th class="fin-cell-num">Tickets</th><th class="fin-cell-num">Ticket prom.</th><th class="fin-cell-num">Gastos</th><th class="fin-cell-num">Resultado</th><th class="fin-cell-num">Presupuesto</th></tr></thead>
+        <tbody>${storeRows}</tbody>
+      </table></div>
+    </section>
+    <section class="executive-report-section">
+      <div class="section-heading-compact"><div><p class="eyebrow">Equipo</p><h3>Productividad laboral</h3></div></div>
+      <div class="fin-table-wrap"><table class="fin-table executive-table">
+        <thead><tr><th>Tienda</th><th class="fin-cell-num">Hs grilla</th><th class="fin-cell-num">Hs fichadas</th><th class="fin-cell-num">Diferencia</th><th class="fin-cell-num">Venta / h grilla</th><th class="fin-cell-num">Venta / h fichada</th><th class="fin-cell-num">Coste laboral</th><th class="fin-cell-num">Coste / ventas</th><th class="fin-cell-num">Extras + festivos est.</th></tr></thead>
+        <tbody>${productivityRows}</tbody>
+      </table></div>
+      <p class="executive-source-note">El coste laboral registrado suma Nóminas, Mano de Obra y Seg. Social / TGSS. La estimación de extras y festivos sólo utiliza contratos con tarifas cargadas.</p>
+    </section>
+    <section class="executive-report-section">
+      <div class="section-heading-compact"><div><p class="eyebrow">Fiabilidad</p><h3>Estado de los datos</h3></div></div>
+      <div class="data-confidence-grid">${confidenceCards}</div>
+      <p class="executive-source-note">“Días abiertos sin ventas” compara el horario comercial guardado con los días que poseen ventas registradas. No se completan datos faltantes con estimaciones.</p>
+    </section>`;
+}
+
 function renderFinAudit() {
   const el = document.querySelector('#finAuditContent');
   if (!el) return;
@@ -9728,7 +10249,37 @@ function saleBaristaLabels(sale) {
   return direct ? [direct] : scheduledBaristasForSale(sale);
 }
 
-function buildAnalysisGroups(sales, type) {
+function createAnalysisBaristaResolver() {
+  const employeeNames = new Map(getAllEmployees(true).map((employee) => [employee.id, employee.label]));
+  const shiftsByDate = new Map();
+  const labelsByDateHour = new Map();
+  return (sale) => {
+    const direct = String(sale?.barista || '').trim();
+    if (direct) return [direct];
+    const hour = parseSaleHour(sale?.time);
+    if (hour === null || !sale?.date) return [];
+    const slotKey = `${sale.date}|${hour}`;
+    if (labelsByDateHour.has(slotKey)) return labelsByDateHour.get(slotKey);
+    if (!shiftsByDate.has(sale.date)) shiftsByDate.set(sale.date, getShiftsForDate(sale.date));
+    const labels = shiftsByDate.get(sale.date)
+      .filter((shift) => shift.start <= hour && shift.end > hour)
+      .map((shift) => employeeNames.get(shift.employeeId))
+      .filter(Boolean);
+    labelsByDateHour.set(slotKey, labels);
+    return labels;
+  };
+}
+
+function getAnalysisBaristaOptions(sales) {
+  const names = new Set(getEmployees(true).map((employee) => employee.label).filter(Boolean));
+  sales.forEach((sale) => {
+    const direct = String(sale?.barista || '').trim();
+    if (direct) names.add(direct);
+  });
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+function buildAnalysisGroups(sales, type, resolveBaristas = saleBaristaLabels) {
   const groups = new Map();
   const add = (key, label, sale, quantity = 0, amount = Number(sale.total || 0)) => {
     const current = groups.get(key) || { key, label, sales: 0, tickets: new Set(), quantity: 0 };
@@ -9750,7 +10301,7 @@ function buildAnalysisGroups(sales, type) {
       const day = date.getDay();
       add(String(day), DAY_NAMES[day], sale);
     } else if (type === 'barista') {
-      const names = saleBaristaLabels(sale);
+      const names = resolveBaristas(sale);
       (names.length ? names : ['Sin asignar']).forEach((name) => add(name, name, sale));
     } else if (type === 'product') {
       const items = Array.isArray(sale.items) ? sale.items : [];
@@ -9836,14 +10387,17 @@ function renderFinAnalysis() {
   const filters = finAnalysisFilters;
   const selectedWeekdays = getAnalysisSelectedWeekdays(filters);
   const allLocationSales = getLocationSales();
-  const baristas = [...new Set(allLocationSales.flatMap(saleBaristaLabels))].sort((a, b) => a.localeCompare(b));
+  const resolveBaristas = createAnalysisBaristaResolver();
+  const baristas = getAnalysisBaristaOptions(allLocationSales);
+  const weekdayByDate = new Map();
   const selectedSales = allLocationSales.filter((sale) => {
     if (!sale.date || sale.date < filters.dateFrom || sale.date > filters.dateTo) return false;
-    const day = analysisDate(sale.date).getDay();
+    if (!weekdayByDate.has(sale.date)) weekdayByDate.set(sale.date, analysisDate(sale.date).getDay());
+    const day = weekdayByDate.get(sale.date);
     if (selectedWeekdays.length && !selectedWeekdays.includes(String(day))) return false;
     const hour = parseSaleHour(sale.time);
     if (hour !== null && (hour < Number(filters.hourFrom) || hour > Number(filters.hourTo))) return false;
-    if (filters.barista !== 'all' && !saleBaristaLabels(sale).includes(filters.barista)) return false;
+    if (filters.barista !== 'all' && !resolveBaristas(sale).includes(filters.barista)) return false;
     return true;
   });
   const totalSales = selectedSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
@@ -9852,7 +10406,7 @@ function renderFinAnalysis() {
   const metricKey = filters.metric;
   const metricValue = (row) => metricKey === 'tickets' ? row.tickets : metricKey === 'quantity' ? row.quantity : row.sales;
   const metricLabel = metricKey === 'tickets' ? 'Pedidos' : metricKey === 'quantity' ? 'Unidades' : 'Venta';
-  const groups = buildAnalysisGroups(selectedSales, filters.type)
+  const groups = buildAnalysisGroups(selectedSales, filters.type, resolveBaristas)
     .sort((a, b) => metricValue(b) - metricValue(a));
   const maxValue = Math.max(1, ...groups.map(metricValue));
   const rows = groups.map((row) => `
