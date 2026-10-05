@@ -195,6 +195,8 @@ const DEFAULT_BASE_SCHEDULES = {
 
 const MADRID_SCHEDULE_SEED_VERSION = 2;
 const MADRID_SCHEDULE_PLAN_ID = "madrid-2026-08-31-8-semanas";
+const MADRID_OCTOBER_SCHEDULE_MIGRATION_VERSION = 1;
+const MADRID_OCTOBER_SCHEDULE_PLAN_ID = "madrid-2026-10-12-4-semanas";
 const MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM = "2026-08-31";
 
 function buildMadridScheduleWeek({ tuesdayEmployee = "perla", saturday = [], sunday = [] } = {}) {
@@ -325,9 +327,63 @@ const MADRID_SCHEDULE_PLAN_2026_08_31 = {
   ],
 };
 
+function buildMadridOctoberScheduleWeek(entries) {
+  const shifts = [];
+  Object.entries(entries).forEach(([employeeId, dayEntries]) => {
+    dayEntries.forEach(([day, start, end]) => shifts.push({ employeeId, day, start, end }));
+  });
+  return { shifts };
+}
+
+const MADRID_SCHEDULE_PLAN_2026_10_12 = {
+  id: MADRID_OCTOBER_SCHEDULE_PLAN_ID,
+  locationId: "madrid",
+  effectiveFrom: "2026-10-12",
+  cycleLength: 4,
+  // El 12/10 cae en la semana 2; el 02/11 vuelve a ser semana 1.
+  weekOffset: 1,
+  managedEmployeeIds: ["micaela", "ignacio", "perla", "guillermo", "bonnie", "mechi"],
+  sourceLabel: "Ciclo 4 semanas",
+  weeks: [
+    buildMadridOctoberScheduleWeek({
+      micaela: [[1, "07:30", "14:30"], [2, "07:30", "14:30"], [3, "07:30", "14:30"], [4, "07:30", "14:30"], [0, "09:30", "15:30"]],
+      ignacio: [[1, "09:00", "13:00"], [3, "14:30", "19:30"], [4, "14:30", "19:30"], [5, "14:30", "19:30"], [0, "15:30", "20:30"]],
+      perla: [[2, "09:00", "14:00"], [5, "07:30", "14:30"], [6, "09:30", "15:30"], [6, "16:30", "20:30"], [0, "16:30", "20:30"]],
+      guillermo: [[1, "14:30", "19:30"], [2, "14:30", "19:30"], [4, "09:00", "13:00"], [5, "09:00", "13:00"], [6, "15:30", "20:30"]],
+      bonnie: [[6, "09:30", "16:30"], [0, "09:30", "16:30"]],
+      mechi: [[2, "09:00", "13:00"], [5, "09:00", "13:00"]],
+    }),
+    buildMadridOctoberScheduleWeek({
+      micaela: [[1, "07:30", "14:30"], [2, "07:30", "14:30"], [3, "07:30", "14:30"], [4, "07:30", "14:30"], [6, "09:30", "15:30"]],
+      ignacio: [[1, "09:00", "13:00"], [3, "14:30", "19:30"], [4, "14:30", "19:30"], [5, "14:30", "19:30"], [6, "16:30", "20:30"], [0, "16:30", "20:30"]],
+      perla: [[2, "09:00", "14:00"], [5, "07:30", "14:30"], [6, "15:30", "20:30"], [0, "09:30", "15:30"]],
+      guillermo: [[1, "14:30", "19:30"], [2, "14:30", "19:30"], [4, "09:00", "13:00"], [5, "09:00", "13:00"], [0, "15:30", "20:30"]],
+      bonnie: [[6, "09:30", "16:30"], [0, "09:30", "16:30"]],
+      mechi: [[2, "09:00", "13:00"], [5, "09:00", "13:00"]],
+    }),
+    buildMadridOctoberScheduleWeek({
+      micaela: [[1, "07:30", "14:30"], [2, "07:30", "14:30"], [3, "07:30", "14:30"], [4, "07:30", "14:30"], [0, "16:30", "20:30"]],
+      ignacio: [[1, "09:00", "13:00"], [3, "14:30", "19:30"], [4, "14:30", "19:30"], [5, "14:30", "19:30"], [0, "15:30", "20:30"]],
+      perla: [[2, "09:00", "14:00"], [5, "07:30", "14:30"], [6, "09:30", "15:30"], [6, "16:30", "20:30"], [0, "09:30", "15:30"]],
+      guillermo: [[1, "14:30", "19:30"], [2, "14:30", "19:30"], [4, "09:00", "13:00"], [5, "09:00", "13:00"], [6, "15:30", "20:30"]],
+      bonnie: [[6, "09:30", "16:30"], [0, "09:30", "16:30"]],
+      mechi: [[2, "09:00", "13:00"], [5, "09:00", "13:00"]],
+    }),
+    buildMadridOctoberScheduleWeek({
+      micaela: [[1, "07:30", "14:30"], [2, "07:30", "14:30"], [3, "07:30", "14:30"], [4, "07:30", "14:30"], [6, "16:30", "20:30"]],
+      ignacio: [[1, "09:00", "13:00"], [3, "14:30", "19:30"], [4, "14:30", "19:30"], [5, "14:30", "19:30"], [6, "15:30", "20:30"], [0, "16:30", "20:30"]],
+      perla: [[2, "09:00", "14:00"], [5, "07:30", "14:30"], [6, "09:30", "15:30"], [0, "09:30", "15:30"]],
+      guillermo: [[1, "14:30", "19:30"], [2, "14:30", "19:30"], [4, "09:00", "13:00"], [5, "09:00", "13:00"], [0, "15:30", "20:30"]],
+      bonnie: [[6, "09:30", "16:30"], [0, "09:30", "16:30"]],
+      mechi: [[2, "09:00", "13:00"], [5, "09:00", "13:00"]],
+    }),
+  ],
+};
+
 const DEFAULT_SCHEDULE_PLANS = {
   madrid: [MADRID_SCHEDULE_PLAN_2026_08_31],
 };
+DEFAULT_SCHEDULE_PLANS.madrid.push(MADRID_SCHEDULE_PLAN_2026_10_12);
 
 const HOLIDAY_SEED_VERSION = 1;
 const DEFAULT_HOLIDAYS_2026 = [
@@ -671,6 +727,7 @@ const DEFAULT_STATE = {
   baseSchedules: DEFAULT_BASE_SCHEDULES,
   schedulePlans: DEFAULT_SCHEDULE_PLANS,
   madridScheduleSeedVersion: 0,
+  madridOctoberScheduleMigrationVersion: 0,
   budgets: {},
   payrollSettlements: {},
   locations: LOCATIONS,
@@ -2808,6 +2865,11 @@ async function sendSharedMutation(url, body, fallback, method = "PUT") {
         });
         const payload = await response.json().catch(() => ({}));
         if (response.ok && payload.ok) {
+          const savedRevision = Number(payload.revision || 0);
+          if (savedRevision > sharedStateRevision) {
+            sharedStateRevision = savedRevision;
+            sharedStateEtag = `W/\"oss-state-${savedRevision}\"`;
+          }
           markSharedSaveComplete();
           return { ok: true, payload };
         }
@@ -3218,7 +3280,8 @@ function getSchedulePlanShiftsForDate(schedulePlans, locationId, dateKey) {
   const elapsedDays = dateKeyToUtcDay(dateKey) - dateKeyToUtcDay(plan.effectiveFrom);
   if (!Number.isFinite(elapsedDays) || elapsedDays < 0) return null;
   const cycleLength = Math.max(1, Math.floor(Number(plan.cycleLength || plan.weeks?.length || 1)));
-  const weekIndex = ((Math.floor(elapsedDays / 7) % cycleLength) + cycleLength) % cycleLength;
+  const weekOffset = Math.floor(Number(plan.weekOffset || 0));
+  const weekIndex = ((Math.floor(elapsedDays / 7) + weekOffset) % cycleLength + cycleLength) % cycleLength;
   const day = new Date(`${dateKey}T12:00:00Z`).getUTCDay();
   const shifts = (plan.weeks?.[weekIndex]?.shifts || []).filter((shift) => Number(shift.day) === day);
   return { plan, weekIndex, shifts };
@@ -3233,18 +3296,26 @@ function getBaseShifts(dateKey, locationId = activeLocationId) {
   const employees = getAllEmployees(true)
     .filter((employee) => normalizeLocationId(employee.locationId) === resolvedLocationId);
   const employeeIds = new Set(employees.map((employee) => employee.id));
-  const overriddenEmployeeIds = new Set(employees
-    .filter((employee) => getEmployeeScheduleVersionForDate(employee.id, dateKey))
-    .map((employee) => employee.id));
   const plannedEmployeeIds = new Set((planned?.plan?.weeks || [])
     .flatMap((week) => week.shifts || [])
-    .map((shift) => shift.employeeId));
+    .map((shift) => resolveMadridPlanEmployeeId(shift.employeeId, employees))
+    .filter(Boolean));
+  const planManagedEmployeeIds = new Set((planned?.plan?.managedEmployeeIds || [...plannedEmployeeIds])
+    .map((id) => resolveMadridPlanEmployeeId(id, employees))
+    .filter(Boolean));
+  const overriddenEmployeeIds = new Set(employees
+    .filter((employee) => {
+      const version = getEmployeeScheduleVersionForDate(employee.id, dateKey);
+      return shouldUseEmployeeScheduleOverride(version, planned?.plan || null, planManagedEmployeeIds.has(employee.id));
+    })
+    .map((employee) => employee.id));
 
   if (planned) {
     planned.shifts
-      .filter((shift) => employeeIds.has(shift.employeeId) && !overriddenEmployeeIds.has(shift.employeeId))
+      .map((shift) => ({ ...shift, resolvedEmployeeId: resolveMadridPlanEmployeeId(shift.employeeId, employees) }))
+      .filter((shift) => employeeIds.has(shift.resolvedEmployeeId) && !overriddenEmployeeIds.has(shift.resolvedEmployeeId))
       .forEach((shift) => shifts.push(makeShift(
-        shift.employeeId,
+        shift.resolvedEmployeeId,
         timeToDecimal(shift.start),
         timeToDecimal(shift.end),
         `${planned.plan.sourceLabel || "Grilla programada"} · S${planned.weekIndex + 1}`,
@@ -3253,7 +3324,7 @@ function getBaseShifts(dateKey, locationId = activeLocationId) {
 
   employees.forEach((employee) => {
     const hasDatedOverride = overriddenEmployeeIds.has(employee.id);
-    if (planned && plannedEmployeeIds.has(employee.id) && !hasDatedOverride) return;
+    if (planned && (plannedEmployeeIds.has(employee.id) || planManagedEmployeeIds.has(employee.id)) && !hasDatedOverride) return;
     const schedule = getEmployeeScheduleForDate(employee.id, dateKey);
     const weekKey = getScheduleWeekKey(schedule, dateKey);
     const dayShifts = schedule.weeks?.[weekKey]?.[day] || [];
@@ -3268,6 +3339,24 @@ function getBaseShifts(dateKey, locationId = activeLocationId) {
   });
 
   return shifts;
+}
+
+function shouldUseEmployeeScheduleOverride(version, plan, employeeIsManagedByPlan) {
+  if (!version) return false;
+  return !plan?.effectiveFrom || !employeeIsManagedByPlan || version.effectiveFrom > plan.effectiveFrom;
+}
+
+function resolveMadridPlanEmployeeId(employeeId, employees = state.employees || []) {
+  if (employeeId !== "ignacio") return employeeId;
+  const normalize = (value) => String(value || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const aliases = new Set(["ignacio", "pato"]);
+  const matches = employees.filter((employee) => normalizeLocationId(employee.locationId) === "madrid")
+    .filter((employee) => {
+      const profile = state.profiles?.[employee.id] || {};
+      return [employee.id, employee.label, employee.preferredName, profile.fullName, profile.preferredName]
+        .some((value) => aliases.has(normalize(value)));
+    });
+  return matches.length === 1 ? matches[0].id : "";
 }
 
 function getShiftsForDate(dateKey, locationId = activeLocationId) {
@@ -3698,19 +3787,24 @@ function getEmployeeSchedulePlanSummary(employeeId) {
   const plans = state.schedulePlans?.[normalizeLocationId(employee.locationId)] || [];
   const plan = plans
     .filter((candidate) => (candidate.weeks || []).some((week) =>
-      (week.shifts || []).some((shift) => shift.employeeId === employeeId)
+      (week.shifts || []).some((shift) => resolveMadridPlanEmployeeId(shift.employeeId) === employeeId)
     ))
     .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
   if (!plan) return null;
   const weeklyHours = (plan.weeks || []).map((week) =>
     (week.shifts || [])
-      .filter((shift) => shift.employeeId === employeeId)
+      .filter((shift) => resolveMadridPlanEmployeeId(shift.employeeId) === employeeId)
       .reduce((total, shift) => total + timeToDecimal(shift.end) - timeToDecimal(shift.start), 0)
   );
+  const weeklyPatterns = (plan.weeks || []).map((week) => (week.shifts || [])
+    .filter((shift) => resolveMadridPlanEmployeeId(shift.employeeId) === employeeId)
+    .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start))
+    .map((shift) => `${DAY_NAMES[shift.day].slice(0, 3)} ${shift.start}-${shift.end}`));
   const totalHours = weeklyHours.reduce((total, hours) => total + hours, 0);
   return {
     plan,
     weeklyHours,
+    weeklyPatterns,
     totalHours,
     averageHours: weeklyHours.length ? totalHours / weeklyHours.length : 0,
   };
@@ -4521,6 +4615,9 @@ function normalizeSchedulePlan(plan = {}) {
     locationId: normalizeLocationId(plan.locationId),
     effectiveFrom: isDateKey(plan.effectiveFrom) ? plan.effectiveFrom : "9999-12-31",
     cycleLength,
+    weekOffset: ((Math.floor(Number(plan.weekOffset || 0)) % cycleLength) + cycleLength) % cycleLength,
+    managedEmployeeIds: [...new Set((Array.isArray(plan.managedEmployeeIds) ? plan.managedEmployeeIds : [])
+      .map((id) => String(id || "").trim()).filter(Boolean))],
     sourceLabel: String(plan.sourceLabel || "Grilla programada").trim(),
     weeks,
   };
@@ -5372,6 +5469,9 @@ async function tryAdminPin() {
     if (sharedLogin.failedTeamRecoveries) {
       alert(`No se pudieron recuperar ${sharedLogin.failedTeamRecoveries} empleado(s). Siguen visibles en este navegador; revisÃ¡ la conexiÃ³n y volvÃ© a guardar sus fichas.`);
     }
+    if (sharedLogin.madridScheduleSeed?.octoberMigrationApplied) {
+      alert(`Se guardó en Netlify la nueva grilla de Madrid desde el 12/10 y se eliminaron ${sharedLogin.madridScheduleSeed.octoberChangesRemoved} cambios de noviembre y diciembre. Barcelona y las fechas anteriores al 12/10 quedaron intactas.`);
+    }
   } else {
     pinError.textContent = sharedLogin.error || "PIN incorrecto. Intentá de nuevo.";
     pinError.hidden = false;
@@ -6157,7 +6257,43 @@ async function persistMadridScheduleSeedToServer(remoteState = {}) {
     stateSaved = result.ok;
     if (result.ok) state.madridScheduleSeedVersion = MADRID_SCHEDULE_SEED_VERSION;
   }
-  return { updated, failed, stateSaved };
+
+  let octoberChangesRemoved = 0;
+  let octoberMigrationApplied = false;
+  const remoteOctoberPlan = (remoteState.schedulePlans?.madrid || [])
+    .find((plan) => plan.id === MADRID_OCTOBER_SCHEDULE_PLAN_ID);
+  const needsOctoberMigration = Number(remoteState.madridOctoberScheduleMigrationVersion || 0)
+    < MADRID_OCTOBER_SCHEDULE_MIGRATION_VERSION || !remoteOctoberPlan;
+  if (needsOctoberMigration) {
+    const plan = (state.schedulePlans?.madrid || [])
+      .find((candidate) => candidate.id === MADRID_OCTOBER_SCHEDULE_PLAN_ID)
+      || MADRID_SCHEDULE_PLAN_2026_10_12;
+    const result = await sendSharedMutation(
+      "/api/madrid-schedule-migration",
+      { plan, migrationVersion: MADRID_OCTOBER_SCHEDULE_MIGRATION_VERSION },
+      "No se pudo guardar la nueva grilla de Madrid en Netlify.",
+    );
+    stateSaved = stateSaved && result.ok;
+    if (result.ok) {
+      octoberMigrationApplied = true;
+      const savedPlan = result.payload?.plan || plan;
+      state.schedulePlans.madrid = [
+        ...(state.schedulePlans.madrid || []).filter((candidate) => candidate.id !== savedPlan.id),
+        savedPlan,
+      ].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+      state.madridOctoberScheduleMigrationVersion = result.payload?.migrationVersion
+        || MADRID_OCTOBER_SCHEDULE_MIGRATION_VERSION;
+      octoberChangesRemoved = Number(result.payload?.changesRemoved || 0);
+      state.changes = (state.changes || []).filter((change) => {
+        const employee = state.employees.find((item) => item.id === change.employeeId);
+        const locationId = normalizeLocationId(change.locationId || employee?.locationId || "");
+        return !(locationId === "madrid" && change.date >= "2026-11-01" && change.date <= "2026-12-31");
+      });
+      invalidateDerivedData();
+      saveLocalStateSnapshot();
+    }
+  }
+  return { updated, failed, stateSaved, octoberChangesRemoved, octoberMigrationApplied };
 }
 
 function scheduleMadridScheduleSeedRetry(delay = 1500) {
@@ -6850,6 +6986,8 @@ function renderAdminFichas() {
             <div class="ficha-schedule-summary">
               <span class="ficha-label">Programación desde ${formatHumanDate(schedulePlanSummary.plan.effectiveFrom)}</span>
               <strong>Ciclo de ${schedulePlanSummary.weeklyHours.length} semanas · ${formatHours(schedulePlanSummary.averageHours)} promedio semanal · ${formatHours(schedulePlanSummary.totalHours)} por ciclo</strong>
+              <div class="ficha-cycle-weeks">${schedulePlanSummary.weeklyPatterns.map((days, index) => `
+                <span><b>Semana ${index + 1}:</b> ${escapeHtml(days.length ? days.join(" · ") : "Sin turnos")}</span>`).join("")}</div>
             </div>` : ''}
         </div>
         <form class="ficha-edit-form" data-ficha-form="${emp.id}"${isEditing ? '' : ' hidden'}>

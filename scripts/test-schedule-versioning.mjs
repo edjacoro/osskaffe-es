@@ -44,6 +44,8 @@ const getBaseShifts = new Function(
   "getScheduleWeekKey",
   "makeShift",
   "timeToDecimal",
+  "shouldUseEmployeeScheduleOverride",
+  "resolveMadridPlanEmployeeId",
   `${appSource.slice(baseShiftsStart, baseShiftsEnd)}\nreturn getBaseShifts;`,
 )(
   (_plans, _locationId, dateKey) => ({
@@ -65,6 +67,8 @@ const getBaseShifts = new Function(
     const [hours, minutes] = String(value).split(":").map(Number);
     return hours + minutes / 60;
   },
+  (version, plan, managed) => !!version && (!plan?.effectiveFrom || !managed || version.effectiveFrom > plan.effectiveFrom),
+  (employeeId) => employeeId,
 );
 assert.deepEqual(getBaseShifts("2026-09-16").map(({ employeeId, start, end }) => ({ employeeId, start, end })), [
   { employeeId: "ana", start: 9, end: 14 },

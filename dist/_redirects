@@ -6,6 +6,7 @@
 /api/state              /.netlify/functions/state           200
 /api/store-hours        /.netlify/functions/store-hours     200
 /api/schedule-plan      /.netlify/functions/schedule-plan   200
+/api/madrid-schedule-migration /.netlify/functions/madrid-schedule-migration 200
 /api/expense-record     /.netlify/functions/expense-record  200
 /api/team               /.netlify/functions/team-list       200
 /api/changes            /.netlify/functions/changes         200

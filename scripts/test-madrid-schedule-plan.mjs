@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { applySchedulePlanUpdate } from "../netlify/functions/schedule-plan.mjs";
 
 const appSource = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const planStart = appSource.indexOf("const MADRID_SCHEDULE_SEED_VERSION");
@@ -22,6 +21,13 @@ const buildHelpers = new Function(
 const { getSchedulePlanShiftsForDate } = buildHelpers(
   (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value),
 );
+const schedulePlanSource = fs.readFileSync(new URL("../netlify/functions/schedule-plan.mjs", import.meta.url), "utf8");
+const mutationStart = schedulePlanSource.indexOf("const DATE_PATTERN");
+const mutationEnd = schedulePlanSource.indexOf("export default async", mutationStart);
+const applySchedulePlanUpdate = new Function(
+  "normalizeLocationId",
+  `${schedulePlanSource.slice(mutationStart, mutationEnd).replace("export function applySchedulePlanUpdate", "function applySchedulePlanUpdate")}\nreturn applySchedulePlanUpdate;`,
+)((value) => value === "madrid" ? "madrid" : "barcelona");
 
 const hours = (shift) => {
   const decimal = (value) => {
@@ -60,15 +66,16 @@ plan.weeks.forEach((week, index) => {
 });
 
 const firstMonday = getSchedulePlanShiftsForDate(plans, "madrid", "2026-08-31");
-const repeatedMonday = getSchedulePlanShiftsForDate(plans, "madrid", "2026-10-26");
+const lastOldCycleMonday = getSchedulePlanShiftsForDate(plans, "madrid", "2026-10-05");
 assert.equal(firstMonday.weekIndex, 0);
-assert.equal(repeatedMonday.weekIndex, 0, "El 26/10 debe reiniciar el ciclo de ocho semanas.");
-assert.deepEqual(repeatedMonday.shifts, firstMonday.shifts);
+assert.equal(lastOldCycleMonday.plan.id, plan.id, "El ciclo anterior debe mantenerse hasta el 11/10.");
+assert.equal(lastOldCycleMonday.weekIndex, 5);
+assert.equal(getSchedulePlanShiftsForDate(plans, "madrid", "2026-10-12").plan.id,
+  "madrid-2026-10-12-4-semanas", "El ciclo nuevo empieza el 12/10 sin cambiar el anterior.");
 
-const weekEightTuesday = getSchedulePlanShiftsForDate(plans, "madrid", "2026-10-20").shifts;
-assert.ok(weekEightTuesday.some((shift) => shift.employeeId === "bonnie" && shift.start === "09:00"));
-assert.ok(!weekEightTuesday.some((shift) => shift.employeeId === "perla"));
-assert.ok(weekEightTuesday.some((shift) => shift.employeeId === "mechi" && shift.start === "09:00" && shift.end === "13:00"));
+const lastOldTuesday = getSchedulePlanShiftsForDate(plans, "madrid", "2026-10-06").shifts;
+assert.ok(lastOldTuesday.some((shift) => shift.employeeId === "mechi" && shift.start === "09:00" && shift.end === "13:00"),
+  "La rutina de Mechi se conserva en la última semana anterior al cambio.");
 
 assert.match(appSource, /id: "guillermo",\s+label: "Guillermina"/);
 assert.match(appSource, /id: "barista-tarde"[\s\S]*?canLogin: false[\s\S]*?testEmployee: true/);
