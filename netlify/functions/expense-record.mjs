@@ -2,6 +2,7 @@ import {
   normalizeLocationId,
   requireSession,
   response,
+  readStateEntry,
   updateState,
 } from "./_shared.mjs";
 
@@ -77,6 +78,17 @@ function compactTombstones(tombstones = {}) {
   );
 }
 
+function sameManualExpense(saved, input) {
+  return !!saved && saved.date === input.date
+    && Number(saved.amount) === Number(input.amount)
+    && saved.category === input.category
+    && saved.supplier === cleanText(input.supplier, 120)
+    && saved.description === cleanText(input.description, 240)
+    && saved.isDiferido === (input.isDiferido === true)
+    && (saved.dueDate || null) === (input.isDiferido ? cleanText(input.dueDate, 10) || null : null)
+    && normalizeLocationId(saved.locationId) === normalizeLocationId(input.locationId);
+}
+
 export function applyExpenseRecordMutation(current, body = {}) {
   const state = current && typeof current === "object" ? current : {};
   const action = String(body.action || "upsert");
@@ -89,6 +101,13 @@ export function applyExpenseRecordMutation(current, body = {}) {
     const index = expenses.findIndex((expense) => String(expense?.id || "") === id);
     const existing = index >= 0 ? expenses[index] : {};
     const expense = cleanManualExpense(incoming, existing);
+    if (index >= 0 && Object.hasOwn(body, "expectedUpdatedAt")
+      && String(existing.updatedAt || "") !== String(body.expectedUpdatedAt || "")) {
+      if (sameManualExpense(existing, expense)) return state;
+      const error = new Error("Este gasto cambió en otra sesión. Actualizá la página antes de editarlo de nuevo.");
+      error.status = 409;
+      throw error;
+    }
     if (index >= 0) expenses[index] = expense;
     else expenses.push(expense);
     delete tombstones[expense.id];
@@ -103,6 +122,7 @@ export function applyExpenseRecordMutation(current, body = {}) {
     const expenseId = cleanText(body.expenseId, 100);
     if (!ID_PATTERN.test(expenseId)) invalid("Gasto inválido.");
     const expense = expenses.find((item) => item?.id === expenseId);
+    if (!expense && tombstones[expenseId]) return state;
     if (!expense) invalid("El gasto ya no existe.");
     if (expense._source === "bistrosoft") invalid("Los movimientos de Bistrosoft no se pueden borrar desde la app.");
     tombstones[expenseId] = new Date().toISOString();
@@ -157,6 +177,31 @@ export function applyExpenseRecordMutation(current, body = {}) {
   invalid("Acción de gasto inválida.");
 }
 
+export function expenseMutationIsPersisted(state, body = {}) {
+  const action = String(body.action || "upsert");
+  const expenses = Array.isArray(state?.expenses) ? state.expenses : [];
+  if (action === "upsert") {
+    const input = body.expense || {};
+    const saved = expenses.find((expense) => expense?.id === input.id);
+    return sameManualExpense(saved, input);
+  }
+  if (action === "delete") {
+    return !!state?.expenseDeletionTombstones?.[body.expenseId]
+      && !expenses.some((expense) => expense?.id === body.expenseId);
+  }
+  if (action === "categorize") {
+    const keys = expenseOverrideKeys(body.expense, body.locationId);
+    return keys.length > 0 && keys.every((key) => state?.expenseCategoryOverrides?.[key] === body.category);
+  }
+  if (action === "mark-paid") {
+    const ids = new Set(body.expenseIds || []);
+    return ids.size > 0 && [...ids].every((id) =>
+      expenses.some((expense) => expense?.id === id && expense.dueDate === body.dueDate)
+    );
+  }
+  return false;
+}
+
 export default async (request) => {
   const session = requireSession(request, "admin");
   if (session instanceof Response) return session;
@@ -171,11 +216,18 @@ export default async (request) => {
 
   try {
     const next = await updateState((current) => applyExpenseRecordMutation(current, body));
+    const { state: confirmed } = await readStateEntry();
+    if (!expenseMutationIsPersisted(confirmed, body)) {
+      const error = new Error("Netlify no confirmó el gasto. Volvé a intentar; no se duplicará.");
+      error.status = 503;
+      throw error;
+    }
     const expenseId = String(body.expense?.id || body.expenseId || "");
     return response({
       ok: true,
       action: body.action || "upsert",
-      expense: (next.expenses || []).find((expense) => expense.id === expenseId) || null,
+      expense: (confirmed.expenses || []).find((expense) => expense.id === expenseId) || null,
+      revision: Number(confirmed?._meta?.revision || next?._meta?.revision || 0),
       persistedAt: new Date().toISOString(),
     });
   } catch (error) {

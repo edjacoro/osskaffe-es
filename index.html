@@ -916,7 +916,9 @@
                   </p>
                   <input type="hidden" id="finExpEditId" value="" />
                   <div class="form-grid">
-                    <label>Fecha<input id="finExpDate" type="date" required /></label>
+                    <label>Fecha<input id="finExpDate" type="date" required />
+                      <small class="fin-expense-date-hint" id="finExpenseDateHint" aria-live="polite"></small>
+                    </label>
                     <label>Importe (€)<input id="finExpAmount" type="number" step="0.01" min="0.01" placeholder="0,00" required /></label>
                     <label>Categoría
                       <select id="finExpCategory">
@@ -970,6 +972,8 @@
                     <button class="ghost-button compact-button" id="finExpensePdf" type="button">PDF mensual</button>
                   </div>
                 </div>
+                <div class="fin-expense-filter" id="finExpenseCategoryFilter" aria-label="Filtrar gastos por categoría"></div>
+                <small class="fin-expense-filter-status" id="finExpenseFilterStatus" aria-live="polite"></small>
                 <div id="finExpenseList" class="event-list fin-expense-list"></div>
               </div>
             </div>

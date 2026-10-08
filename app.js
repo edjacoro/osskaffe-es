@@ -7463,6 +7463,7 @@ let finPendingFile = null;   // archivo xlsx/csv seleccionado pendiente de impor
 let finEditingExpenseId = null; // id del gasto en edición (null = modo creación)
 let finExpenseListViewport = { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 };
 let finExpensePinnedViewport = null;
+let finExpenseSelectedCategories = null;
 let finAnalysisFilters = null;
 let finAiQuestion = '';
 let finAiQuestionDraft = '';
@@ -7559,6 +7560,28 @@ function initFinanzas() {
   });
 
   document.querySelector('#finExpenseForm').addEventListener('submit', handleExpenseForm);
+  document.querySelector('#finExpDate').addEventListener('change', updateExpenseDateHint);
+  document.querySelector('#finExpenseCategoryFilter').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-expense-filter]');
+    if (!button) return;
+    const categoryId = button.dataset.expenseFilter;
+    if (categoryId === 'all') {
+      finExpenseSelectedCategories = null;
+    } else if (EXPENSE_CATEGORIES.some((category) => category.id === categoryId)) {
+      if (finExpenseSelectedCategories === null) {
+        finExpenseSelectedCategories = new Set([categoryId]);
+      } else {
+        const selected = new Set(finExpenseSelectedCategories);
+        if (selected.has(categoryId)) selected.delete(categoryId);
+        else selected.add(categoryId);
+        finExpenseSelectedCategories = selected.size === 0 || selected.size === EXPENSE_CATEGORIES.length
+          ? null
+          : selected;
+      }
+    }
+    finExpensePinnedViewport = { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 };
+    renderFinExpenses();
+  });
 
   // Toggle fecha vencimiento cuando se marca "diferido"
   document.querySelector('#finExpDiferido').addEventListener('change', (e) => {
@@ -8630,6 +8653,23 @@ function setExpensePersistenceStatus(message = '', status = '') {
   element.dataset.status = status;
 }
 
+function expenseMonthLabel(dateKey) {
+  const year = Number(String(dateKey).slice(0, 4));
+  const month = Number(String(dateKey).slice(5, 7));
+  return `${MONTH_NAMES[month - 1] || ''} ${year}`.trim();
+}
+
+function updateExpenseDateHint() {
+  const hint = document.querySelector('#finExpenseDateHint');
+  const date = document.querySelector('#finExpDate')?.value || '';
+  if (!hint) return;
+  const differentMonth = date && date.slice(0, 7) !== monthInputValue(finActiveMonth);
+  hint.textContent = differentMonth
+    ? `Este gasto aparecerá en ${expenseMonthLabel(date)}; estás viendo ${expenseMonthLabel(monthInputValue(finActiveMonth))}.`
+    : '';
+  hint.hidden = !differentMonth;
+}
+
 async function persistExpenseMutation(body) {
   return sendSharedMutation(
     '/api/expense-record',
@@ -8644,6 +8684,23 @@ function expensePersistenceMessage(result, fallback) {
   return persistedAt
     ? `${fallback} · ${formatDateTime(new Date(persistedAt))}`
     : fallback;
+}
+
+function showSavedExpenseInCurrentList(expense) {
+  let viewChanged = false;
+  if (expense.date?.slice(0, 7) !== monthInputValue(finActiveMonth)) {
+    finActiveMonth = firstDayOfMonth(new Date(`${expense.date}T12:00:00`));
+    viewChanged = true;
+  }
+  const categoryId = EXPENSE_CATEGORIES.some((category) => category.id === expense.category)
+    ? expense.category : 'otros';
+  if (finExpenseSelectedCategories && !finExpenseSelectedCategories.has(categoryId)) {
+    finExpenseSelectedCategories = new Set([...finExpenseSelectedCategories, categoryId]);
+    viewChanged = true;
+  }
+  if (viewChanged) {
+    finExpensePinnedViewport = { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 };
+  }
 }
 
 async function deleteExpenseRecord(expenseId, confirmationMessage = '¿Borrar este gasto?') {
@@ -8687,6 +8744,16 @@ function renderFinExpenses() {
     );
   const monthTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const categoryTotals = calculateExpenseCategoryTotals(expenses);
+  const categoryCounts = Object.fromEntries(EXPENSE_CATEGORIES.map((category) => [category.id, 0]));
+  expenses.forEach((expense) => {
+    const categoryId = Object.hasOwn(categoryCounts, expense.category) ? expense.category : 'otros';
+    categoryCounts[categoryId] += 1;
+  });
+  const visibleExpenses = finExpenseSelectedCategories === null
+    ? expenses
+    : expenses.filter((expense) => finExpenseSelectedCategories.has(
+        Object.hasOwn(categoryCounts, expense.category) ? expense.category : 'otros'
+      ));
 
   document.querySelector('#finExpListTitle').textContent =
     `Gastos de ${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
@@ -8694,6 +8761,7 @@ function renderFinExpenses() {
     `${expenses.length} movimientos · ${formatEur(monthTotal)}`;
   document.querySelector('#finExpCategoryMonth').textContent =
     `${MONTH_NAMES[finActiveMonth.getMonth()]} ${finActiveMonth.getFullYear()}`;
+  updateExpenseDateHint();
   document.querySelector('#finExpenseCategorySummary').innerHTML = EXPENSE_CATEGORIES.map((category) => {
     const amount = categoryTotals[category.id];
     return `<div class="fin-expense-category-item${amount === 0 ? ' is-zero' : ''}" data-expense-category="${category.id}">
@@ -8702,9 +8770,26 @@ function renderFinExpenses() {
     </div>`;
   }).join('');
 
+  const filterContainer = document.querySelector('#finExpenseCategoryFilter');
+  filterContainer.innerHTML = `<button class="fin-expense-filter-button${finExpenseSelectedCategories === null ? ' is-active' : ''}"
+      type="button" data-expense-filter="all" aria-pressed="${finExpenseSelectedCategories === null}">Todas</button>`
+    + EXPENSE_CATEGORIES.map((category) => {
+      const selected = finExpenseSelectedCategories?.has(category.id) || false;
+      return `<button class="fin-expense-filter-button${selected ? ' is-active' : ''}"
+        type="button" data-expense-filter="${category.id}" aria-pressed="${selected}">
+        ${escapeHtml(category.label)} <span>${categoryCounts[category.id]}</span></button>`;
+    }).join('');
+  document.querySelector('#finExpenseFilterStatus').textContent = finExpenseSelectedCategories === null
+    ? 'Tocá una categoría para verla sola; tocá otras para sumarlas.'
+    : `Mostrando ${visibleExpenses.length} de ${expenses.length} gastos · ${formatEur(
+        visibleExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0)
+      )} de las categorías seleccionadas.`;
+
   const list = document.querySelector('#finExpenseList');
-  if (!expenses.length) {
-    list.innerHTML = '<div class="empty-state">No hay gastos registrados en este mes.</div>';
+  if (!visibleExpenses.length) {
+    list.innerHTML = `<div class="empty-state">${expenses.length
+      ? 'No hay gastos de las categorías seleccionadas en este mes.'
+      : 'No hay gastos registrados en este mes.'}</div>`;
     restoreExpenseListViewport(list, { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 });
     finExpensePinnedViewport = null;
     return;
@@ -8712,7 +8797,7 @@ function renderFinExpenses() {
 
   const isAdmin = typeof appRole !== 'undefined' && appRole === 'admin';
 
-  list.innerHTML = expenses.map((exp) => {
+  list.innerHTML = visibleExpenses.map((exp) => {
     const catLabel = EXPENSE_CATEGORIES.find((c) => c.id === exp.category)?.label || exp.category;
     const hasCategoryOverride = exp._source === 'bistrosoft'
       && !!getExpenseCategoryOverride(exp);
@@ -8724,7 +8809,7 @@ function renderFinExpenses() {
     return `
       <article class="event-item fin-expense-item${exp.isDiferido ? ' fin-item-tc' : ''}" data-expense-id="${escapeHtml(exp.id)}">
         <div class="event-topline">
-          <span>${catLabel}${exp.supplier ? ' · ' + escapeHtml(exp.supplier) : ''}${tcBadge}${bistroBadge}</span>
+          <span>${escapeHtml(catLabel)}${exp.supplier ? ' · ' + escapeHtml(exp.supplier) : ''}${tcBadge}${bistroBadge}</span>
           <span class="status-pill status-rejected">${formatEur(exp.amount)}</span>
         </div>
         <div class="event-meta">${formatHumanDate(exp.date)}${exp.description ? ' · ' + escapeHtml(exp.description) : ''}</div>
@@ -8823,6 +8908,7 @@ function startEditExpense(id) {
 
   document.querySelector('#finExpEditId').value = id;
   document.querySelector('#finExpDate').value = exp.date;
+  updateExpenseDateHint();
   document.querySelector('#finExpAmount').value = exp.amount;
   document.querySelector('#finExpCategory').value = exp.category || 'otros';
   document.querySelector('#finExpSupplier').value = exp.supplier || '';
@@ -8866,6 +8952,7 @@ function resetExpenseForm(options = {}) {
   document.querySelector('#finExpCancelEdit').style.display = 'none';
   // Restaurar fecha de hoy
   document.querySelector('#finExpDate').value = document.querySelector('#finExpDate').dataset.today || new Date().toISOString().slice(0,10);
+  updateExpenseDateHint();
 }
 
 // -------- DIFERIDOS TC --------
@@ -9472,6 +9559,7 @@ async function handleExpenseForm(event) {
           ? { ...expense, category }
           : expense
       );
+      showSavedExpenseInCurrentList({ ...existingExpense, category });
       resetExpenseForm({ keepViewport: true });
       saveState({ shared: false });
       render();
@@ -9494,16 +9582,27 @@ async function handleExpenseForm(event) {
       paymentMethod: isDif ? 'tc' : 'efectivo',
       locationId:   normalizeLocationId(existingExpense?.locationId || activeLocationId),
     };
+    if (expData.date.slice(0, 7) !== monthInputValue(finActiveMonth)) {
+      const proceed = confirm(`Estás viendo ${expenseMonthLabel(monthInputValue(finActiveMonth))}, pero este gasto quedará en ${expenseMonthLabel(expData.date)}. ¿Guardar igualmente?`);
+      if (!proceed) {
+        setExpensePersistenceStatus('Guardado cancelado. Revisá la fecha del gasto.', 'warning');
+        return;
+      }
+    }
     const expense = existingExpense
       ? { ...existingExpense, ...expData }
       : { id: createId(), ...expData, createdAt: new Date().toISOString() };
-    const result = await persistExpenseMutation({ action: 'upsert', expense });
+    const result = await persistExpenseMutation({
+      action: 'upsert', expense,
+      ...(existingExpense ? { expectedUpdatedAt: existingExpense.updatedAt || null } : {}),
+    });
     if (!result.ok) throw new Error(result.error || 'Netlify no confirmó el gasto.');
     const persistedExpense = result.payload?.expense || expense;
     const existingIndex = state.expenses.findIndex((item) => item.id === persistedExpense.id);
     if (existingIndex >= 0) state.expenses[existingIndex] = persistedExpense;
     else state.expenses.push(persistedExpense);
     if (state.expenseDeletionTombstones) delete state.expenseDeletionTombstones[persistedExpense.id];
+    showSavedExpenseInCurrentList(persistedExpense);
     resetExpenseForm({ keepViewport: true });
     saveState({ shared: false });
     render();

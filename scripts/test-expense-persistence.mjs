@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { applyExpenseRecordMutation } from "../netlify/functions/expense-record.mjs";
+import { applyExpenseRecordMutation, expenseMutationIsPersisted } from "../netlify/functions/expense-record.mjs";
 import { mergeAdminState } from "../netlify/functions/_shared.mjs";
 
 const manualA = {
@@ -38,6 +38,24 @@ state = applyExpenseRecordMutation(state, {
 });
 assert.equal(state.expenses.find((expense) => expense.id === "manual-b").amount, 27);
 assert.equal(state.expenses.length, 3, "Editar no debe duplicar el gasto.");
+assert.equal(expenseMutationIsPersisted(state, {
+  action: "upsert",
+  expense: { ...manualB, amount: 27, description: "Actualizado" },
+}), true);
+assert.equal(expenseMutationIsPersisted(state, {
+  action: "upsert",
+  expense: { ...manualB, amount: 20 },
+}), false, "Una respuesta de guardado no puede confirmar un importe anterior.");
+assert.throws(() => applyExpenseRecordMutation(state, {
+  action: "upsert",
+  expectedUpdatedAt: null,
+  expense: { ...manualB, amount: 99 },
+}), (error) => error.status === 409, "Una pestaña antigua no puede sobrescribir la última edición.");
+assert.equal(applyExpenseRecordMutation(state, {
+  action: "upsert",
+  expectedUpdatedAt: null,
+  expense: { ...manualB, amount: 27, description: "Actualizado" },
+}), state, "Un reintento de una edición ya guardada no debe crear otra versión.");
 
 state = applyExpenseRecordMutation(state, {
   action: "upsert",
@@ -70,6 +88,9 @@ state = applyExpenseRecordMutation(state, {
 assert.equal(state.expenses.find((expense) => expense.id === bistro.id).category, "materia_prima");
 assert.equal(state.expenseCategoryOverrides[bistro.id], "materia_prima");
 assert.equal(state.expenseCategoryOverrides[bistro.bistroId], "materia_prima");
+assert.equal(expenseMutationIsPersisted(state, {
+  action: "categorize", category: "materia_prima", expense: bistro,
+}), true);
 
 state = applyExpenseRecordMutation(state, {
   action: "upsert",
@@ -94,6 +115,9 @@ assert.equal(state.expenses.find((expense) => expense.id === "manual-tc").dueDat
 state = applyExpenseRecordMutation(state, { action: "delete", expenseId: "manual-a" });
 assert.ok(!state.expenses.some((expense) => expense.id === "manual-a"));
 assert.ok(state.expenseDeletionTombstones["manual-a"]);
+assert.equal(expenseMutationIsPersisted(state, { action: "delete", expenseId: "manual-a" }), true);
+const afterRepeatedDelete = applyExpenseRecordMutation(state, { action: "delete", expenseId: "manual-a" });
+assert.equal(afterRepeatedDelete, state, "Reintentar un borrado confirmado debe ser seguro.");
 
 const staleBrowserState = {
   ...state,
@@ -116,7 +140,7 @@ const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 const redirects = fs.readFileSync(new URL("../_redirects", import.meta.url), "utf8");
 
 assert.match(redirects, /\/api\/expense-record\s+\/\.netlify\/functions\/expense-record/);
-assert.match(appSource, /persistExpenseMutation\(\{ action: 'upsert', expense \}\)/);
+assert.match(appSource, /persistExpenseMutation\(\{\s*action: 'upsert', expense,/);
 assert.match(appSource, /persistExpenseMutation\(\{ action: 'delete', expenseId \}\)/);
 assert.match(appSource, /saveState\(\{ shared: false \}\);/);
 assert.match(appSource, /captureExpenseListViewport/);
