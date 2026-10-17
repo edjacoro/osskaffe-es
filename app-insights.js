@@ -4,13 +4,14 @@
   function combineFinancialMetrics(rows = []) {
     const combined = rows.reduce((totals, row) => {
       totals.totalSales += Number(row.totalSales || 0);
+      totals.ticketSales += Number(row.ticketSales ?? row.totalSales ?? 0);
       totals.ticketCount += Number(row.ticketCount || 0);
       totals.totalExpenses += Number(row.totalExpenses || 0);
       totals.result += Number(row.result || 0);
       return totals;
-    }, { totalSales: 0, ticketCount: 0, totalExpenses: 0, result: 0 });
+    }, { totalSales: 0, ticketSales: 0, ticketCount: 0, totalExpenses: 0, result: 0 });
     combined.avgTicket = combined.ticketCount > 0
-      ? combined.totalSales / combined.ticketCount
+      ? combined.ticketSales / combined.ticketCount
       : 0;
     return combined;
   }

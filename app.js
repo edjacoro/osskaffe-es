@@ -1978,6 +1978,16 @@ function renderMetrics() {
 
 const EXECUTIVE_LOCATION_IDS = Object.keys(LOCATIONS);
 
+function saleTicketCount(sale) {
+  if (sale?._source === 'course') return 0;
+  const count = Number(sale?.count ?? 1);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function saleTicketRevenue(sale) {
+  return sale?._source === 'course' ? 0 : Number(sale?.total || 0);
+}
+
 function getMonthMetricsForLocation(monthDate, locationId) {
   const monthKey = monthInputValue(monthDate);
   const sales = getLocationSales(locationId).filter((sale) => sale.date.startsWith(monthKey));
@@ -1986,13 +1996,15 @@ function getMonthMetricsForLocation(monthDate, locationId) {
     return String(effectiveDate || "").startsWith(monthKey);
   });
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
-  const ticketCount = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const ticketSales = sales.reduce((sum, sale) => sum + saleTicketRevenue(sale), 0);
+  const ticketCount = sales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
   const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   return {
     locationId,
     totalSales,
+    ticketSales,
     ticketCount,
-    avgTicket: ticketCount > 0 ? totalSales / ticketCount : 0,
+    avgTicket: ticketCount > 0 ? ticketSales / ticketCount : 0,
     totalExpenses,
     result: totalSales - totalExpenses,
     sales,
@@ -2095,10 +2107,10 @@ function getDataConfidenceForLocation(monthDate, locationId) {
   const today = toDateInput(new Date());
   const observedEnd = monthStart > today ? null : (monthEnd > today ? today : monthEnd);
   const sales = getLocationSales(locationId).filter((sale) => sale.date.startsWith(monthKey));
-  const ticketCount = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const ticketCount = sales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
   const detailTickets = sales.reduce((sum, sale) =>
-    sum + (Array.isArray(sale.items) && sale.items.length ? Number(sale.count || 1) : 0), 0);
-  const salesDates = new Set(sales.filter((sale) => Number(sale.count || 1) > 0).map((sale) => sale.date));
+    sum + (Array.isArray(sale.items) && sale.items.length ? saleTicketCount(sale) : 0), 0);
+  const salesDates = new Set(sales.filter((sale) => saleTicketCount(sale) > 0).map((sale) => sale.date));
   const missingOpenDates = [];
   if (observedEnd) {
     const cursor = parseDateKey(monthStart);
@@ -3955,9 +3967,9 @@ function getHourlySalesAnalysis(monthDate = trafficActiveMonth) {
   let unassignedSales = 0;
 
   getLocationSales()
-    .filter((sale) => sale.date.startsWith(monthKey))
+    .filter((sale) => sale.date.startsWith(monthKey) && sale._source !== 'course')
     .forEach((sale) => {
-      const tickets = Number(sale.count || 1);
+      const tickets = saleTicketCount(sale);
       const total = Number(sale.total || 0);
       const hour = parseSaleHour(sale.time);
       if (hour === null) {
@@ -4523,10 +4535,14 @@ async function refreshSharedState() {
     if (!response.ok) return;
     const payload = await response.json();
     if (!payload.state) return;
+    const incomingRevision = Math.max(0, Number(payload.revision || payload.state?._meta?.revision || 0));
+    // Una consulta iniciada antes de guardar no puede reemplazar en pantalla
+    // una venta ya confirmada con una versión anterior del estado.
+    if (incomingRevision < sharedStateRevision) return;
 
     suppressSharedStateSave = true;
     state = seedDefaultHolidays(mergeState(DEFAULT_STATE, payload.state));
-    sharedStateRevision = Math.max(0, Number(payload.revision || payload.state?._meta?.revision || 0));
+    sharedStateRevision = incomingRevision;
     sharedStateEtag = response.headers.get('etag') || sharedStateEtag;
     invalidateDerivedData();
     saveLocalStateSnapshot();
@@ -7668,6 +7684,9 @@ let finActiveMonth = firstDayOfMonth(new Date()); // mes propio de Finanzas (ind
 let finTodayDate = toDateInput(new Date());
 let finPnlYear = new Date().getFullYear();
 let finPendingFile = null;   // archivo xlsx/csv seleccionado pendiente de importar
+let finEditingManualSaleId = null;
+let finManualSaleSaving = false;
+let finSaleSourceFilter = 'all';
 let finEditingExpenseId = null; // id del gasto en edición (null = modo creación)
 let finExpenseListViewport = { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 };
 let finExpensePinnedViewport = null;
@@ -7741,6 +7760,14 @@ function initFinanzas() {
 
   document.querySelector('#finImportForm').addEventListener('submit', handleSalesCsvImport);
   document.querySelector('#finManualSaleForm').addEventListener('submit', handleManualSaleForm);
+  document.querySelector('#finManualSaleCourse').addEventListener('change', updateManualSaleCourseField);
+  document.querySelector('#finManualSaleCancel').addEventListener('click', resetManualSaleForm);
+  document.querySelector('#finSaleSourceFilters').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-sale-source-filter]');
+    if (!button) return;
+    finSaleSourceFilter = button.dataset.saleSourceFilter;
+    renderFinImport();
+  });
   document.querySelector('#finSyncNow').addEventListener('click', handleBistrosoftSyncClick);
   document.querySelector('#finSyncDay').addEventListener('click', () => startBistrosoftDayDetailRepair());
   document.querySelector('#finSyncHistory').addEventListener('click', startBistrosoftDetailBackfill);
@@ -7760,8 +7787,10 @@ function initFinanzas() {
   });
 
   document.querySelector('#finClearSales').addEventListener('click', () => {
-    if (confirm('¿Borrar todas las ventas importadas?')) {
-      state.sales = (state.sales || []).filter((sale) => !belongsToActiveLocation(sale));
+    if (confirm('¿Borrar solo las ventas importadas desde archivo de esta tienda? Las ventas sueltas y los cursos quedarán intactos.')) {
+      state.sales = (state.sales || []).filter((sale) =>
+        !belongsToActiveLocation(sale) || sale._source === 'bistrosoft'
+          || sale._source === 'manual' || sale._source === 'course');
       saveState();
       render();
     }
@@ -8774,8 +8803,10 @@ function renderFinHoy() {
 function renderFinImport() {
   const byDate = groupSalesByDate();
   const dates = Object.keys(byDate).sort().reverse();
-  const totalTicketCount = getLocationSales().reduce((s, t) => s + (t.count || 1), 0);
+  const totalTicketCount = getLocationSales().reduce((sum, sale) => sum + saleTicketCount(sale), 0);
   document.querySelector('#finSalesSummary').textContent = `${totalTicketCount} tickets`;
+  document.querySelectorAll('[data-sale-source-filter]').forEach((button) =>
+    button.classList.toggle('is-active', button.dataset.saleSourceFilter === finSaleSourceFilter));
 
   const list = document.querySelector('#finSalesList');
   if (!dates.length) {
@@ -8783,39 +8814,49 @@ function renderFinImport() {
     return;
   }
 
-  list.innerHTML = dates.map((date) => {
+  list.innerHTML = dates.flatMap((date) => {
     const daySales = byDate[date];
-    const dayTotal  = daySales.reduce((s, t) => s + t.total, 0);
-    const dayCount  = daySales.reduce((s, t) => s + (t.count || 1), 0);
-    const isSummary = daySales.some((t) => t._isSummary);
-    const isBistrosoft = daySales.some((t) => t._source === 'bistrosoft');
-    const hasManual = daySales.some((t) => t._source === 'manual');
-    const sourceLabel = [
-      isBistrosoft ? 'Bistrosoft' : '',
-      hasManual ? 'manual' : '',
-      !isBistrosoft && !hasManual && isSummary ? 'resumen diario' : '',
-    ].filter(Boolean).join(' + ');
-    return `
-      <article class="event-item">
+    const imported = finSaleSourceFilter === 'all' || finSaleSourceFilter === 'bistrosoft'
+      ? daySales.filter((sale) => sale._source !== 'manual' && sale._source !== 'course') : [];
+    const manual = daySales.filter((sale) =>
+      (sale._source === 'manual' || sale._source === 'course')
+      && (finSaleSourceFilter === 'all' || sale._source === finSaleSourceFilter));
+    const rows = [];
+    if (imported.length) {
+      const total = imported.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+      const count = imported.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
+      const sourceLabel = imported.some((sale) => sale._source === 'bistrosoft') ? 'Bistrosoft' : 'Archivo Bistrosoft';
+      rows.push(`<article class="event-item fin-sale-item fin-sale-item--bistrosoft">
         <div class="event-topline">
-          <span>${formatHumanDate(date)}${sourceLabel ? ` <span style="font-size:0.72rem;color:var(--muted)">(${sourceLabel})</span>` : ''}</span>
-          <span class="status-pill status-approved">${formatEur(dayTotal)}</span>
+          <span>${formatHumanDate(date)} <span class="fin-sale-source">${sourceLabel}</span></span>
+          <span class="status-pill status-approved">${formatEur(total)}</span>
         </div>
-        <div class="event-meta">${dayCount} tickets · ticket prom. ${formatEur(dayTotal / dayCount)}</div>
+        <div class="event-meta">${count} tickets · ticket prom. ${count ? formatEur(total / count) : '—'}</div>
+      </article>`);
+    }
+    manual.forEach((sale) => {
+      const course = sale._source === 'course';
+      const count = saleTicketCount(sale);
+      rows.push(`<article class="event-item fin-sale-item fin-sale-item--${course ? 'course' : 'manual'}">
+        <div class="event-topline">
+          <span>${formatHumanDate(date)} <span class="fin-sale-source">${course ? 'Curso' : 'Venta suelta'}</span></span>
+          <span class="status-pill status-approved">${formatEur(Number(sale.total || 0))}</span>
+        </div>
+        <div class="event-meta">${course ? 'No computa tickets ni ticket promedio' : `${count} tickets · ticket prom. ${formatEur(Number(sale.total || 0) / count)}`}</div>
         <div class="event-actions">
-          <button class="mini-button danger" type="button" data-delete-day="${date}">Borrar día</button>
+          <button class="mini-button" type="button" data-edit-manual-sale="${escapeHtml(sale.id)}">Editar</button>
+          <button class="mini-button danger" type="button" data-delete-manual-sale="${escapeHtml(sale.id)}">Borrar solo esta venta</button>
         </div>
-      </article>
-    `;
-  }).join('');
-
-  list.querySelectorAll('[data-delete-day]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.sales = state.sales.filter((s) => !(belongsToActiveLocation(s) && s.date === btn.dataset.deleteDay));
-      saveState();
-      render();
+      </article>`);
     });
-  });
+    return rows;
+  }).join('');
+  if (!list.innerHTML) renderEmpty(list);
+
+  list.querySelectorAll('[data-edit-manual-sale]').forEach((button) =>
+    button.addEventListener('click', () => startEditingManualSale(button.dataset.editManualSale)));
+  list.querySelectorAll('[data-delete-manual-sale]').forEach((button) =>
+    button.addEventListener('click', () => deleteManualSale(button.dataset.deleteManualSale)));
 }
 
 // -------- EXPENSES --------
@@ -9523,17 +9564,89 @@ function renderFinPnl() {
 
 // -------- HANDLERS --------
 
-function handleManualSaleForm(event) {
+function setManualSaleSaveStatus(message = '', status = '') {
+  const element = document.querySelector('#finManualSaleSaveStatus');
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.status = status;
+}
+
+function updateManualSaleCourseField() {
+  const course = document.querySelector('#finManualSaleCourse').checked;
+  const field = document.querySelector('#finManualSaleCountField');
+  const input = document.querySelector('#finManualSaleCount');
+  field.hidden = course;
+  input.disabled = course;
+  input.required = !course;
+  if (course) input.value = '';
+}
+
+function resetManualSaleForm() {
+  finEditingManualSaleId = null;
+  document.querySelector('#finManualSaleForm').reset();
+  document.querySelector('#finManualSaleDate').value = toDateInput(new Date());
+  document.querySelector('#finManualSaleSubmit').textContent = 'Agregar venta';
+  document.querySelector('#finManualSaleCancel').hidden = true;
+  updateManualSaleCourseField();
+  setManualSaleSaveStatus();
+}
+
+function startEditingManualSale(id) {
+  const sale = state.sales.find((item) => String(item.id) === String(id) && belongsToActiveLocation(item));
+  if (!sale || !['manual', 'course'].includes(sale._source)) return;
+  finEditingManualSaleId = sale.id;
+  document.querySelector('#finManualSaleDate').value = sale.date;
+  document.querySelector('#finManualSaleCourse').checked = sale._source === 'course';
+  updateManualSaleCourseField();
+  document.querySelector('#finManualSaleCount').value = sale._source === 'course' ? '' : saleTicketCount(sale);
+  document.querySelector('#finManualSaleTotal').value = Number(sale.total || 0);
+  document.querySelector('#finManualSaleSubmit').textContent = 'Guardar cambios';
+  document.querySelector('#finManualSaleCancel').hidden = false;
+  setManualSaleSaveStatus('Editando solo esta venta; Bistrosoft no se modificará.', '');
+  document.querySelector('#finManualSaleForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function deleteManualSale(id) {
+  if (finManualSaleSaving) return;
+  const sale = state.sales.find((item) => String(item.id) === String(id) && belongsToActiveLocation(item));
+  if (!sale || !['manual', 'course'].includes(sale._source)) return;
+  if (!confirm(`¿Borrar solo ${sale._source === 'course' ? 'este curso' : 'esta venta suelta'} del ${formatHumanDate(sale.date)} por ${formatEur(sale.total)}? Bistrosoft no se tocará.`)) return;
+  finManualSaleSaving = true;
+  setManualSaleSaveStatus('Confirmando el borrado en Netlify...', 'saving');
+  try {
+    const result = await sendSharedMutation('/api/manual-sale', {
+      action: 'delete', saleId: sale.id, locationId: activeLocationId,
+      expectedUpdatedAt: sale.updatedAt || '',
+    }, 'No se pudo borrar la venta en Netlify.');
+    if (!result.ok) {
+      setManualSaleSaveStatus(result.error, 'error');
+      alert(result.error || 'La venta no se borró porque Netlify no confirmó el cambio.');
+      return;
+    }
+    state.sales = state.sales.filter((item) => item.id !== sale.id);
+    state.salesDeletionTombstones = { ...(state.salesDeletionTombstones || {}), [sale.id]: new Date().toISOString() };
+    saveState({ shared: false });
+    if (finEditingManualSaleId === sale.id) resetManualSaleForm();
+    render();
+    setManualSaleSaveStatus(result.local ? 'Borrado solo en este navegador.' : 'Venta borrada y confirmada en Netlify.', result.local ? '' : 'success');
+  } finally {
+    finManualSaleSaving = false;
+  }
+}
+
+async function handleManualSaleForm(event) {
   event.preventDefault();
+  if (finManualSaleSaving) return;
   const date = document.querySelector('#finManualSaleDate').value;
-  const count = Math.max(1, Math.round(Number(document.querySelector('#finManualSaleCount').value || 0)));
+  const course = document.querySelector('#finManualSaleCourse').checked;
+  const count = course ? 0 : Number(document.querySelector('#finManualSaleCount').value);
   const total = Number(document.querySelector('#finManualSaleTotal').value || 0);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     alert('Elegí una fecha válida.');
     return;
   }
-  if (!Number.isFinite(count) || count < 1) {
+  if (!course && (!Number.isInteger(count) || count < 1)) {
     alert('La cantidad de tickets debe ser al menos 1.');
     return;
   }
@@ -9542,26 +9655,50 @@ function handleManualSaleForm(event) {
     return;
   }
 
-  state.sales.push({
-    id: `manual-sale-${activeLocationId}-${date}-${Date.now()}`,
+  const existing = finEditingManualSaleId
+    ? state.sales.find((sale) => sale.id === finEditingManualSaleId && belongsToActiveLocation(sale))
+    : null;
+  if (finEditingManualSaleId && (!existing || !['manual', 'course'].includes(existing._source))) {
+    setManualSaleSaveStatus('Esta venta ya no está disponible. Actualizá la página.', 'error');
+    return;
+  }
+  const sale = {
+    ...(existing || {}),
+    id: existing?.id || `manual-sale-${activeLocationId}-${date}-${createId()}`,
     locationId: activeLocationId,
     date,
     time: '',
-    ticketNumber: `manual-${date}`,
+    ticketNumber: `${course ? 'course' : 'manual'}-${date}`,
     total,
     count,
     items: [],
-    paymentMethod: 'Manual',
-    _source: 'manual',
+    paymentMethod: course ? 'Curso' : 'Manual',
+    _source: course ? 'course' : 'manual',
     _isSummary: true,
-    createdAt: new Date().toISOString(),
-  });
-
-  document.querySelector('#finManualSaleCount').value = '';
-  document.querySelector('#finManualSaleTotal').value = '';
-  saveState();
-  render();
-  alert(`Venta manual agregada: ${count} ticket${count !== 1 ? 's' : ''} · ${formatEur(total)}.`);
+    createdAt: existing?.createdAt || new Date().toISOString(),
+  };
+  finManualSaleSaving = true;
+  document.querySelector('#finManualSaleSubmit').disabled = true;
+  setManualSaleSaveStatus('Confirmando la venta en Netlify...', 'saving');
+  try {
+    const result = await sendSharedMutation('/api/manual-sale', {
+      action: 'upsert', sale, ...(existing ? { expectedUpdatedAt: existing.updatedAt || '' } : {}),
+    }, 'No se pudo guardar la venta en Netlify.');
+    if (!result.ok) {
+      setManualSaleSaveStatus(result.error, 'error');
+      alert(result.error || 'La venta no quedó guardada en Netlify. Los datos siguen en el formulario.');
+      return;
+    }
+    const confirmed = result.payload?.sale || sale;
+    state.sales = [...state.sales.filter((item) => item.id !== sale.id), confirmed];
+    saveState({ shared: false });
+    resetManualSaleForm();
+    render();
+    setManualSaleSaveStatus(result.local ? 'Guardado solo en este navegador.' : 'Venta guardada y confirmada en Netlify.', result.local ? '' : 'success');
+  } finally {
+    finManualSaleSaving = false;
+    document.querySelector('#finManualSaleSubmit').disabled = false;
+  }
 }
 
 async function handleSalesCsvImport(event) {
@@ -9589,10 +9726,18 @@ async function handleSalesCsvImport(event) {
     return;
   }
 
-  const dates = [...new Set(imported.map((t) => t.date))].sort();
-  const taggedImported = imported.map((ticket) => ({ ...ticket, locationId: activeLocationId }));
+  const syncedDates = new Set(getLocationSales()
+    .filter((sale) => sale._source === 'bistrosoft').map((sale) => sale.date));
+  const importable = imported.filter((ticket) => !syncedDates.has(ticket.date));
+  if (!importable.length) {
+    alert('Esos días ya están sincronizados desde Bistrosoft. No se importó el archivo para evitar duplicar ventas. Usá la sincronización para corregirlos.');
+    return;
+  }
+  const dates = [...new Set(importable.map((ticket) => ticket.date))].sort();
+  const taggedImported = importable.map((ticket) => ({ ...ticket, locationId: activeLocationId, _source: 'file' }));
   state.sales = [
-    ...state.sales.filter((s) => !(belongsToActiveLocation(s) && dates.includes(s.date))),
+    ...state.sales.filter((sale) => !belongsToActiveLocation(sale) || !dates.includes(sale.date)
+      || sale._source === 'bistrosoft' || sale._source === 'manual' || sale._source === 'course'),
     ...taggedImported,
   ];
 
@@ -9602,8 +9747,9 @@ async function handleSalesCsvImport(event) {
 
   saveState();
   render();
-  const importedTickets = imported.reduce((s, t) => s + (t.count || 1), 0);
-  alert(`✓ ${importedTickets} tickets importados (${dates.length} día${dates.length > 1 ? 's' : ''}: ${dates[0]}${dates.length > 1 ? ' → ' + dates[dates.length - 1] : ''})`);
+  const importedTickets = importable.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
+  const skipped = imported.length - importable.length;
+  alert(`✓ ${importedTickets} tickets importados (${dates.length} día${dates.length > 1 ? 's' : ''}: ${dates[0]}${dates.length > 1 ? ' → ' + dates[dates.length - 1] : ''}).${skipped ? ` Se omitieron ${skipped} registros de días ya sincronizados para evitar duplicados.` : ''}`);
 }
 
 /** Enrutador: elige parser según extensión del archivo */
@@ -9936,7 +10082,7 @@ function parseBistrosoftSummary(lines, headers, sep) {
 
 /** Parser para "Reporte de Ventas por Día" de Bistrosoft:
  *  1 fila por día → se crea 1 registro con campo `count` = Cantidad Ventas.
- *  calcDayMetrics ya usa t.count || 1 para el conteo de tickets. */
+ *  calcDayMetrics utiliza saleTicketCount para el conteo de tickets. */
 function parseBistrosoftVentasDiario(lines, headers, sep) {
   const idx = {
     fecha:    findColIdx(headers, ['fecha','date']),
@@ -10277,13 +10423,15 @@ function renderFinResumen() {
     const sales    = locationSales.filter((s) => s.date.startsWith(ym));
     const expenses = locationExpenses.filter((e) => e.date.startsWith(ym));
     const totalSales    = sales.reduce((s, t) => s + t.total, 0);
-    const totalTickets  = sales.reduce((s, t) => s + (t.count || 1), 0);
+    const totalTickets  = sales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
+    const ticketSales = sales.reduce((sum, sale) => sum + saleTicketRevenue(sale), 0);
     const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
     const resultado     = totalSales - totalExpenses;
     const margen        = totalSales > 0 ? (resultado / totalSales) * 100 : 0;
-    const avgTicket     = totalTickets > 0 ? totalSales / totalTickets : 0;
+    const avgTicket     = totalTickets > 0 ? ticketSales / totalTickets : 0;
     const daysWithSales = new Set(sales.map((s) => s.date)).size;
-    const ticketsPerDay = daysWithSales > 0 ? totalTickets / daysWithSales : 0;
+    const daysWithTickets = new Set(sales.filter((sale) => saleTicketCount(sale) > 0).map((sale) => sale.date)).size;
+    const ticketsPerDay = daysWithTickets > 0 ? totalTickets / daysWithTickets : 0;
     const salesPerDay   = daysWithSales > 0 ? totalSales   / daysWithSales : 0;
     const crossSelling  = calculateCrossSelling(sales);
     const itemMetrics   = calculateItemMetrics(sales);
@@ -10726,10 +10874,11 @@ function getAnalysisBaristaOptions(sales) {
 function buildAnalysisGroups(sales, type, resolveBaristas = saleBaristaLabels) {
   const groups = new Map();
   const add = (key, label, sale, quantity = 0, amount = Number(sale.total || 0)) => {
-    const current = groups.get(key) || { key, label, sales: 0, tickets: new Set(), quantity: 0 };
+    const current = groups.get(key) || { key, label, sales: 0, ticketSales: 0, ticketIds: new Map(), quantity: 0 };
     current.sales += amount;
+    if (sale._source !== 'course') current.ticketSales += amount;
     current.quantity += quantity;
-    current.tickets.add(sale.id || sale.ticketNumber || `${sale.date}-${sale.time}-${groups.size}`);
+    current.ticketIds.set(sale.id || sale.ticketNumber || `${sale.date}-${sale.time}-${groups.size}`, saleTicketCount(sale));
     groups.set(key, current);
   };
 
@@ -10759,7 +10908,7 @@ function buildAnalysisGroups(sales, type, resolveBaristas = saleBaristaLabels) {
 
   return [...groups.values()].map((group) => ({
     ...group,
-    tickets: group.tickets.size,
+    tickets: [...group.ticketIds.values()].reduce((sum, count) => sum + count, 0),
   }));
 }
 
@@ -10789,7 +10938,7 @@ function exportFinAnalysisCsv(filters, groups) {
       Number(row.sales || 0).toFixed(2),
       String(row.tickets || 0),
       String(row.quantity || 0),
-      row.tickets ? Number(row.sales / row.tickets).toFixed(2) : '',
+      row.tickets ? Number(row.ticketSales / row.tickets).toFixed(2) : '',
     ]),
   ];
   const csv = `\uFEFF${rows.map((row) => row.map(csvEscape).join(',')).join('\n')}`;
@@ -10845,7 +10994,8 @@ function renderFinAnalysis() {
     return true;
   });
   const totalSales = selectedSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
-  const totalTickets = selectedSales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const totalTickets = selectedSales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
+  const ticketSales = selectedSales.reduce((sum, sale) => sum + saleTicketRevenue(sale), 0);
   const totalProducts = selectedSales.reduce((sum, sale) => sum + (sale.items || []).reduce((itemSum, item) => itemSum + itemQuantity(item), 0), 0);
   const metricKey = filters.metric;
   const metricValue = (row) => metricKey === 'tickets' ? row.tickets : metricKey === 'quantity' ? row.quantity : row.sales;
@@ -10859,7 +11009,7 @@ function renderFinAnalysis() {
       <td class="fin-cell-num">${formatEur(row.sales)}</td>
       <td class="fin-cell-num">${row.tickets}</td>
       <td class="fin-cell-num">${row.quantity || '—'}</td>
-      <td class="fin-cell-num">${row.tickets ? formatEur(row.sales / row.tickets) : '—'}</td>
+      <td class="fin-cell-num">${row.tickets ? formatEur(row.ticketSales / row.tickets) : '—'}</td>
     </tr>`).join('');
   const chart = groups.slice(0, 20).map((row) => {
     const value = metricValue(row);
@@ -10919,7 +11069,7 @@ function renderFinAnalysis() {
       <div class="fin-kpi-grid analysis-kpis">
         <div class="fin-kpi-card"><span>Venta filtrada</span><strong>${formatEur(totalSales)}</strong></div>
         <div class="fin-kpi-card"><span>Pedidos</span><strong>${totalTickets}</strong></div>
-        <div class="fin-kpi-card"><span>Ticket promedio</span><strong>${totalTickets ? formatEur(totalSales / totalTickets) : '—'}</strong></div>
+        <div class="fin-kpi-card"><span>Ticket promedio</span><strong>${totalTickets ? formatEur(ticketSales / totalTickets) : '—'}</strong></div>
         <div class="fin-kpi-card"><span>Unidades registradas</span><strong>${totalProducts}</strong></div>
       </div>
       <section class="analysis-chart"><h4>${metricLabel} por segmento</h4>${chart || '<p class="empty-state">No hay datos para los filtros elegidos.</p>'}</section>
@@ -11155,9 +11305,9 @@ function aggregateFinAiProducts(sales) {
 }
 
 function getFinAiDetailCoverage(sales) {
-  const ticketCount = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const ticketCount = sales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
   const detailTickets = sales.reduce((sum, sale) =>
-    sum + (Array.isArray(sale.items) && sale.items.length ? Number(sale.count || 1) : 0), 0);
+    sum + (Array.isArray(sale.items) && sale.items.length ? saleTicketCount(sale) : 0), 0);
   return {
     ticketCount,
     detailTickets,
@@ -11268,7 +11418,8 @@ function buildFinAiProductResult(question, period, periodSales, allSales, wantsT
 
 function buildFinAiFinanceResult(period, sales, expenses) {
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
-  const tickets = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const ticketSales = sales.reduce((sum, sale) => sum + saleTicketRevenue(sale), 0);
+  const tickets = sales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
   const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const result = totalSales - totalExpenses;
   const monthly = period.monthKeys.map((monthKey) => {
@@ -11276,7 +11427,7 @@ function buildFinAiFinanceResult(period, sales, expenses) {
     const monthExpenses = expenses.filter((expense) => expense.date?.startsWith(monthKey));
     const salesValue = monthSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
     const expenseValue = monthExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-    const monthTickets = monthSales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+    const monthTickets = monthSales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
     return { monthKey, sales: salesValue, expenses: expenseValue, result: salesValue - expenseValue, tickets: monthTickets };
   });
   return {
@@ -11285,7 +11436,7 @@ function buildFinAiFinanceResult(period, sales, expenses) {
     kpis: [
       { label: 'Ventas', value: formatEur(totalSales) },
       { label: 'Pedidos', value: String(tickets) },
-      { label: 'Ticket promedio', value: tickets ? formatEur(totalSales / tickets) : '—' },
+      { label: 'Ticket promedio', value: tickets ? formatEur(ticketSales / tickets) : '—' },
       { label: 'Resultado', value: `${result >= 0 ? '+' : ''}${formatEur(result)}` },
     ],
     chart: monthly.map((row) => ({ label: finAiMonthLabel(row.monthKey), value: row.sales, display: formatEur(row.sales) })),
@@ -11531,7 +11682,7 @@ function calculateCrossSelling(sales) {
   sales.forEach((sale) => {
     const items = Array.isArray(sale.items) ? sale.items : [];
     if (!items.length) return;
-    ticketsWithDetail += Number(sale.count || 1);
+    ticketsWithDetail += saleTicketCount(sale);
     coffeeQty += items.filter(isCoffeeItem).reduce((sum, item) => sum + itemQuantity(item), 0);
     foodQty += items.filter(isFoodItem).reduce((sum, item) => sum + itemQuantity(item), 0);
   });
@@ -11547,11 +11698,11 @@ function calculateCrossSelling(sales) {
 function calculateItemMetrics(sales) {
   let itemQty = 0;
   let ticketsWithDetail = 0;
-  const ticketCount = sales.reduce((sum, sale) => sum + Number(sale.count || 1), 0);
+  const ticketCount = sales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
   sales.forEach((sale) => {
     const items = Array.isArray(sale.items) ? sale.items : [];
     if (!items.length) return;
-    ticketsWithDetail += Number(sale.count || 1);
+    ticketsWithDetail += saleTicketCount(sale);
     itemQty += items.reduce((sum, item) => sum + itemQuantity(item), 0);
   });
   return {
@@ -11593,8 +11744,9 @@ function calcDayMetricsForLocation(date, locationId = activeLocationId) {
   const sales = getLocationSales(locationId).filter((sale) => sale.date === date);
   const expenses = getLocationExpenses(locationId).filter((expense) => expense.date === date);
   const totalSales = sales.reduce((s, t) => s + t.total, 0);
-  const ticketCount = sales.reduce((s, t) => s + (t.count || 1), 0);
-  const avgTicket = ticketCount > 0 ? totalSales / ticketCount : 0;
+  const ticketSales = sales.reduce((sum, sale) => sum + saleTicketRevenue(sale), 0);
+  const ticketCount = sales.reduce((sum, sale) => sum + saleTicketCount(sale), 0);
+  const avgTicket = ticketCount > 0 ? ticketSales / ticketCount : 0;
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
 
   const itemCounts = {};
@@ -11621,7 +11773,7 @@ function calcDayMetricsForLocation(date, locationId = activeLocationId) {
 
   const crossSelling = calculateCrossSelling(sales);
   const itemMetrics = calculateItemMetrics(sales);
-  return { totalSales, ticketCount, avgTicket, totalExpenses, result: totalSales - totalExpenses, topItems, topPairs, crossSelling, itemMetrics };
+  return { totalSales, ticketSales, ticketCount, avgTicket, totalExpenses, result: totalSales - totalExpenses, topItems, topPairs, crossSelling, itemMetrics };
 }
 
 function calcDayMetrics(date) {

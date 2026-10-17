@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=46" />
+    <link rel="stylesheet" href="styles.css?v=47" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -874,32 +874,41 @@
                   <button type="button" id="finFileClear" class="fin-file-clear">✕</button>
                 </div>
 
-                <p class="form-note" style="margin-top:8px">Respaldo manual: Bistrosoft → Informes → Ventas o Artículos → Exportar. Al importar reemplaza los días incluidos en el archivo.</p>
+                <p class="form-note" style="margin-top:8px">Respaldo manual: Bistrosoft → Informes → Ventas o Artículos → Exportar. Al importar reemplaza solo los registros de archivo de esos días; conserva ventas sueltas y cursos.</p>
                 <div class="button-row" style="margin-top:14px">
                   <button class="primary-button" type="submit">Importar</button>
-                  <button class="ghost-button" id="finClearSales" type="button">Borrar todo</button>
+                  <button class="ghost-button" id="finClearSales" type="button">Borrar ventas de archivo</button>
                 </div>
               </form>
               <form class="form-surface" id="finManualSaleForm">
                 <h3>Cargar venta suelta</h3>
-                <p class="form-note">Para tickets que no entraron por Bistrosoft. Se suman al P&amp;L de la sucursal activa y no se borran con la sincronizacion.</p>
+                <p class="form-note">Las ventas sueltas se guardan separadas de Bistrosoft. Un curso suma a ventas y resultado, pero no a los tickets ni al ticket promedio.</p>
                 <div class="form-grid">
                   <label>Fecha
                     <input id="finManualSaleDate" type="date" required />
                   </label>
-                  <label>Cantidad de tickets
+                  <label id="finManualSaleCountField">Cantidad de tickets
                     <input id="finManualSaleCount" type="number" min="1" step="1" required />
                   </label>
                   <label>Total vendido
                     <input id="finManualSaleTotal" type="number" min="0" step="0.01" required />
                   </label>
                 </div>
+                <label class="fin-course-checkbox"><input id="finManualSaleCourse" type="checkbox" /> CURSO <small>Ingreso sin tickets; no altera el ticket promedio.</small></label>
                 <div class="button-row" style="margin-top:14px">
-                  <button class="primary-button" type="submit">Agregar venta</button>
+                  <button class="primary-button" id="finManualSaleSubmit" type="submit">Agregar venta</button>
+                  <button class="ghost-button" id="finManualSaleCancel" type="button" hidden>Cancelar edición</button>
                 </div>
+                <small class="fin-manual-save-status" id="finManualSaleSaveStatus" aria-live="polite"></small>
               </form>
               <div class="list-surface">
                 <div class="list-heading"><h3>Días importados</h3><span id="finSalesSummary">0 tickets</span></div>
+                <div class="fin-sale-filters" id="finSaleSourceFilters" aria-label="Filtrar ventas por origen">
+                  <button class="mini-button is-active" type="button" data-sale-source-filter="all">Todas</button>
+                  <button class="mini-button" type="button" data-sale-source-filter="bistrosoft">Bistrosoft</button>
+                  <button class="mini-button" type="button" data-sale-source-filter="manual">Ventas sueltas</button>
+                  <button class="mini-button" type="button" data-sale-source-filter="course">Cursos</button>
+                </div>
                 <div id="finSalesList" class="event-list"></div>
               </div>
             </div>
@@ -1227,7 +1236,7 @@
     </template>
 
     <script src="app-core.js?v=1"></script>
-    <script src="app-insights.js?v=1"></script>
-    <script src="app.js?v=81"></script>
+    <script src="app-insights.js?v=2"></script>
+    <script src="app.js?v=82"></script>
   </body>
 </html>

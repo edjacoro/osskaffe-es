@@ -6,7 +6,7 @@ const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const build = fs.readFileSync(new URL("./build-netlify.mjs", import.meta.url), "utf8");
 
 assert.match(html, /app-core\.js\?v=1/);
-assert.match(html, /app-insights\.js\?v=1/);
+assert.match(html, /app-insights\.js\?v=2/);
 assert.match(build, /"app-core\.js"/);
 assert.match(build, /"app-insights\.js"/);
 assert.match(app, /function renderActiveAdminPanel\(/);

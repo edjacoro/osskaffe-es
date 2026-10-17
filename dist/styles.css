@@ -3558,6 +3558,30 @@ textarea {
   font-size: 0.74rem;
 }
 
+.fin-course-checkbox {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+  color: #9a5032;
+}
+.fin-course-checkbox input { width: 18px; min-height: 18px; height: 18px; margin: 0; }
+.fin-course-checkbox + .button-row { align-items: center; }
+#finManualSaleCountField[hidden] { display: none; }
+.fin-course-checkbox small { font-weight: 500; color: var(--muted); }
+.fin-manual-save-status { display: block; min-height: 1.3em; margin-top: 8px; color: var(--muted); }
+.fin-manual-save-status[data-status="error"] { color: #b4232d; }
+.fin-manual-save-status[data-status="success"] { color: #187461; }
+.fin-sale-item { border-left: 5px solid #456b79; }
+.fin-sale-item--manual { border-left-color: #bd8d20; background: #fffcf3; }
+.fin-sale-item--course { border-left-color: #aa5b9e; background: #fdf7fc; }
+.fin-sale-source { font-size: 0.72rem; font-weight: 850; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.fin-sale-item--manual .fin-sale-source { color: #94650c; }
+.fin-sale-item--course .fin-sale-source { color: #924589; }
+.fin-sale-filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0 12px; }
+.fin-sale-filters .mini-button.is-active { color: white; background: #285365; border-color: #285365; }
+
 .fin-expense-entry-column {
   display: grid;
   gap: 12px;

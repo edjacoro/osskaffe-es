@@ -108,11 +108,13 @@ assert.ok(metricStart >= 0 && metricEnd > metricStart, "Debe poder aislarse el c
 const buildCrossSelling = new Function(
   "itemName",
   "itemQuantity",
+  "saleTicketCount",
   `${appSource.slice(metricStart, metricEnd)}\nreturn calculateCrossSelling;`,
 );
 const calculateCrossSelling = buildCrossSelling(
   (item) => String(item?.name || ""),
   (item) => Number(item?.qty ?? item?.quantity ?? 1),
+  (sale) => sale?._source === "course" ? 0 : Number(sale?.count ?? 1),
 );
 const crossSelling = calculateCrossSelling([
   { count: 1, items: [{ name: "Flat White", qty: 4 }] },
@@ -153,8 +155,8 @@ assert.match(appSource, /id="finAiDateFrom" type="date"/);
 assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
-assert.match(html, /styles\.css\?v=46/);
-assert.match(html, /app\.js\?v=81/);
+assert.match(html, /styles\.css\?v=47/);
+assert.match(html, /app\.js\?v=82/);
 assert.match(styles, /\.heatmap-day-total-cell \{[\s\S]*?position: sticky;[\s\S]*?right: 0;/);
 assert.match(styles, /@media \(min-width: 1100px\) \{[\s\S]*?\.traffic-visual-grid \{[\s\S]*?0\.34fr[\s\S]*?1\.66fr/);
 assert.match(styles, /\.traffic-visual-grid \.traffic-heatmap-scroll \{[\s\S]*?overflow-x: hidden/);

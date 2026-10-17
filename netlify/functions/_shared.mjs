@@ -910,8 +910,20 @@ function recordIdentity(record) {
   return String(record?.bistroId || record?.id || "");
 }
 
-function mergePersistedBistroSales(currentSales = [], submittedSales = []) {
-  const submittedManual = submittedSales.filter((sale) => sale?._source !== "bistrosoft");
+function mergePersistedBistroSales(currentSales = [], submittedSales = [], deletionTombstones = {}) {
+  const isManual = (sale) => sale?._source === "manual" || sale?._source === "course";
+  const currentManual = currentSales.filter(isManual);
+  const submittedManual = submittedSales.filter(isManual);
+  const submittedFile = submittedSales.filter((sale) => sale?._source !== "bistrosoft" && !isManual(sale));
+  // An older browser snapshot must not erase confirmed manual sales, nor
+  // resurrect a sale explicitly deleted through /api/manual-sale.
+  const manualById = new Map(currentManual
+    .filter((sale) => sale?.id && !deletionTombstones[sale.id])
+    .map((sale) => [String(sale.id), sale]));
+  submittedManual.forEach((sale) => {
+    const id = String(sale?.id || "");
+    if (id && !deletionTombstones[id] && !manualById.has(id)) manualById.set(id, sale);
+  });
   const currentBistro = currentSales.filter((sale) => sale?._source === "bistrosoft");
   const submittedBistro = submittedSales.filter((sale) => sale?._source === "bistrosoft");
   const byId = new Map(currentBistro.map((sale) => [recordIdentity(sale), sale]));
@@ -935,7 +947,7 @@ function mergePersistedBistroSales(currentSales = [], submittedSales = []) {
         : (persisted.detailStatus || sale.detailStatus || null),
     });
   });
-  return [...submittedManual, ...byId.values()];
+  return [...submittedFile, ...manualById.values(), ...byId.values()];
 }
 
 function mergePersistedBistroExpenses(currentExpenses = [], submittedExpenses = [], deletionTombstones = {}) {
@@ -970,6 +982,10 @@ function mergePersistedBistroExpenses(currentExpenses = [], submittedExpenses = 
 
 export function mergeAdminState(current, submitted) {
   if (!current || typeof current !== "object") return submitted;
+  const salesDeletionTombstones = {
+    ...(submitted.salesDeletionTombstones || {}),
+    ...(current.salesDeletionTombstones || {}),
+  };
   const expenseDeletionTombstones = {
     ...(submitted.expenseDeletionTombstones || {}),
     ...(current.expenseDeletionTombstones || {}),
@@ -1018,7 +1034,8 @@ export function mergeAdminState(current, submitted) {
         || submitted.settings?.monthlyOpeningHours
         || {},
     },
-    sales: mergePersistedBistroSales(current.sales || [], submitted.sales || []),
+    sales: mergePersistedBistroSales(current.sales || [], submitted.sales || [], salesDeletionTombstones),
+    salesDeletionTombstones,
     expenses: mergePersistedBistroExpenses(
       current.expenses || [],
       submitted.expenses || [],
