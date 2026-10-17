@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getStore } from "@netlify/blobs";
+import { purgeDeletedTeamMembersState } from "./_team.mjs";
 
 const STORE_NAME = "oss-kaffe";
 const STATE_KEY = "state";
@@ -994,7 +995,7 @@ export function mergeAdminState(current, submitted) {
   }));
   const currentBarcelonaHours = currentLocationSettings.barcelona?.monthlyOpeningHours
     || current.settings?.monthlyOpeningHours;
-  return {
+  const merged = {
     ...submitted,
     employees: Array.isArray(current.employees) && current.employees.length
       ? current.employees
@@ -1002,6 +1003,7 @@ export function mergeAdminState(current, submitted) {
     profiles: { ...(submitted.profiles || {}), ...(current.profiles || {}) },
     baseSchedules: { ...(submitted.baseSchedules || {}), ...(current.baseSchedules || {}) },
     contracts: { ...(submitted.contracts || {}), ...(current.contracts || {}) },
+    contractHistory: current.contractHistory || submitted.contractHistory || null,
     changes: mergeRecordsById(submitted.changes || [], current.changes || []),
     schedulePlans: mergeSchedulePlansById(submitted.schedulePlans || {}, current.schedulePlans || {}),
     madridScheduleSeedVersion: Math.max(
@@ -1031,7 +1033,9 @@ export function mergeAdminState(current, submitted) {
     bistroSalesSyncedMonths: current.bistroSalesSyncedMonths || submitted.bistroSalesSyncedMonths,
     bistroExpenseSyncedMonths: current.bistroExpenseSyncedMonths || submitted.bistroExpenseSyncedMonths,
     bistroDetailJobs: current.bistroDetailJobs || submitted.bistroDetailJobs,
+    deletedTeamIds: current.deletedTeamIds || [],
   };
+  return purgeDeletedTeamMembersState(merged);
 }
 
 export async function mergeBistroExpenses(expenses, from, until, locationId = DEFAULT_LOCATION_ID) {

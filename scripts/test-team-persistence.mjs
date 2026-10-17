@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  deleteRetiredBarcelonaEncargadoState,
   deleteTestTeamMemberState,
   mergeFullStatePreservingTeam,
   publicTeamEmployees,
   upsertTeamMemberState,
 } from "../netlify/functions/_team.mjs";
+import { mergeAdminState } from "../netlify/functions/_shared.mjs";
 
 const largeHistory = Array.from({ length: 25000 }, (_, index) => ({
   id: `sale-${index}`,
@@ -155,6 +157,39 @@ assert.equal(persistedState.employees.find((employee) => employee.id === "ana-pr
 assert.throws(() => deleteTestTeamMemberState(persistedState, "ana-prueba"), /Solo se pueden borrar/,
   "Un empleado real nunca debe borrarse definitivamente desde esta función.");
 
+const legacyState = {
+  employees: [
+    { id: "retired-encargado", label: "ENCARGADO", role: "Barista", locationId: "barcelona", active: false },
+    { id: "active-encargado", label: "ENCARGADO", role: "Barista", locationId: "barcelona", active: true },
+    { id: "madrid-encargado", label: "ENCARGADO", role: "Barista", locationId: "madrid", active: false },
+  ],
+  profiles: {
+    "retired-encargado": { fullName: "Pablo Bonavita" },
+    "active-encargado": { fullName: "Pablo Bonavita" },
+    "madrid-encargado": { fullName: "Pablo Bonavita" },
+  },
+  contracts: { "retired-encargado": { hoursPerWeek: 20 } },
+  baseSchedules: { "retired-encargado": { type: "weekly" } },
+  punches: [{ employeeId: "retired-encargado" }],
+  changes: [{ employeeId: "retired-encargado" }],
+  schedulePlans: { barcelona: [{ weeks: [{ shifts: [{ employeeId: "retired-encargado" }] }] }] },
+};
+const cleanedLegacy = deleteRetiredBarcelonaEncargadoState(legacyState);
+assert.deepEqual(cleanedLegacy.employees.map((item) => item.id), ["active-encargado", "madrid-encargado"]);
+assert.equal(cleanedLegacy.profiles["retired-encargado"], undefined);
+assert.equal(cleanedLegacy.contracts["retired-encargado"], undefined);
+assert.equal(cleanedLegacy.punches.length, 0);
+assert.equal(cleanedLegacy.changes.length, 0);
+assert.equal(cleanedLegacy.schedulePlans.barcelona[0].weeks[0].shifts.length, 0);
+assert.deepEqual(cleanedLegacy.deletedTeamIds, ["retired-encargado"]);
+assert.equal(deleteRetiredBarcelonaEncargadoState(cleanedLegacy), cleanedLegacy, "La limpieza debe ser idempotente.");
+const staleMerged = mergeAdminState(cleanedLegacy, legacyState);
+assert.equal(staleMerged.profiles["retired-encargado"], undefined,
+  "Una pestaña vieja no debe restaurar datos de la ficha eliminada.");
+assert.throws(() => upsertTeamMemberState(cleanedLegacy, {
+  employee: legacyState.employees[0],
+}), /eliminado definitivamente/);
+
 const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const htmlSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 assert.match(appSource, /getEmployeesForMonth\(activeMonth\)/,
@@ -164,7 +199,7 @@ assert.match(appSource, /employee\.testEmployee !== true/,
 assert.match(appSource, /data-delete-test-employee/,
   "Fichas debe ofrecer borrado definitivo solo para empleados de prueba.");
 assert.match(htmlSource, /id="teamMemberIsTest"/);
-assert.match(htmlSource, /app\.js\?v=79/);
+assert.match(htmlSource, /app\.js\?v=81/);
 assert.doesNotMatch(appSource, /Reemplazo Paloma/,
   "La grilla debe respetar el nombre actual de la ficha y no imponer una etiqueta historica.");
 assert.doesNotMatch(appSource, /getAllEmployees\(true\)\.filter\(\(employee\) => !employee\.system\)/,

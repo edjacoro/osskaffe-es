@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=44" />
+    <link rel="stylesheet" href="styles.css?v=46" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -393,9 +393,7 @@
           <button class="nav-item is-active" data-tab="home" type="button"><span class="ui-icon" data-ui-icon="home" aria-hidden="true"></span><span>Inicio</span></button>
           <button class="nav-item" data-tab="schedule" type="button"><span class="ui-icon" data-ui-icon="calendar" aria-hidden="true"></span><span>Grilla</span></button>
           <button class="nav-item" data-tab="pastry" type="button"><span class="ui-icon" data-ui-icon="pastry" aria-hidden="true"></span><span>Pastelería</span></button>
-          <button class="nav-item" data-tab="punch" type="button"><span class="ui-icon" data-ui-icon="clock" aria-hidden="true"></span><span>Fichaje</span></button>
-          <button class="nav-item" data-tab="changes" type="button"><span class="ui-icon" data-ui-icon="changes" aria-hidden="true"></span><span>Cambios</span></button>
-          <button class="nav-item" data-tab="fichas" type="button"><span class="ui-icon" data-ui-icon="id-card" aria-hidden="true"></span><span>Fichas</span></button>
+          <button class="nav-item" data-tab="fichas" type="button"><span class="ui-icon" data-ui-icon="id-card" aria-hidden="true"></span><span>RRHH</span></button>
           <button class="nav-item" data-tab="traffic" type="button"><span class="ui-icon" data-ui-icon="activity" aria-hidden="true"></span><span>Carga por hora</span></button>
           <button class="nav-item" data-tab="finanzas" type="button"><span class="ui-icon" data-ui-icon="finance" aria-hidden="true"></span><span>Finanzas</span></button>
           <button class="nav-item" data-tab="reports" type="button"><span class="ui-icon" data-ui-icon="reports" aria-hidden="true"></span><span>Reportes</span></button>
@@ -693,13 +691,15 @@
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Recursos humanos</p>
-              <h2>Fichas del Team</h2>
+              <h2>RRHH · Team</h2>
             </div>
           </div>
           <nav class="fin-subnav" aria-label="Secciones de fichas">
             <button class="fichas-tab is-active" data-fichas-tab="fichas" type="button">Fichas</button>
             <button class="fichas-tab" data-fichas-tab="contratos" type="button">Horas &amp; Contratos</button>
             <button class="fichas-tab" data-fichas-tab="personal" type="button">Personal</button>
+            <button class="fichas-tab" data-fichas-tab="punch" type="button">Fichaje</button>
+            <button class="fichas-tab" data-fichas-tab="changes" type="button">Cambios</button>
           </nav>
           <div class="fichas-sub-panel is-visible" data-fichas-panel="fichas">
             <div class="fichas-grid" id="fichasGrid"></div>
@@ -959,9 +959,12 @@
                 <aside class="list-surface fin-expense-category-summary" aria-labelledby="finExpCategoryTitle">
                   <div class="list-heading">
                     <h3 id="finExpCategoryTitle">Total por categoría</h3>
-                    <span id="finExpCategoryMonth"></span>
+                    <div class="fin-expense-category-heading-actions">
+                      <span id="finExpCategoryMonth"></span>
+                      <button class="mini-button" id="finExpenseShowAll" type="button" aria-pressed="true">Todas</button>
+                    </div>
                   </div>
-                  <div class="fin-expense-category-grid" id="finExpenseCategorySummary"></div>
+                  <div class="fin-expense-category-grid" id="finExpenseCategorySummary" aria-label="Filtrar gastos por categoría"></div>
                 </aside>
               </div>
               <div class="list-surface fin-expense-list-surface">
@@ -972,7 +975,6 @@
                     <button class="ghost-button compact-button" id="finExpensePdf" type="button">PDF mensual</button>
                   </div>
                 </div>
-                <div class="fin-expense-filter" id="finExpenseCategoryFilter" aria-label="Filtrar gastos por categoría"></div>
                 <small class="fin-expense-filter-status" id="finExpenseFilterStatus" aria-live="polite"></small>
                 <div id="finExpenseList" class="event-list fin-expense-list"></div>
               </div>
@@ -1192,14 +1194,8 @@
           <button class="mobile-more-item" data-admin-mobile-tab="pastry" type="button">
             <span class="ui-icon" data-ui-icon="pastry" aria-hidden="true"></span><span>Pastelería</span>
           </button>
-          <button class="mobile-more-item" data-admin-mobile-tab="punch" type="button">
-            <span class="ui-icon" data-ui-icon="clock" aria-hidden="true"></span><span>Fichaje</span>
-          </button>
-          <button class="mobile-more-item" data-admin-mobile-tab="changes" type="button">
-            <span class="ui-icon" data-ui-icon="changes" aria-hidden="true"></span><span>Cambios</span>
-          </button>
           <button class="mobile-more-item" data-admin-mobile-tab="fichas" type="button">
-            <span class="ui-icon" data-ui-icon="id-card" aria-hidden="true"></span><span>Fichas</span>
+            <span class="ui-icon" data-ui-icon="id-card" aria-hidden="true"></span><span>RRHH</span>
           </button>
           <button class="mobile-more-item" data-admin-mobile-tab="traffic" type="button">
             <span class="ui-icon" data-ui-icon="activity" aria-hidden="true"></span><span>Carga por hora</span>
@@ -1232,6 +1228,6 @@
 
     <script src="app-core.js?v=1"></script>
     <script src="app-insights.js?v=1"></script>
-    <script src="app.js?v=79"></script>
+    <script src="app.js?v=81"></script>
   </body>
 </html>

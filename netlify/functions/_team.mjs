@@ -67,6 +67,7 @@ export function upsertTeamMemberState(current, body = {}) {
   const incoming = body.employee || {};
   const id = String(incoming.id || "").trim();
   if (!validEmployeeId(id) || id === "pablo") throw new Error("Empleado invalido.");
+  if ((current?.deletedTeamIds || []).includes(id)) throw new Error("Este empleado fue eliminado definitivamente.");
 
   const employees = Array.isArray(current?.employees) ? [...current.employees] : [];
   const index = employees.findIndex((employee) => employee.id === id);
@@ -94,23 +95,24 @@ export function upsertTeamMemberState(current, body = {}) {
   }
   if (contract) {
     next.contracts = { ...(current?.contracts || {}), [id]: contract };
+    if (!existing.id && current?.contractHistory?.baselineMonth) {
+      next.contractHistory = {
+        ...current.contractHistory,
+        baseline: {
+          ...(current.contractHistory.baseline || {}),
+          [id]: { ...contract },
+        },
+      };
+    }
   }
   return next;
 }
 
-export function deleteTestTeamMemberState(current, employeeId) {
-  const id = String(employeeId || "").trim();
-  if (!validEmployeeId(id)) throw new Error("Empleado invalido.");
-  const employees = Array.isArray(current?.employees) ? current.employees : [];
-  const employee = employees.find((item) => item.id === id);
-  if (!employee) throw new Error("El empleado de prueba no existe.");
-  if (employee.system || employee.testEmployee !== true) {
-    throw new Error("Solo se pueden borrar definitivamente los empleados de prueba.");
-  }
-
+function removeTeamMemberData(current, id) {
   const next = {
     ...(current || {}),
-    employees: employees.filter((item) => item.id !== id),
+    deletedTeamIds: [...new Set([...(current?.deletedTeamIds || []), id])],
+    employees: (current?.employees || []).filter((item) => item.id !== id),
     punches: (current?.punches || []).filter((item) => item.employeeId !== id),
     wasteRecords: (current?.wasteRecords || []).filter((item) => item.employeeId !== id),
     changes: (current?.changes || []).filter((item) =>
@@ -119,12 +121,17 @@ export function deleteTestTeamMemberState(current, employeeId) {
     profiles: { ...(current?.profiles || {}) },
     baseSchedules: { ...(current?.baseSchedules || {}) },
     contracts: { ...(current?.contracts || {}) },
+    contractHistory: JSON.parse(JSON.stringify(current?.contractHistory || {})),
     schedulePlans: JSON.parse(JSON.stringify(current?.schedulePlans || {})),
     payrollSettlements: JSON.parse(JSON.stringify(current?.payrollSettlements || {})),
   };
   delete next.profiles[id];
   delete next.baseSchedules[id];
   delete next.contracts[id];
+  if (next.contractHistory.baseline) delete next.contractHistory.baseline[id];
+  Object.values(next.contractHistory.months || {}).forEach((month) => {
+    if (month) delete month[id];
+  });
   Object.values(next.schedulePlans).forEach((plans) => {
     (plans || []).forEach((plan) => {
       (plan.weeks || []).forEach((week) => {
@@ -140,13 +147,48 @@ export function deleteTestTeamMemberState(current, employeeId) {
   return next;
 }
 
+export function deleteTestTeamMemberState(current, employeeId) {
+  const id = String(employeeId || "").trim();
+  if (!validEmployeeId(id)) throw new Error("Empleado invalido.");
+  const employee = (current?.employees || []).find((item) => item.id === id);
+  if (!employee) throw new Error("El empleado de prueba no existe.");
+  if (employee.system || employee.testEmployee !== true) {
+    throw new Error("Solo se pueden borrar definitivamente los empleados de prueba.");
+  }
+  return removeTeamMemberData(current, id);
+}
+
+function normalizedIdentity(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export function deleteRetiredBarcelonaEncargadoState(current) {
+  const today = new Date().toISOString().slice(0, 10);
+  const matches = (current?.employees || []).filter((employee) =>
+    !employee.system
+    && employee.locationId === "barcelona"
+    && normalizedIdentity(employee.label) === "encargado"
+    && normalizedIdentity(current?.profiles?.[employee.id]?.fullName) === "pablo bonavita"
+    && (employee.active === false || Boolean(employee.inactiveFrom && employee.inactiveFrom <= today))
+  );
+  if (matches.length > 1) throw new Error("Hay más de una ficha coincidente; no se borró ninguna.");
+  return matches.length ? removeTeamMemberData(current, matches[0].id) : current;
+}
+
+export function purgeDeletedTeamMembersState(current) {
+  return (current?.deletedTeamIds || []).reduce(
+    (state, employeeId) => removeTeamMemberData(state, employeeId), current
+  );
+}
+
 export function publicTeamEmployees(state, today = new Date().toISOString().slice(0, 10)) {
   const storedEmployees = Array.isArray(state?.employees) && state.employees.length
     ? state.employees
     : [];
   const byId = new Map(DEFAULT_TEAM.map((employee) => [employee.id, employee]));
   storedEmployees.forEach((employee) => {
-    if (!employee?.id || employee.id === "pablo") return;
+    if (!employee?.id || employee.id === "pablo" || (state?.deletedTeamIds || []).includes(employee.id)) return;
     byId.set(employee.id, {
       ...(byId.get(employee.id) || {}),
       ...employee,

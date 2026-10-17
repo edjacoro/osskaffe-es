@@ -3587,43 +3587,6 @@ textarea {
   font-size: .7rem;
 }
 
-.fin-expense-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: 4px 0 5px;
-}
-
-.fin-expense-filter-button {
-  min-height: 29px;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fff;
-  color: var(--blue-dark);
-  cursor: pointer;
-  font: inherit;
-  font-size: .68rem;
-  font-weight: 800;
-  line-height: 1.1;
-  transition: background .15s ease, border-color .15s ease;
-}
-
-.fin-expense-filter-button:hover,
-.fin-expense-filter-button:focus-visible {
-  border-color: var(--blue-dark);
-}
-
-.fin-expense-filter-button.is-active {
-  border-color: var(--blue-dark);
-  background: var(--blue-dark);
-  color: #fff;
-}
-
-.fin-expense-filter-button span {
-  opacity: .72;
-}
-
 .fin-expense-filter-status {
   display: block;
   margin-bottom: 7px;
@@ -3644,6 +3607,18 @@ textarea {
   font-size: 0.94rem;
 }
 
+.fin-expense-category-heading-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+#finExpenseShowAll[aria-pressed="true"] {
+  background: var(--blue-dark);
+  color: #fff;
+}
+
 .fin-expense-category-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3654,19 +3629,34 @@ textarea {
   display: grid;
   gap: 2px;
   min-width: 0;
+  width: 100%;
   padding: 7px 8px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.fin-expense-category-item:hover,
+.fin-expense-category-item:focus-visible {
+  border-color: var(--blue-dark);
+  outline: none;
+}
+
+.fin-expense-category-item.is-active {
+  border-color: var(--blue-dark);
+  background: #ecf5f8;
+  box-shadow: inset 0 0 0 1px var(--blue-dark);
 }
 
 .fin-expense-category-item span {
-  overflow: hidden;
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 750;
   line-height: 1.15;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .fin-expense-category-item strong {
@@ -3801,8 +3791,8 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .fin-expense-filter-button {
-    min-height: 38px;
+  .fin-expense-category-item {
+    min-height: 42px;
   }
 }
 .file-drop-zone:hover {
@@ -4015,8 +4005,64 @@ textarea {
 .fichas-sub-panel.is-visible { display: block; }
 
 /* ── Contratos & Horas panel ── */
-.contratos-header { padding: 20px 20px 8px; }
+.contratos-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px 20px 8px;
+}
 .contratos-header h3 { font-size: 1.1rem; font-weight: 800; margin: 0 0 4px; }
+.contratos-month-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+.contratos-month-controls input {
+  min-width: 0;
+  width: 168px;
+  max-width: calc(100vw - 145px);
+}
+.contract-history-note {
+  margin: 7px 0 0;
+  color: #92530f;
+  font-size: .79rem;
+  font-weight: 750;
+}
+.contract-provisional {
+  display: block;
+  margin-top: 3px;
+  color: #92530f;
+  font-size: .7rem;
+  font-weight: 750;
+}
+.contratos-name [data-verify-contract] {
+  display: block;
+  margin-top: 5px;
+  white-space: nowrap;
+}
+.contract-extra-cell {
+  min-width: 126px;
+}
+.contract-extra-inputs {
+  display: grid;
+  gap: 5px;
+}
+.contract-extra-inputs label {
+  display: grid;
+  grid-template-columns: 35px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: .69rem;
+  font-weight: 750;
+}
+.contract-extra-inputs .contratos-input {
+  min-width: 0;
+  width: 100%;
+}
 .contratos-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
 .contratos-table th {
   background: var(--paper, #faf7f2);
@@ -4041,9 +4087,6 @@ textarea {
 }
 .contratos-table tbody tr:hover { background: rgba(0,0,0,.02); }
 .contratos-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -4051,7 +4094,8 @@ textarea {
   display: inline-block;
   width: 10px; height: 10px;
   border-radius: 50%;
-  flex-shrink: 0;
+  margin-right: 8px;
+  vertical-align: middle;
 }
 .contratos-input {
   width: 72px;
@@ -5656,6 +5700,10 @@ textarea:focus-visible {
   gap: 12px;
 }
 
+.executive-store-grid.is-single .executive-store-card {
+  grid-column: 1 / -1;
+}
+
 .executive-store-card,
 .data-confidence-card,
 .executive-kpi-grid > article,
@@ -5710,13 +5758,19 @@ textarea:focus-visible {
 
 .executive-store-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.executive-store-grid.is-single .executive-store-metrics {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .executive-store-metrics > div {
   min-width: 0;
   padding: 13px 14px;
-  border-right: 1px solid var(--line);
+  background: #fff;
 }
 
 .executive-store-metrics > div:last-child {
@@ -7207,16 +7261,13 @@ textarea:focus-visible {
 }
 
 @media screen and (max-width: 1180px) {
-  .executive-store-metrics {
+  .executive-store-metrics,
+  .executive-store-grid.is-single .executive-store-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .executive-store-metrics > div:nth-child(2) {
-    border-right: 0;
-  }
-
   .executive-store-metrics > div:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
+    border-bottom: 0;
   }
 }
 

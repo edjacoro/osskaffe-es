@@ -724,6 +724,8 @@ const DEFAULT_STATE = {
   expenseDeletionTombstones: {},
   wasteRecords: [],
   contracts: {},
+  contractHistory: null,
+  deletedTeamIds: [],
   baseSchedules: DEFAULT_BASE_SCHEDULES,
   schedulePlans: DEFAULT_SCHEDULE_PLANS,
   madridScheduleSeedVersion: 0,
@@ -756,6 +758,7 @@ let mobileScheduleFullMonth = false;
 let adminInited = false;
 let empEventsInited = false;
 let activeFichasTab = 'fichas';
+let contratosActiveMonth = firstDayOfMonth(new Date());
 let activeAdminFichaEditId = null;
 let adminFichaEditDraft = null;
 let adminBaseScheduleEditDraft = null;
@@ -899,6 +902,7 @@ async function refreshTeamDirectory() {
     const localOnlyEmployees = (state.employees || []).filter((employee) =>
       employee.id !== 'pablo'
       && employee.testEmployee !== true
+      && !(state.deletedTeamIds || []).includes(employee.id)
       && !serverIds.has(employee.id)
       && !DEFAULT_EMPLOYEES.some((defaultEmployee) => defaultEmployee.id === employee.id)
     );
@@ -939,6 +943,7 @@ function init() {
   state.baseSchedules = mergeBaseSchedules(DEFAULT_BASE_SCHEDULES, state.baseSchedules, state.employees);
   addDefaultProfilesForNewEmployees(state);
   tagLegacyRecordsWithLocation(state);
+  mountRrhhPanels();
   populateSelectors();
   bindEvents();
   initFichasContratos();
@@ -1348,6 +1353,10 @@ function bindPastryEvents(container) {
 function setActiveTab(tab) {
   if (tab === "pastry" && appRole !== "admin") return;
   if (appRole === "visitor" && !["schedule", "finanzas", "reports"].includes(tab)) tab = "schedule";
+  if (tab === 'punch' || tab === 'changes') {
+    setActiveFichasTab(tab);
+    tab = 'fichas';
+  }
   activeAdminTab = tab;
   if (tab === "finanzas") resetFinTodayView();
   document.querySelectorAll(".nav-item").forEach((button) => {
@@ -1382,12 +1391,12 @@ function renderActiveAdminPanel(tab = activeAdminTab) {
     renderStoreHoursEditor();
     renderMetrics();
   } else if (tab === "pastry") renderPasteleria();
-  else if (tab === "punch") renderPunches();
-  else if (tab === "changes") renderChanges();
   else if (tab === "fichas") {
     renderAdminFichas();
     renderContratosPanel();
     renderPersonnelPanel();
+    if (activeFichasTab === 'punch') renderPunches();
+    if (activeFichasTab === 'changes') renderChanges();
   } else if (tab === "traffic") renderTraffic();
   else if (tab === "finanzas" || tab === "reports") renderFinanzas();
   else if (tab === "settings") renderHolidays();
@@ -2049,7 +2058,7 @@ function getEstimatedLaborExtras(monthDate, locationId) {
     .filter((employee) => normalizeLocationId(employee.locationId) === normalizeLocationId(locationId))
     .filter((employee) => (!employee.activeFrom || employee.activeFrom <= monthEnd) && (!employee.inactiveFrom || employee.inactiveFrom > monthStart))
     .forEach((employee) => {
-      const contract = state.contracts?.[employee.id] || {};
+      const contract = getContractForMonth(employee.id, monthDate).contract;
       const regularRate = Number(contract.hourlyRate || 0);
       const overtimeRate = Number(contract.overtimeRate || (regularRate * Number(contract.overtimeMultiplier || 1.25)));
       const holidayRate = Number(contract.holidayRate || 0);
@@ -2151,7 +2160,7 @@ function renderDataConfidenceCard(confidence) {
     </article>`;
 }
 
-function renderExecutiveStoreCard(locationId, dayMetrics, monthMetrics, coverage) {
+function renderExecutiveStoreCard(locationId, dayMetrics, monthMetrics, coverage, projection) {
   const location = getLocation(locationId);
   const resultClass = monthMetrics.result >= 0 ? "is-positive" : "is-negative";
   return `
@@ -2160,6 +2169,8 @@ function renderExecutiveStoreCard(locationId, dayMetrics, monthMetrics, coverage
       <div class="executive-store-metrics">
         <div><span>Ventas mes</span><strong>${monthMetrics.totalSales ? formatEur(monthMetrics.totalSales) : "—"}</strong></div>
         <div><span>Tickets mes</span><strong>${monthMetrics.ticketCount ? monthMetrics.ticketCount.toLocaleString("es-ES") : "—"}</strong></div>
+        <div><span>Proyección mes</span><strong>${projection.projected > 0 ? formatEur(projection.projected) : "—"}</strong></div>
+        <div><span>Ticket promedio mes</span><strong>${monthMetrics.ticketCount ? formatEur(monthMetrics.avgTicket) : "—"}</strong></div>
         <div class="${resultClass}"><span>Resultado mes</span><strong>${monthMetrics.totalSales || monthMetrics.totalExpenses ? `${monthMetrics.result >= 0 ? "+" : ""}${formatEur(monthMetrics.result)}` : "—"}</strong></div>
         <div class="${coverage.freeHours > 0 ? "is-warning" : "is-positive"}"><span>H. libres</span><strong>${formatHours(coverage.freeHours)}</strong></div>
       </div>
@@ -2175,13 +2186,14 @@ function renderAdminHome() {
   const dayRows = locationIds.map((locationId) => calcDayMetricsForLocation(todayKey, locationId));
   const metrics = OssInsights.combineFinancialMetrics(dayRows);
   const monthRows = locationIds.map((locationId) => getMonthMetricsForLocation(monthDate, locationId));
+  const projections = locationIds.map((locationId) => getMonthSalesProjection(now, locationId));
   const coverages = locationIds.map((locationId) => getMonthlyStoreCoverage(monthDate, locationId));
   const coverage = coverages.reduce((total, item) => ({
     openHours: total.openHours + item.openHours,
     coveredHours: total.coveredHours + item.coveredHours,
     freeHours: total.freeHours + item.freeHours,
   }), { openHours: 0, coveredHours: 0, freeHours: 0 });
-  const projected = locationIds.reduce((sum, locationId) => sum + getMonthSalesProjection(now, locationId).projected, 0);
+  const projected = projections.reduce((sum, item) => sum + item.projected, 0);
   const hasDayData = metrics.totalSales > 0 || metrics.totalExpenses > 0;
   const resultClass = metrics.result >= 0 ? "is-positive" : "is-negative";
   const dateText = new Intl.DateTimeFormat("es-ES", {
@@ -2242,8 +2254,9 @@ function renderAdminHome() {
   `;
 
   if (els.adminHomeComparison) {
+    els.adminHomeComparison.classList.toggle('is-single', locationIds.length === 1);
     els.adminHomeComparison.innerHTML = locationIds.map((locationId, index) =>
-      renderExecutiveStoreCard(locationId, dayRows[index], monthRows[index], coverages[index])
+      renderExecutiveStoreCard(locationId, dayRows[index], monthRows[index], coverages[index], projections[index])
     ).join("");
   }
   if (els.adminHomeConfidence) {
@@ -4383,6 +4396,13 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
     }
 
     sharedStateEnabled = true;
+    if (role === 'admin') {
+      const cleanup = await sendSharedMutation(
+        '/api/team', { action: 'remove-retired-barcelona-encargado' },
+        'No se pudo comprobar la eliminación de la ficha ENCARGADO en Netlify.', 'DELETE',
+      );
+      if (!cleanup.ok) console.warn(cleanup.error);
+    }
     const stateResponse = await fetch('/api/state', { credentials: 'same-origin', cache: 'no-store' });
     if (!stateResponse.ok) throw new Error('No se pudo cargar el estado compartido.');
     const payload = await stateResponse.json();
@@ -4400,6 +4420,7 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
         ? [...recoveryById.values()].filter((employee) =>
             employee.id !== "pablo"
             && employee.testEmployee !== true
+            && !(serverState.deletedTeamIds || []).includes(employee.id)
             && !serverIds.has(employee.id)
             && !DEFAULT_EMPLOYEES.some((defaultEmployee) => defaultEmployee.id === employee.id)
           )
@@ -4449,6 +4470,7 @@ async function connectSharedState(role, employeeId = null, authData = {}) {
       const madridScheduleSeed = role === "admin"
         ? await persistMadridScheduleSeedToServer(payload.state || {})
         : { updated: 0, failed: 0, stateSaved: false };
+      if (role === "admin") await initializeContractHistoryOnServer();
       if (role === "admin" && (madridScheduleSeed.stateSaved === false || madridScheduleSeed.failed > 0)) {
         scheduleMadridScheduleSeedRetry();
       } else if (role === "admin") {
@@ -5794,7 +5816,7 @@ function renderEmpHours() {
   if (!container || !activeEmployeeId) return;
   const year = empHoursMonth.getFullYear();
   const month = empHoursMonth.getMonth();
-  const contract = state.contracts?.[activeEmployeeId] || {};
+  const contract = getContractForMonth(activeEmployeeId, empHoursMonth).contract;
   const hoursPerWeek = Number(contract.hoursPerWeek || 0);
   const contracted = hoursPerWeek > 0 ? hoursPerWeek * (new Date(year, month + 1, 0).getDate() / 7) : 0;
   const byDate = workedHoursByDate(activeEmployeeId, empHoursMonth);
@@ -6122,18 +6144,40 @@ async function handleEmpProfileForm(event) {
 // ADMIN FICHAS
 // ===========================
 
+function mountRrhhPanels() {
+  const host = document.querySelector('#fichasPanel');
+  if (!host) return;
+  for (const name of ['punch', 'changes']) {
+    const panel = document.querySelector(`#${name}Panel`);
+    if (!panel || panel.parentElement === host) continue;
+    panel.classList.remove('panel', 'tab-panel', 'is-visible');
+    panel.classList.add('fichas-sub-panel');
+    panel.removeAttribute('data-panel');
+    panel.dataset.fichasPanel = name;
+    host.appendChild(panel);
+  }
+}
+
+function setActiveFichasTab(tab) {
+  activeFichasTab = tab;
+  document.querySelectorAll('.fichas-tab').forEach((button) => {
+    const selected = button.dataset.fichasTab === tab;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-selected', String(selected));
+  });
+  document.querySelectorAll('.fichas-sub-panel').forEach((panel) =>
+    panel.classList.toggle('is-visible', panel.dataset.fichasPanel === tab)
+  );
+  if (tab === 'contratos') renderContratosPanel();
+  if (tab === 'personal') renderPersonnelPanel();
+  if (tab === 'punch') renderPunches();
+  if (tab === 'changes') renderChanges();
+}
+
 function initFichasContratos() {
   document.querySelectorAll('.fichas-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      activeFichasTab = btn.dataset.fichasTab;
-      document.querySelectorAll('.fichas-tab').forEach((b) =>
-        b.classList.toggle('is-active', b.dataset.fichasTab === activeFichasTab)
-      );
-      document.querySelectorAll('.fichas-sub-panel').forEach((p) =>
-        p.classList.toggle('is-visible', p.dataset.fichasPanel === activeFichasTab)
-      );
-      if (activeFichasTab === 'contratos') renderContratosPanel();
-      if (activeFichasTab === 'personal') renderPersonnelPanel();
+      setActiveFichasTab(btn.dataset.fichasTab);
     });
   });
   document.querySelector('#teamMemberIsTest')?.addEventListener('change', updateTeamMemberFormMode);
@@ -6330,6 +6374,7 @@ async function retryMadridScheduleSeedToServer() {
 function removeTestEmployeeFromLocalState(employeeId) {
   const employee = (state.employees || []).find((item) => item.id === employeeId);
   if (!employee?.testEmployee) return false;
+  state.deletedTeamIds = [...new Set([...(state.deletedTeamIds || []), employeeId])];
   state.employees = (state.employees || []).filter((item) => item.id !== employeeId);
   state.punches = (state.punches || []).filter((item) => item.employeeId !== employeeId);
   state.wasteRecords = (state.wasteRecords || []).filter((item) => item.employeeId !== employeeId);
@@ -6753,71 +6798,203 @@ function renderContratosPanelLegacy() {
   });
 }
 
-async function saveContractInput(input) {
-  const id = input.dataset.contract;
-  const field = input.dataset.field;
-  const previousContract = structuredClone(state.contracts?.[id] || {});
-  if (!state.contracts) state.contracts = {};
-  if (!state.contracts[id]) state.contracts[id] = {};
-  state.contracts[id][field] = parseFloat(input.value) || 0;
-  saveState({ shared: false });
-  input.disabled = true;
-  const persisted = await persistTeamMemberNow(id);
-  if (!persisted) {
-    state.contracts[id] = previousContract;
-    saveState({ shared: false });
-    alert('El contrato no se modificó porque Netlify no confirmó el guardado. Volvé a intentarlo.');
+function normalizedContractValues(contract = {}) {
+  const hourlyRate = Number(contract.hourlyRate ?? 0);
+  const overtimeMultiplier = Number(contract.overtimeMultiplier ?? 1.25);
+  return {
+    hoursPerWeek: Number(contract.hoursPerWeek ?? 40),
+    hourlyRate,
+    overtimeRate: Number(contract.overtimeRate ?? hourlyRate * overtimeMultiplier),
+    holidayRate: Number(contract.holidayRate ?? 0),
+    overtimeMultiplier,
+    extraHours: Number(contract.extraHours ?? 0),
+    extraHourlyRate: Number(contract.extraHourlyRate ?? 0),
+  };
+}
+
+function localContractHistory(monthKey = monthInputValue(new Date())) {
+  return state.contractHistory?.baselineMonth ? state.contractHistory : {
+    baselineMonth: monthKey,
+    baseline: Object.fromEntries(
+      Object.entries(state.contracts || {}).map(([id, contract]) => [id, normalizedContractValues(contract)])
+    ),
+    months: {},
+  };
+}
+
+async function initializeContractHistoryOnServer() {
+  const result = await sendSharedMutation('/api/contract-history', {
+    action: 'initialize', month: monthInputValue(new Date()), currentMonth: monthInputValue(new Date()),
+  }, 'No se pudo iniciar el historial de contratos en Netlify.');
+  if (!result.ok || !result.payload?.history) return false;
+  state.contractHistory = result.payload.history;
+  saveLocalStateSnapshot();
+  return true;
+}
+
+function getContractForMonth(employeeId, monthDate) {
+  const monthKey = monthInputValue(monthDate);
+  const history = state.contractHistory;
+  const fallback = normalizedContractValues(state.contracts?.[employeeId] || {});
+  if (!history?.baselineMonth) {
+    return { contract: fallback, provisional: monthKey < monthInputValue(new Date()), verified: false };
   }
+  const exact = history.months?.[monthKey]?.[employeeId];
+  // Nunca tomar la tarifa actual como reemplazo de una referencia histórica
+  // ausente: hacerlo movería silenciosamente meses anteriores.
+  const baseline = normalizedContractValues(history.baseline?.[employeeId] || {});
+  if (monthKey < history.baselineMonth) {
+    return {
+      contract: normalizedContractValues(exact || baseline),
+      provisional: exact?.verified !== true,
+      verified: exact?.verified === true,
+    };
+  }
+  if (exact) return { contract: normalizedContractValues(exact), provisional: false, verified: true };
+  const latestMonth = Object.keys(history.months || {})
+    .filter((key) => key >= history.baselineMonth && key <= monthKey && history.months[key]?.[employeeId])
+    .sort().at(-1);
+  const inherited = latestMonth ? history.months[latestMonth][employeeId] : baseline;
+  return {
+    contract: { ...normalizedContractValues(inherited), extraHours: 0 },
+    provisional: false,
+    verified: true,
+  };
+}
+
+function applyLocalContractHistoryMutation(body) {
+  const history = localContractHistory();
+  const existing = history.months?.[body.month]?.[body.employeeId] || {};
+  const contract = body.action === 'verify'
+    ? {
+        ...getContractForMonth(body.employeeId, new Date(`${body.month}-01T12:00:00`)).contract,
+        verified: true,
+      }
+    : {
+        ...normalizedContractValues(body.contract),
+        verified: body.month >= history.baselineMonth || existing.verified === true,
+      };
+  state.contractHistory = {
+    ...history,
+    months: {
+      ...(history.months || {}),
+      [body.month]: { ...(history.months?.[body.month] || {}), [body.employeeId]: contract },
+    },
+  };
+  return contract;
+}
+
+async function saveContractMonthMutation(body) {
+  const result = await sendSharedMutation(
+    '/api/contract-history', { ...body, currentMonth: monthInputValue(new Date()) },
+    'No se pudo guardar el contrato mensual en Netlify.'
+  );
+  if (!result.ok) return result;
+  const saved = result.local
+    ? applyLocalContractHistoryMutation(body)
+    : result.payload?.contract;
+  if (!saved) return { ok: false, error: 'Netlify no confirmó el contrato mensual.' };
+  if (!result.local) state.contractHistory = result.payload.history;
+  if (body.month === monthInputValue(new Date())) {
+    state.contracts = {
+      ...(state.contracts || {}),
+      [body.employeeId]: { ...(state.contracts?.[body.employeeId] || {}), ...normalizedContractValues(saved) },
+    };
+  }
+  saveState({ shared: false });
+  return result;
+}
+
+async function saveContractInput(input) {
+  const employeeId = input.dataset.contract;
+  const field = input.dataset.field;
+  const month = input.dataset.contractMonth || monthInputValue(contratosActiveMonth);
+  const amount = Number(input.value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    alert('Ingresá un número válido, igual o mayor que cero.');
+    renderContratosPanel();
+    return;
+  }
+  const monthDate = new Date(`${month}-01T12:00:00`);
+  const previous = getContractForMonth(employeeId, monthDate).contract;
+  // Cada escritura envía la fila completa. Evitamos que una segunda edición
+  // parta de una versión vieja y pise la primera mientras Netlify responde.
+  document.querySelectorAll('#contratosPanel .contratos-input, #contratosPanel .contratos-month-controls button, #contratosPanel [data-contratos-month], #contratosPanel [data-verify-contract]')
+    .forEach((control) => { control.disabled = true; });
+  const result = await saveContractMonthMutation({
+    action: 'upsert', month, employeeId, locationId: activeLocationId,
+    contract: { ...previous, [field]: amount },
+  });
+  if (!result.ok) alert(`${result.error || 'Netlify no confirmó el contrato.'} Volvé a intentarlo.`);
+  renderContratosPanel();
+}
+
+async function verifyHistoricalContract(employeeId, month) {
+  const result = await saveContractMonthMutation({
+    action: 'verify', month, employeeId, locationId: activeLocationId,
+  });
+  if (!result.ok) alert(`${result.error || 'Netlify no confirmó la revisión.'} Volvé a intentarlo.`);
   renderContratosPanel();
 }
 
 function renderContratosPanel() {
   const container = document.getElementById('contratosPanel');
   if (!container || appRole === 'visitor') return;
-  const year = finActiveMonth.getFullYear();
-  const month = finActiveMonth.getMonth();
+  const year = contratosActiveMonth.getFullYear();
+  const month = contratosActiveMonth.getMonth();
   const monthFactor = new Date(year, month + 1, 0).getDate() / 7;
-  const monthKey = monthInputValue(finActiveMonth);
+  const monthKey = monthInputValue(contratosActiveMonth);
   const holidayDates = new Set(
     (state.settings.holidays || []).filter((holiday) => holiday.date.startsWith(monthKey)).map((holiday) => holiday.date)
   );
   const monthStart = `${monthKey}-01`;
   const monthEnd = toDateInput(new Date(year, month + 1, 0));
-  const contractEmployees = getAllEmployees(true).filter((employee) =>
+  const contractEmployees = getEmployees(true).filter((employee) =>
     !employee.system
     && employee.testEmployee !== true
-    && normalizeLocationId(employee.locationId) === activeLocationId
     && (!employee.activeFrom || employee.activeFrom <= monthEnd)
     && (!employee.inactiveFrom || employee.inactiveFrom > monthStart)
   );
   const monthSettlements = state.payrollSettlements?.[activeLocationId]?.[monthKey] || {};
   const liquidationData = [];
+  let provisionalCount = 0;
 
   const rows = contractEmployees.map((employee) => {
-    const contract = state.contracts[employee.id] || {};
+    const contractView = getContractForMonth(employee.id, contratosActiveMonth);
+    const contract = contractView.contract;
+    if (contractView.provisional) provisionalCount += 1;
     const hoursPerWeek = contract.hoursPerWeek ?? 40;
     const regularRate = contract.hourlyRate ?? 0;
     const overtimeRate = contract.overtimeRate ?? (regularRate * (contract.overtimeMultiplier ?? 1.25));
     const holidayRate = contract.holidayRate ?? 0;
+    const extraHours = contract.extraHours ?? 0;
+    const extraHourlyRate = contract.extraHourlyRate ?? 0;
     const contracted = hoursPerWeek * monthFactor;
-    const worked = getEmployeeScheduledHoursForMonth(employee.id, finActiveMonth);
-    const punched = getEmployeeHoursForMonth(employee.id, finActiveMonth);
+    const worked = getEmployeeScheduledHoursForMonth(employee.id, contratosActiveMonth);
+    const punched = getEmployeeHoursForMonth(employee.id, contratosActiveMonth);
     const difference = worked - contracted;
     const overtimeHours = Math.max(0, difference);
-    const holidayHours = getEmployeeScheduledHoursForMonth(employee.id, finActiveMonth, holidayDates);
+    const holidayHours = getEmployeeScheduledHoursForMonth(employee.id, contratosActiveMonth, holidayDates);
     const overtimeCost = overtimeHours * overtimeRate;
     const holidayCost = holidayHours * holidayRate;
+    const extraCost = extraHours * extraHourlyRate;
     const regularCost = Math.min(worked, contracted) * regularRate;
-    const total = regularCost + overtimeCost + holidayCost;
-    liquidationData.push({ employee, total });
+    const total = regularCost + overtimeCost + holidayCost + extraCost;
+    liquidationData.push({ employee, total, provisional: contractView.provisional });
     const differenceClass = difference > 0.05 ? 'horas-over' : difference < -0.05 ? 'horas-under' : '';
 
     return `<tr>
-      <td class="contratos-name"><span class="contratos-dot" style="background:${employee.color}"></span>${employee.label}</td>
-      <td><input class="contratos-input" type="number" min="0" max="60" step="0.5" value="${hoursPerWeek}" data-contract="${employee.id}" data-field="hoursPerWeek" /></td>
-      <td><input class="contratos-input" type="number" min="0" step="0.01" value="${regularRate}" data-contract="${employee.id}" data-field="hourlyRate" /></td>
-      <td><input class="contratos-input" type="number" min="0" step="0.01" value="${overtimeRate}" data-contract="${employee.id}" data-field="overtimeRate" /></td>
-      <td><input class="contratos-input" type="number" min="0" step="0.01" value="${holidayRate}" data-contract="${employee.id}" data-field="holidayRate" /></td>
+      <td class="contratos-name"><span class="contratos-dot" style="background:${employee.color}"></span>${escapeHtml(employee.label)}
+        ${contractView.provisional ? `<small class="contract-provisional">Tarifas provisionales</small>
+          <button class="mini-button" type="button" data-verify-contract="${employee.id}" data-verify-month="${monthKey}">Confirmar tarifas</button>` : ''}</td>
+      <td><input class="contratos-input" type="number" min="0" max="168" step="0.5" value="${hoursPerWeek}" data-contract="${employee.id}" data-contract-month="${monthKey}" data-field="hoursPerWeek" /></td>
+      <td><input class="contratos-input" type="number" min="0" step="0.01" value="${regularRate}" data-contract="${employee.id}" data-contract-month="${monthKey}" data-field="hourlyRate" /></td>
+      <td><input class="contratos-input" type="number" min="0" step="0.01" value="${overtimeRate}" data-contract="${employee.id}" data-contract-month="${monthKey}" data-field="overtimeRate" /></td>
+      <td class="contract-extra-cell"><div class="contract-extra-inputs">
+        <label>Horas<input class="contratos-input" type="number" min="0" step="0.5" value="${extraHours}" data-contract="${employee.id}" data-contract-month="${monthKey}" data-field="extraHours" /></label>
+        <label>€/h<input class="contratos-input" type="number" min="0" step="0.01" value="${extraHourlyRate}" data-contract="${employee.id}" data-contract-month="${monthKey}" data-field="extraHourlyRate" /></label>
+      </div></td>
+      <td><input class="contratos-input" type="number" min="0" step="0.01" value="${holidayRate}" data-contract="${employee.id}" data-contract-month="${monthKey}" data-field="holidayRate" /></td>
       <td class="fin-cell-num">${contracted.toFixed(1)} h</td>
       <td class="fin-cell-num">${worked > 0 ? worked.toFixed(1) + ' h' : '—'}</td>
       <td class="fin-cell-num horas-fichadas">${punched > 0 ? punched.toFixed(1) + ' h' : '—'}</td>
@@ -6825,14 +7002,15 @@ function renderContratosPanel() {
       <td class="fin-cell-num ${differenceClass}">${worked > 0 ? `${difference >= 0 ? '+' : ''}${difference.toFixed(1)} h` : '—'}</td>
       <td class="fin-cell-num">${overtimeHours > 0.05 ? overtimeHours.toFixed(1) + ' h' : '—'}</td>
       <td class="fin-cell-num">${overtimeHours > 0.05 && overtimeRate > 0 ? formatEur(overtimeCost) : '—'}</td>
+      <td class="fin-cell-num">${extraHours > 0 && extraHourlyRate > 0 ? formatEur(extraCost) : '—'}</td>
       <td class="fin-cell-num">${holidayHours > 0.05 ? holidayHours.toFixed(1) + ' h' : '—'}</td>
       <td class="fin-cell-num">${holidayHours > 0.05 && holidayRate > 0 ? formatEur(holidayCost) : '—'}</td>
-      <td class="fin-cell-num"><strong>${worked > 0 ? formatEur(total) : '—'}</strong></td>
+      <td class="fin-cell-num"><strong>${worked > 0 || extraCost > 0 ? formatEur(total) : '—'}</strong></td>
     </tr>`;
-  }).join('');
+  }).join('') || '<tr><td colspan="17" class="fin-row-empty">No hay empleados de esta tienda en el mes seleccionado.</td></tr>';
 
   const liquidationTotals = { estimated: 0, payroll: 0, advance: 0 };
-  const liquidationRows = liquidationData.map(({ employee, total }) => {
+  const liquidationRows = liquidationData.map(({ employee, total, provisional }) => {
     const settlement = monthSettlements[employee.id] || {};
     const payroll = Math.max(0, Number(settlement.payroll || 0));
     const advance = Math.max(0, Number(settlement.advance || 0));
@@ -6842,34 +7020,42 @@ function renderContratosPanel() {
     liquidationTotals.advance += advance;
     return `<tr>
       <td class="contratos-name"><span class="contratos-dot" style="background:${employee.color}"></span>${escapeHtml(employee.label)}</td>
-      <td class="fin-cell-num"><strong>${formatEur(total)}</strong></td>
+      <td class="fin-cell-num"><strong>${formatEur(total)}</strong>${provisional ? '<small class="contract-provisional">Provisional</small>' : ''}</td>
       <td class="fin-cell-num"><input class="settlement-input" type="number" min="0" step="0.01" value="${payroll}" data-settlement="${employee.id}" data-settlement-field="payroll" aria-label="Nómina de ${escapeHtml(employee.label)}" /></td>
       <td class="fin-cell-num"><input class="settlement-input" type="number" min="0" step="0.01" value="${advance}" data-settlement="${employee.id}" data-settlement-field="advance" aria-label="Adelanto de ${escapeHtml(employee.label)}" /></td>
       <td class="fin-cell-num ${payable < 0 ? 'fin-cell-negative' : 'fin-cell-positive'}"><strong>${formatEur(payable)}</strong></td>
     </tr>`;
-  }).join('');
+  }).join('') || '<tr><td colspan="5" class="fin-row-empty">No hay liquidaciones para este mes.</td></tr>';
   const totalPayable = liquidationTotals.estimated - liquidationTotals.payroll - liquidationTotals.advance;
 
   container.innerHTML = `
     <div class="contratos-header">
-      <h3>Horas &amp; Contratos · ${MONTH_NAMES[month]} ${year}</h3>
-      <p class="form-note">Editá las columnas verdes directamente. La liquidación usa las horas cargadas en la grilla; las horas fichadas son solo informativas.</p>
+      <div>
+        <h3>Horas &amp; Contratos · ${MONTH_NAMES[month]} ${year}</h3>
+        <p class="form-note">Editá las columnas verdes directamente. La liquidación usa las horas cargadas en la grilla; las horas fichadas son solo informativas.</p>
+        ${provisionalCount ? `<p class="contract-history-note">${provisionalCount} empleado(s) con tarifas copiadas del contrato actual. Revisalas y confirmalas antes de usar la liquidación histórica.</p>` : ''}
+      </div>
+      <div class="contratos-month-controls" aria-label="Mes de horas y contratos">
+        <button class="icon-button" type="button" data-contratos-prev aria-label="Mes anterior">&#8249;</button>
+        <input type="month" data-contratos-month value="${monthKey}" aria-label="Seleccionar mes de horas y contratos" />
+        <button class="icon-button" type="button" data-contratos-next aria-label="Mes siguiente">&#8250;</button>
+      </div>
     </div>
     <div class="fin-table-wrap" style="overflow-x:auto">
       <table class="fin-table contratos-table">
         <thead><tr>
           <th>Empleado</th><th class="contratos-editable">Hs / semana</th>
-          <th class="contratos-editable">€/h regular</th><th class="contratos-editable">€/h extra</th>
-          <th class="contratos-editable">€/h feriado</th><th class="fin-cell-num">Contratadas</th>
+          <th class="contratos-editable">€/hora A</th><th class="contratos-editable">€/h B</th>
+          <th class="contratos-editable">€/h extra</th><th class="contratos-editable">€/h feriado</th><th class="fin-cell-num">Contratadas</th>
           <th class="fin-cell-num">Hs grilla</th><th class="fin-cell-num">Hs fichadas</th><th class="fin-cell-num">Costo regular</th><th class="fin-cell-num">Diferencia</th>
-          <th class="fin-cell-num">Hs extras</th><th class="fin-cell-num">Costo extras</th>
+          <th class="fin-cell-num">Hs B</th><th class="fin-cell-num">Costo B</th><th class="fin-cell-num">Costo extra</th>
           <th class="fin-cell-num">Hs feriados</th><th class="fin-cell-num">Costo feriados</th>
           <th class="fin-cell-num">Liquidación est.</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p class="form-note" style="margin-top:12px">La liquidación estimada suma las horas planificadas en la grilla, sus extras y los feriados. Las horas fichadas no modifican ningún importe.</p>
+    <p class="form-note" style="margin-top:12px">Horas B = máximo entre cero y horas de grilla menos horas contratadas. La liquidación estimada suma costo A + costo B + horas extra cargadas × €/h extra + feriados. Las horas fichadas no modifican ningún importe.</p>
     <section class="settlement-panel">
       <div class="contratos-header">
         <h3>Pagos a realizar · ${MONTH_NAMES[month]} ${year}</h3>
@@ -6898,6 +7084,25 @@ function renderContratosPanel() {
 
   container.querySelectorAll('.contratos-input').forEach((input) => {
     input.addEventListener('change', () => saveContractInput(input));
+  });
+  container.querySelectorAll('[data-verify-contract]').forEach((button) => {
+    button.addEventListener('click', () => verifyHistoricalContract(
+      button.dataset.verifyContract, button.dataset.verifyMonth
+    ));
+  });
+  container.querySelector('[data-contratos-prev]').addEventListener('click', () => {
+    contratosActiveMonth = addMonths(contratosActiveMonth, -1);
+    renderContratosPanel();
+  });
+  container.querySelector('[data-contratos-next]').addEventListener('click', () => {
+    contratosActiveMonth = addMonths(contratosActiveMonth, 1);
+    renderContratosPanel();
+  });
+  container.querySelector('[data-contratos-month]').addEventListener('change', (event) => {
+    if (!event.target.value) return;
+    const [selectedYear, selectedMonth] = event.target.value.split('-').map(Number);
+    contratosActiveMonth = new Date(selectedYear, selectedMonth - 1, 1);
+    renderContratosPanel();
   });
   container.querySelectorAll('.settlement-input').forEach((input) => {
     input.addEventListener('change', () => {
@@ -6946,7 +7151,10 @@ function renderAdminFichas() {
     { key: "emergencyPhone", label: "Urgencia tel" },
   ];
 
-  container.innerHTML = getEmployees(true).map((emp) => {
+  const isFormer = (employee) => employee.active === false
+    || Boolean(employee.inactiveFrom && employee.inactiveFrom <= today);
+  const employees = getEmployees(true).slice().sort((a, b) => Number(isFormer(a)) - Number(isFormer(b)));
+  container.innerHTML = employees.map((emp) => {
     const profile = getProfile(emp.id);
     const isEditing = activeAdminFichaEditId === emp.id;
     const formProfile = isEditing && adminFichaEditDraft
@@ -6967,10 +7175,10 @@ function renderAdminFichas() {
       .join("");
 
     return `
-      <div class="ficha-card${emp.active === false ? ' is-inactive' : ''}${isEditing ? ' is-editing' : ''}" data-ficha-card="${emp.id}">
+      <div class="ficha-card${isFormer(emp) ? ' is-inactive' : ''}${isEditing ? ' is-editing' : ''}" data-ficha-card="${emp.id}">
         <div class="ficha-header" style="background:${emp.color}">
           <div class="ficha-name">${escapeHtml(emp.label)}</div>
-          <div class="ficha-role">${escapeHtml(emp.role)}${emp.testEmployee ? ' · Empleado de prueba' : emp.active === false ? ' · Baja' : ''}</div>
+          <div class="ficha-role">${escapeHtml(emp.role)}${emp.testEmployee ? ' · Empleado de prueba' : isFormer(emp) ? ' · Baja' : ''}</div>
         </div>
         <div class="ficha-card-actions">
           <button class="mini-button" type="button" data-edit-ficha="${emp.id}"${isEditing ? ' hidden' : ''}>Editar ficha</button>
@@ -7561,7 +7769,7 @@ function initFinanzas() {
 
   document.querySelector('#finExpenseForm').addEventListener('submit', handleExpenseForm);
   document.querySelector('#finExpDate').addEventListener('change', updateExpenseDateHint);
-  document.querySelector('#finExpenseCategoryFilter').addEventListener('click', (event) => {
+  const handleExpenseCategoryFilter = (event) => {
     const button = event.target.closest('[data-expense-filter]');
     if (!button) return;
     const categoryId = button.dataset.expenseFilter;
@@ -7579,6 +7787,12 @@ function initFinanzas() {
           : selected;
       }
     }
+    finExpensePinnedViewport = { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 };
+    renderFinExpenses();
+  };
+  document.querySelector('#finExpenseCategorySummary').addEventListener('click', handleExpenseCategoryFilter);
+  document.querySelector('#finExpenseShowAll').addEventListener('click', () => {
+    finExpenseSelectedCategories = null;
     finExpensePinnedViewport = { scrollTop: 0, scrollHeight: 0, anchorId: null, anchorOffset: 0 };
     renderFinExpenses();
   });
@@ -8764,21 +8978,14 @@ function renderFinExpenses() {
   updateExpenseDateHint();
   document.querySelector('#finExpenseCategorySummary').innerHTML = EXPENSE_CATEGORIES.map((category) => {
     const amount = categoryTotals[category.id];
-    return `<div class="fin-expense-category-item${amount === 0 ? ' is-zero' : ''}" data-expense-category="${category.id}">
-      <span>${escapeHtml(category.label)}</span>
+    const selected = finExpenseSelectedCategories?.has(category.id) || false;
+    return `<button class="fin-expense-category-item${amount === 0 ? ' is-zero' : ''}${selected ? ' is-active' : ''}"
+      type="button" data-expense-filter="${category.id}" aria-pressed="${selected}">
+      <span>${escapeHtml(category.label)} (${categoryCounts[category.id]})</span>
       <strong>${formatEur(amount)}</strong>
-    </div>`;
+    </button>`;
   }).join('');
-
-  const filterContainer = document.querySelector('#finExpenseCategoryFilter');
-  filterContainer.innerHTML = `<button class="fin-expense-filter-button${finExpenseSelectedCategories === null ? ' is-active' : ''}"
-      type="button" data-expense-filter="all" aria-pressed="${finExpenseSelectedCategories === null}">Todas</button>`
-    + EXPENSE_CATEGORIES.map((category) => {
-      const selected = finExpenseSelectedCategories?.has(category.id) || false;
-      return `<button class="fin-expense-filter-button${selected ? ' is-active' : ''}"
-        type="button" data-expense-filter="${category.id}" aria-pressed="${selected}">
-        ${escapeHtml(category.label)} <span>${categoryCounts[category.id]}</span></button>`;
-    }).join('');
+  document.querySelector('#finExpenseShowAll').setAttribute('aria-pressed', String(finExpenseSelectedCategories === null));
   document.querySelector('#finExpenseFilterStatus').textContent = finExpenseSelectedCategories === null
     ? 'Tocá una categoría para verla sola; tocá otras para sumarlas.'
     : `Mostrando ${visibleExpenses.length} de ${expenses.length} gastos · ${formatEur(
