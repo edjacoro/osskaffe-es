@@ -752,6 +752,7 @@ let activePastryRecipeId = PASTRY_RECIPES[0].id;
 const pastryRecipeQuantities = Object.fromEntries(PASTRY_RECIPES.map((recipe) => [recipe.id, 1]));
 let activeAdminTab = "home";
 let adminHomeScope = "both";
+let adminHomeSelectedDate = null;
 let activeEmployeeTab = "today";
 let selectedMobileWeekStart = "";
 let mobileScheduleFullMonth = false;
@@ -829,6 +830,11 @@ const els = {
   adminHomeTitle: document.querySelector("#adminHomeTitle"),
   adminHomeSubtitle: document.querySelector("#adminHomeSubtitle"),
   adminHomeDate: document.querySelector("#adminHomeDate"),
+  adminHomeDateCaption: document.querySelector("#adminHomeDateCaption"),
+  adminHomeDateTrigger: document.querySelector("#adminHomeDateTrigger"),
+  adminHomeDateControls: document.querySelector("#adminHomeDateControls"),
+  adminHomeDateInput: document.querySelector("#adminHomeDateInput"),
+  adminHomeToday: document.querySelector("#adminHomeToday"),
   adminHomeSync: document.querySelector("#adminHomeSync"),
   adminHomeKpis: document.querySelector("#adminHomeKpis"),
   adminHomeStatus: document.querySelector("#adminHomeStatus"),
@@ -993,6 +999,41 @@ function bindEvents() {
       });
       renderAdminHome();
     });
+  });
+
+  els.adminHomeDateTrigger?.addEventListener("click", () => {
+    const controls = els.adminHomeDateControls;
+    const input = els.adminHomeDateInput;
+    if (!controls || !input) return;
+    controls.hidden = false;
+    els.adminHomeDateTrigger.setAttribute("aria-expanded", "true");
+    input.max = toDateInput(new Date());
+    input.value = adminHomeSelectedDate || input.max;
+    try {
+      if (typeof input.showPicker === "function") input.showPicker();
+      else input.focus();
+    } catch (_error) {
+      input.focus();
+    }
+  });
+  els.adminHomeDateInput?.addEventListener("change", (event) => {
+    const selectedKey = event.target.value;
+    const selectedDate = selectedKey ? parseDateKey(selectedKey) : null;
+    const todayKey = toDateInput(new Date());
+    if (!selectedDate || toDateInput(selectedDate) !== selectedKey || selectedKey > todayKey) {
+      event.target.value = adminHomeSelectedDate || todayKey;
+      return;
+    }
+    adminHomeSelectedDate = selectedKey === todayKey ? null : selectedKey;
+    els.adminHomeDateControls.hidden = true;
+    els.adminHomeDateTrigger.setAttribute("aria-expanded", "false");
+    renderAdminHome();
+  });
+  els.adminHomeToday?.addEventListener("click", () => {
+    adminHomeSelectedDate = null;
+    els.adminHomeDateControls.hidden = true;
+    els.adminHomeDateTrigger.setAttribute("aria-expanded", "false");
+    renderAdminHome();
   });
 
   els.prevMonth.addEventListener("click", () => {
@@ -2172,16 +2213,16 @@ function renderDataConfidenceCard(confidence) {
     </article>`;
 }
 
-function renderExecutiveStoreCard(locationId, dayMetrics, monthMetrics, coverage, projection) {
+function renderExecutiveStoreCard(locationId, dayMetrics, monthMetrics, coverage, projection, isHistoricalDay) {
   const location = getLocation(locationId);
   const resultClass = monthMetrics.result >= 0 ? "is-positive" : "is-negative";
   return `
     <article class="executive-store-card">
-      <header><div><span>${escapeHtml(location.shortLabel || location.label)}</span><h3>${escapeHtml(location.label)}</h3></div><strong>${dayMetrics.totalSales ? formatEur(dayMetrics.totalSales) : "—"}<small>hoy</small></strong></header>
+      <header><div><span>${escapeHtml(location.shortLabel || location.label)}</span><h3>${escapeHtml(location.label)}</h3></div><strong>${dayMetrics.totalSales ? formatEur(dayMetrics.totalSales) : "—"}<small>${isHistoricalDay ? "día consultado" : "hoy"}</small></strong></header>
       <div class="executive-store-metrics">
         <div><span>Ventas mes</span><strong>${monthMetrics.totalSales ? formatEur(monthMetrics.totalSales) : "—"}</strong></div>
         <div><span>Tickets mes</span><strong>${monthMetrics.ticketCount ? monthMetrics.ticketCount.toLocaleString("es-ES") : "—"}</strong></div>
-        <div><span>Proyección mes</span><strong>${projection.projected > 0 ? formatEur(projection.projected) : "—"}</strong></div>
+        <div><span>${isHistoricalDay ? "Proyección mes a esa fecha" : "Proyección mes"}</span><strong>${projection.projected > 0 ? formatEur(projection.projected) : "—"}</strong></div>
         <div><span>Ticket promedio mes</span><strong>${monthMetrics.ticketCount ? formatEur(monthMetrics.avgTicket) : "—"}</strong></div>
         <div class="${resultClass}"><span>Resultado mes</span><strong>${monthMetrics.totalSales || monthMetrics.totalExpenses ? `${monthMetrics.result >= 0 ? "+" : ""}${formatEur(monthMetrics.result)}` : "—"}</strong></div>
         <div class="${coverage.freeHours > 0 ? "is-warning" : "is-positive"}"><span>H. libres</span><strong>${formatHours(coverage.freeHours)}</strong></div>
@@ -2193,12 +2234,15 @@ function renderAdminHome() {
   if (!els.adminHomeKpis || !els.adminHomeStatus) return;
   const now = new Date();
   const todayKey = toDateInput(now);
-  const monthDate = firstDayOfMonth(now);
+  const selectedKey = adminHomeSelectedDate && adminHomeSelectedDate <= todayKey ? adminHomeSelectedDate : todayKey;
+  const selectedDate = parseDateKey(selectedKey);
+  const isHistoricalDay = selectedKey !== todayKey;
+  const monthDate = firstDayOfMonth(selectedDate);
   const locationIds = adminHomeScope === "both" ? EXECUTIVE_LOCATION_IDS : [activeLocationId];
-  const dayRows = locationIds.map((locationId) => calcDayMetricsForLocation(todayKey, locationId));
+  const dayRows = locationIds.map((locationId) => calcDayMetricsForLocation(selectedKey, locationId));
   const metrics = OssInsights.combineFinancialMetrics(dayRows);
   const monthRows = locationIds.map((locationId) => getMonthMetricsForLocation(monthDate, locationId));
-  const projections = locationIds.map((locationId) => getMonthSalesProjection(now, locationId));
+  const projections = locationIds.map((locationId) => getMonthSalesProjection(selectedDate, locationId));
   const coverages = locationIds.map((locationId) => getMonthlyStoreCoverage(monthDate, locationId));
   const coverage = coverages.reduce((total, item) => ({
     openHours: total.openHours + item.openHours,
@@ -2212,7 +2256,8 @@ function renderAdminHome() {
     weekday: "long",
     day: "numeric",
     month: "long",
-  }).format(now);
+    year: "numeric",
+  }).format(selectedDate);
 
   document.querySelectorAll("[data-home-scope]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.homeScope === adminHomeScope);
@@ -2226,11 +2271,17 @@ function renderAdminHome() {
   if (els.adminHomeDate) {
     els.adminHomeDate.textContent = dateText.charAt(0).toUpperCase() + dateText.slice(1);
   }
+  if (els.adminHomeDateCaption) els.adminHomeDateCaption.textContent = isHistoricalDay ? "Día consultado" : "Hoy";
+  if (els.adminHomeDateInput) {
+    els.adminHomeDateInput.max = todayKey;
+    els.adminHomeDateInput.value = selectedKey;
+  }
+  if (els.adminHomeToday) els.adminHomeToday.hidden = !isHistoricalDay;
 
   els.adminHomeKpis.innerHTML = `
     <article class="admin-home-kpi">
       <span class="admin-home-kpi-icon">${uiIcon("finance")}</span>
-      <span>Ventas hoy</span>
+      <span>${isHistoricalDay ? "Ventas del día" : "Ventas hoy"}</span>
       <strong>${metrics.totalSales > 0 ? formatEur(metrics.totalSales) : "—"}</strong>
     </article>
     <article class="admin-home-kpi">
@@ -2240,7 +2291,7 @@ function renderAdminHome() {
     </article>
     <article class="admin-home-kpi ${resultClass}">
       <span class="admin-home-kpi-icon">${uiIcon("result")}</span>
-      <span>Resultado hoy</span>
+      <span>${isHistoricalDay ? "Resultado del día" : "Resultado hoy"}</span>
       <strong>${hasDayData ? `${metrics.result >= 0 ? "+" : ""}${formatEur(metrics.result)}` : "—"}</strong>
     </article>
     <article class="admin-home-kpi ${coverage.freeHours > 0 ? "is-warning" : "is-positive"}">
@@ -2256,11 +2307,11 @@ function renderAdminHome() {
       <strong>${metrics.ticketCount ? formatEur(metrics.avgTicket) : "—"}</strong>
     </div>
     <div class="admin-home-status-item">
-      <span>Proyección del mes</span>
+      <span>${isHistoricalDay ? "Proyección del mes a esa fecha" : "Proyección del mes"}</span>
       <strong>${projected > 0 ? formatEur(projected) : "—"}</strong>
     </div>
     <div class="admin-home-status-item">
-      <span>Horas de tienda este mes</span>
+      <span>${isHistoricalDay ? "Horas de tienda del mes" : "Horas de tienda este mes"}</span>
       <strong>${formatHours(coverage.openHours)}</strong>
     </div>
   `;
@@ -2268,7 +2319,7 @@ function renderAdminHome() {
   if (els.adminHomeComparison) {
     els.adminHomeComparison.classList.toggle('is-single', locationIds.length === 1);
     els.adminHomeComparison.innerHTML = locationIds.map((locationId, index) =>
-      renderExecutiveStoreCard(locationId, dayRows[index], monthRows[index], coverages[index], projections[index])
+      renderExecutiveStoreCard(locationId, dayRows[index], monthRows[index], coverages[index], projections[index], isHistoricalDay)
     ).join("");
   }
   if (els.adminHomeConfidence) {

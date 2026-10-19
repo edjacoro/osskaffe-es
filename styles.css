@@ -1544,6 +1544,43 @@ textarea {
   margin-top: 2px;
 }
 
+.install-app {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.install-app-button {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--blue-dark);
+  background: #f8fbfc;
+  font-size: 0.76rem;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.install-app-button:hover,
+.install-app-button:focus-visible {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.install-app-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.install-app-help {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  text-align: left;
+}
+
 .role-password-input {
   width: 100%;
   min-height: 52px;
@@ -5499,6 +5536,64 @@ textarea:focus-visible {
 
 .admin-home-date strong {
   font-size: 1rem;
+}
+
+.admin-home-date-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-home-date-trigger span {
+  margin: 0;
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.admin-home-date-trigger:hover strong,
+.admin-home-date-trigger:focus-visible strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-home-date-trigger:focus-visible,
+.admin-home-today-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+.admin-home-date-controls input {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 6px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 7px;
+  color: var(--blue-dark);
+  background: #fff;
+  font: inherit;
+}
+
+.admin-home-today-button {
+  margin-top: 5px;
+  padding: 3px 0;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 .admin-home-date small {

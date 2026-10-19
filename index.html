@@ -4,10 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ÖSS Kaffe | Grilla del Team</title>
+    <meta name="theme-color" content="#2d4f5c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="ÖSS Kaffe App" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/app-icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=47" />
+    <link rel="stylesheet" href="styles.css?v=49" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -29,6 +36,10 @@
             <button class="role-btn" id="chooseEmployee" type="button">Soy del Team</button>
             <button class="role-btn role-btn-muted" id="chooseAdmin" type="button">Administrador</button>
             <button class="role-link role-visit-link" id="chooseVisit" type="button">Visita</button>
+          </div>
+          <div class="install-app" id="installApp">
+            <button class="install-app-button" id="installAppButton" type="button">Instalar ÖSS Kaffe App</button>
+            <p class="install-app-help" id="installAppHelp" role="status" hidden></p>
           </div>
         </div>
 
@@ -424,8 +435,14 @@
                 <button class="is-active" type="button" data-home-scope="both">Ambas tiendas</button>
               </div>
               <div class="admin-home-date">
-                <span>Hoy</span>
-                <strong id="adminHomeDate">--</strong>
+                <span id="adminHomeDateCaption">Hoy</span>
+                <button class="admin-home-date-trigger" id="adminHomeDateTrigger" type="button" aria-expanded="false" aria-controls="adminHomeDateControls" aria-label="Elegir otro día para el Inicio">
+                  <strong id="adminHomeDate">--</strong><span aria-hidden="true">▾</span>
+                </button>
+                <div class="admin-home-date-controls" id="adminHomeDateControls" hidden>
+                  <input id="adminHomeDateInput" type="date" aria-label="Fecha del Inicio" />
+                </div>
+                <button class="admin-home-today-button" id="adminHomeToday" type="button" hidden>Volver a hoy</button>
                 <small id="adminHomeSync">Datos disponibles en la aplicación</small>
               </div>
             </div>
@@ -1237,6 +1254,7 @@
 
     <script src="app-core.js?v=1"></script>
     <script src="app-insights.js?v=2"></script>
-    <script src="app.js?v=82"></script>
+    <script src="app.js?v=83"></script>
+    <script src="install-app.js?v=1"></script>
   </body>
 </html>

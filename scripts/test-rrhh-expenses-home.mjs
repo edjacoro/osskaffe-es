@@ -21,10 +21,18 @@ assert.match(app, /host\.appendChild\(panel\)/);
 assert.match(app, /employees = getEmployees\(true\)\.slice\(\)\.sort/);
 assert.match(app, /employee\.inactiveFrom && employee\.inactiveFrom <= today/);
 
-assert.match(app, /<span>Proyección mes<\/span>/);
+assert.match(app, /"Proyección mes a esa fecha" : "Proyección mes"/);
 assert.match(app, /<span>Ticket promedio mes<\/span>/);
-assert.match(app, /getMonthSalesProjection\(now, locationId\)/);
+assert.match(app, /getMonthSalesProjection\(selectedDate, locationId\)/);
 assert.match(app, /monthMetrics\.avgTicket/);
 assert.match(css, /\.executive-store-grid\.is-single \.executive-store-card/);
 
-console.log("OK: filtros de gastos, comparación mensual y subpestañas de RRHH.");
+assert.match(html, /id="adminHomeDateTrigger"[^>]*aria-controls="adminHomeDateControls"/);
+assert.match(html, /id="adminHomeDateInput" type="date"/);
+assert.match(html, /id="adminHomeToday"[^>]*hidden/);
+assert.match(app, /adminHomeSelectedDate = selectedKey === todayKey \? null : selectedKey/);
+assert.match(app, /calcDayMetricsForLocation\(selectedKey, locationId\)/);
+assert.match(app, /firstDayOfMonth\(selectedDate\)/);
+assert.match(app, /adminHomeDateInput\.max = todayKey/);
+
+console.log("OK: filtros de gastos, comparación mensual, selector histórico de Inicio y subpestañas de RRHH.");

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="ÖSS Kaffe">
+  <rect width="512" height="512" fill="#2d4f5c"/>
+  <circle cx="256" cy="256" r="164" fill="#c46d47"/>
+  <svg x="151" y="187" width="210" height="133" viewBox="0 0 82 52" aria-hidden="true">
+    <path fill="#fff" d="M0,7 Q0,0 7,0 L75,0 Q82,0 82,7 L82,17 Q82,22 75,22 L64,22 L56,46 Q54,52 50,52 L16,52 Q12,52 10,46 L0,7 Z"/>
+  </svg>
+</svg>
