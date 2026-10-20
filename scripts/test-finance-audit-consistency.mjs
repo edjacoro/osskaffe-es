@@ -155,8 +155,8 @@ assert.match(appSource, /id="finAiDateFrom" type="date"/);
 assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
-assert.match(html, /styles\.css\?v=49/);
-assert.match(html, /app\.js\?v=83/);
+assert.match(html, /styles\.css\?v=50/);
+assert.match(html, /app\.js\?v=84/);
 assert.match(styles, /\.heatmap-day-total-cell \{[\s\S]*?position: sticky;[\s\S]*?right: 0;/);
 assert.match(styles, /@media \(min-width: 1100px\) \{[\s\S]*?\.traffic-visual-grid \{[\s\S]*?0\.34fr[\s\S]*?1\.66fr/);
 assert.match(styles, /\.traffic-visual-grid \.traffic-heatmap-scroll \{[\s\S]*?overflow-x: hidden/);
@@ -179,12 +179,15 @@ assert.match(appSource, /function exportFinExpensesPdf\(\)/);
 assert.match(appSource, /<h2>TOTAL POR CATEGORÍA<\/h2>/);
 assert.match(appSource, /function renderExpenseDonutSvg\(categoryData\)/);
 assert.match(appSource, /Porcentaje de cada categoría sobre el gasto total/);
-assert.match(appSource, /<span>Ventas del mes<\/span>/);
-assert.match(appSource, /<span>Gastos del mes<\/span>/);
-assert.match(appSource, /<span>Resultado del mes<\/span>/);
+assert.match(appSource, /VENTAS DEL MES \(\$\{escapeHtml\(monthLabel\)\}\)/);
+assert.match(appSource, /Sistema Bistrosoft <strong>\$\{formatEur\(salesBreakdown\.bistrosoft\)\}/);
+assert.match(appSource, /Cobros en B <strong>\$\{formatEur\(salesBreakdown\.manual\)\}/);
+assert.match(appSource, /Cursos <strong>\$\{formatEur\(salesBreakdown\.course\)\}/);
+assert.match(appSource, /Resultado del mes: ventas \$\{formatEur\(monthlySales\)\} - gastos \$\{formatEur\(total\)\}/);
 assert.match(appSource, /const monthlyResult = monthlySales - total/);
 assert.match(styles, /\.expense-print-category-layout\s*\{[\s\S]*?grid-template-columns/);
-assert.match(styles, /\.expense-print-closing\s*\{[\s\S]*?repeat\(3/);
+assert.match(styles, /\.expense-print-sales-breakdown\s*\{[\s\S]*?justify-content: space-between/);
+assert.match(styles, /\.expense-print-table tfoot\s*\{\s*display: table-row-group;/);
 assert.match(appSource, /label: 'Insumos y MP', categories: \['materia_prima', 'productos_terceros'\]/);
 assert.match(appSource, /label: 'SUELDOS', categories: \['nominas', 'mano_obra', 'seguridad_social'\]/);
 
@@ -233,6 +236,19 @@ const donutSvg = expensePrintRules.renderExpenseDonutSvg(printCategories);
 assert.match(donutSvg, /aria-label="Porcentaje de gastos por categoría"/);
 assert.match(donutSvg, />25%</);
 assert.match(donutSvg, />75%</);
+
+const salesBreakdownStart = appSource.indexOf('function calculateExpensePrintSalesBreakdown');
+const salesBreakdownEnd = appSource.indexOf('function exportFinExpensesPdf', salesBreakdownStart);
+const calculateSalesBreakdown = new Function(
+  `${appSource.slice(salesBreakdownStart, salesBreakdownEnd)}\nreturn calculateExpensePrintSalesBreakdown;`,
+)();
+assert.deepEqual(calculateSalesBreakdown([
+  { total: 100.10, _source: 'bistrosoft' },
+  { total: 20.05, _source: 'file' },
+  { total: 1.25 },
+  { total: 13.70, _source: 'manual' },
+  { total: 75, _source: 'course' },
+]), { bistrosoft: 121.4, manual: 13.7, course: 75, total: 210.1 });
 
 const financeNavPosition = html.indexOf('data-tab="finanzas"');
 const reportsNavPosition = html.indexOf('data-tab="reports"');

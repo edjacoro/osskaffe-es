@@ -11897,6 +11897,23 @@ function renderExpenseDonutSvg(categoryData) {
   </svg>`;
 }
 
+function calculateExpensePrintSalesBreakdown(sales) {
+  const cents = { bistrosoft: 0, manual: 0, course: 0 };
+  sales.forEach((sale) => {
+    const amount = Number(sale.total || 0);
+    if (!Number.isFinite(amount)) return;
+    // Las importaciones por archivo y los registros anteriores sin marca son ventas de Bistrosoft.
+    const source = sale._source === 'manual' || sale._source === 'course' ? sale._source : 'bistrosoft';
+    cents[source] += Math.round(amount * 100);
+  });
+  return {
+    bistrosoft: cents.bistrosoft / 100,
+    manual: cents.manual / 100,
+    course: cents.course / 100,
+    total: (cents.bistrosoft + cents.manual + cents.course) / 100,
+  };
+}
+
 function exportFinExpensesPdf() {
   const monthKey = monthInputValue(finActiveMonth);
   const expenses = getLocationExpenses()
@@ -11913,9 +11930,10 @@ function exportFinExpensesPdf() {
 
   const categoryTotals = calculateExpenseCategoryTotals(expenses);
   const total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const monthlySales = getLocationSales()
-    .filter((sale) => sale.date.startsWith(monthKey))
-    .reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+  const salesBreakdown = calculateExpensePrintSalesBreakdown(
+    getLocationSales().filter((sale) => sale.date.startsWith(monthKey))
+  );
+  const monthlySales = salesBreakdown.total;
   const monthlyResult = monthlySales - total;
   const resultClass = monthlyResult >= 0 ? 'is-positive' : 'is-negative';
   const categoryData = buildExpensePrintCategoryData(categoryTotals, total);
@@ -11978,9 +11996,16 @@ function exportFinExpensesPdf() {
           </figure>
         </div>
         <div class="expense-print-closing">
-          <div><span>Ventas del mes</span><strong>${formatEur(monthlySales)}</strong></div>
-          <div><span>Gastos del mes</span><strong>${formatEur(total)}</strong></div>
-          <div class="${resultClass}"><span>Resultado del mes</span><strong>${monthlyResult >= 0 ? '+' : ''}${formatEur(monthlyResult)}</strong></div>
+          <div class="expense-print-sales-total">
+            <span>VENTAS DEL MES (${escapeHtml(monthLabel)})</span>
+            <strong>${formatEur(monthlySales)}</strong>
+          </div>
+          <div class="expense-print-sales-breakdown">
+            <span>Sistema Bistrosoft <strong>${formatEur(salesBreakdown.bistrosoft)}</strong></span>
+            <span>Cobros en B <strong>${formatEur(salesBreakdown.manual)}</strong></span>
+            <span>Cursos <strong>${formatEur(salesBreakdown.course)}</strong></span>
+          </div>
+          <p class="expense-print-result ${resultClass}">(Resultado del mes: ventas ${formatEur(monthlySales)} - gastos ${formatEur(total)} = <strong>${monthlyResult >= 0 ? '+' : ''}${formatEur(monthlyResult)}</strong>)</p>
         </div>
       </section>
     </main>`;

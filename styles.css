@@ -1037,6 +1037,10 @@ textarea {
     display: table-header-group;
   }
 
+  .expense-print-table tfoot {
+    display: table-row-group;
+  }
+
   .expense-print-table tr {
     break-inside: avoid;
     page-break-inside: avoid;
@@ -1166,39 +1170,68 @@ textarea {
 
   .expense-print-closing {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 3mm;
+    gap: 2.5mm;
     margin-top: 8mm;
     padding-top: 4mm;
     border-top: 2px solid #2f6672;
   }
 
-  .expense-print-closing > div {
-    display: grid;
-    gap: 1.5mm;
-    padding: 3.5mm;
-    border: 1px solid #d4dfe3;
-    border-radius: 2mm;
-    background: #f6f9fa;
+  .expense-print-sales-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4mm;
   }
 
-  .expense-print-closing span {
-    color: #65777d;
-    font-size: 7.5pt;
+  .expense-print-sales-total span {
+    color: #123b4b;
+    font-size: 9pt;
     font-weight: 800;
-    text-transform: uppercase;
   }
 
-  .expense-print-closing strong {
+  .expense-print-sales-total strong {
     color: #123b4b;
     font-size: 13pt;
+    white-space: nowrap;
   }
 
-  .expense-print-closing .is-positive strong {
+  .expense-print-sales-breakdown {
+    display: flex;
+    justify-content: space-between;
+    gap: 3mm;
+    padding: 2.5mm 0;
+    border-top: 1px solid #d4dfe3;
+    border-bottom: 1px solid #d4dfe3;
+  }
+
+  .expense-print-sales-breakdown span {
+    color: #4f6670;
+    font-size: 8pt;
+    white-space: nowrap;
+  }
+
+  .expense-print-sales-breakdown strong {
+    margin-left: 1mm;
+    color: #123b4b;
+    font-size: 9pt;
+  }
+
+  .expense-print-result {
+    margin: 0;
+    color: #4f6670;
+    font-size: 8pt;
+    text-align: right;
+  }
+
+  .expense-print-result strong {
+    font-size: 10pt;
+  }
+
+  .expense-print-result.is-positive strong {
     color: #0f766e;
   }
 
-  .expense-print-closing .is-negative strong {
+  .expense-print-result.is-negative strong {
     color: #bd3d38;
   }
 
