@@ -4732,12 +4732,88 @@ textarea {
 }
 .store-hours-month-control {
   display: grid;
-  grid-template-columns: 38px minmax(155px, 1fr) 38px;
+  grid-template-columns: 38px minmax(200px, 1fr) 38px;
   gap: 7px;
-  min-width: 250px;
+  min-width: 300px;
 }
 .store-hours-month-control input {
   min-height: 40px;
+}
+.store-hours-general {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.store-hours-general-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-bottom: 12px;
+}
+.store-hours-general-heading h4 {
+  margin: 0 0 3px;
+}
+.store-hours-general-heading .form-note {
+  margin: 0;
+}
+.store-hours-general-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.store-hours-general-history button {
+  min-height: 32px;
+}
+.store-hours-general-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 190px) minmax(0, 1fr);
+  align-items: end;
+  gap: 10px 14px;
+}
+.store-hours-general-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+.store-hours-general-form input {
+  width: 100%;
+  min-height: 38px;
+}
+.store-hours-general-periods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.store-hours-general-period {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, minmax(85px, 100px));
+  align-items: end;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+.store-hours-general-period > strong {
+  align-self: center;
+  font-size: .75rem;
+}
+.store-hours-general-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.store-hours-general-actions .store-hours-feedback {
+  min-height: 0;
 }
 .store-hours-list {
   display: grid;
@@ -4748,7 +4824,7 @@ textarea {
 }
 .store-hours-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) minmax(120px, .7fr) minmax(120px, .7fr) minmax(105px, .55fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(180px, 1.5fr) minmax(120px, .7fr) minmax(120px, .7fr) minmax(105px, .55fr) minmax(275px, 1.2fr);
   align-items: end;
   gap: 10px;
   padding: 10px 12px;
@@ -4802,7 +4878,7 @@ textarea {
 .store-hours-actions {
   align-self: end;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.3fr);
   gap: 6px;
 }
 .store-hours-actions .mini-button {
@@ -4833,6 +4909,12 @@ textarea {
 }
 
 @media (max-width: 900px) {
+  .store-hours-general-form {
+    grid-template-columns: 1fr;
+  }
+  .store-hours-general-periods {
+    grid-template-columns: 1fr;
+  }
   .store-hours-heading {
     flex-direction: column;
   }
@@ -4848,6 +4930,9 @@ textarea {
 }
 
 @media (max-width: 560px) {
+  .store-hours-general-period {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, 1fr));
+  }
   .store-hours-month-control {
     width: 100%;
     min-width: 0;

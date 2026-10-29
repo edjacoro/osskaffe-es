@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=50" />
+    <link rel="stylesheet" href="styles.css?v=51" />
     <!-- SheetJS para leer archivos Excel (.xlsx) -->
     <script src="xlsx.full.min.js"></script>
   </head>
@@ -573,8 +573,8 @@
             <div class="store-hours-heading">
               <div>
                 <p class="eyebrow">Horario estacional</p>
-                <h3>Apertura de la tienda por día</h3>
-                <p class="form-note">Elegí un mes, completá apertura y cierre, y presioná GUARDAR en cada día modificado. Los demás conservan el horario predeterminado.</p>
+                <h3>Horarios de atención de la tienda</h3>
+                <p class="form-note">Definí un horario general desde una fecha. Las excepciones guardadas por día tienen prioridad; para cambios puntuales, elegí un mes y presioná GUARDAR en cada día modificado.</p>
               </div>
               <div class="store-hours-month-control">
                 <button class="icon-button" id="storeHoursPrevMonth" type="button" aria-label="Mes anterior de horarios">&#8249;</button>
@@ -582,6 +582,41 @@
                 <button class="icon-button" id="storeHoursNextMonth" type="button" aria-label="Mes siguiente de horarios">&#8250;</button>
               </div>
             </div>
+            <section class="store-hours-general" aria-labelledby="storeHoursGeneralTitle">
+              <div class="store-hours-general-heading">
+                <div>
+                  <h4 id="storeHoursGeneralTitle">Horario general desde una fecha</h4>
+                  <p class="form-note">Se aplica en adelante, sin modificar meses anteriores ni turnos de empleados.</p>
+                </div>
+                <div id="storeHoursGeneralHistory" class="store-hours-general-history" aria-label="Horarios generales guardados"></div>
+              </div>
+              <form id="storeHoursGeneralForm" class="store-hours-general-form">
+                <label class="store-hours-general-date">Vigente desde
+                  <input id="storeHoursGeneralFrom" type="date" required />
+                </label>
+                <div class="store-hours-general-periods">
+                  <div class="store-hours-general-period" data-general-period="weekdays">
+                    <strong>Lunes a viernes</strong>
+                    <label>Apertura <input type="time" data-general-open required /></label>
+                    <label>Cierre <input type="time" data-general-close required /></label>
+                  </div>
+                  <div class="store-hours-general-period" data-general-period="saturday">
+                    <strong>Sábado</strong>
+                    <label>Apertura <input type="time" data-general-open required /></label>
+                    <label>Cierre <input type="time" data-general-close required /></label>
+                  </div>
+                  <div class="store-hours-general-period" data-general-period="sunday">
+                    <strong>Domingo</strong>
+                    <label>Apertura <input type="time" data-general-open required /></label>
+                    <label>Cierre <input type="time" data-general-close required /></label>
+                  </div>
+                </div>
+                <div class="store-hours-general-actions">
+                  <button class="primary-button" type="submit">Guardar horario general</button>
+                  <small id="storeHoursGeneralFeedback" class="store-hours-feedback" aria-live="polite"></small>
+                </div>
+              </form>
+            </section>
             <div id="storeHoursDays"></div>
           </section>
         </section>
@@ -1254,7 +1289,7 @@
 
     <script src="app-core.js?v=1"></script>
     <script src="app-insights.js?v=2"></script>
-    <script src="app.js?v=84"></script>
+    <script src="app.js?v=88"></script>
     <script src="install-app.js?v=1"></script>
   </body>
 </html>

@@ -1007,6 +1007,10 @@ export function mergeAdminState(current, submitted) {
       monthlyOpeningHours: currentSettings.monthlyOpeningHours
         || submittedSettings.monthlyOpeningHours
         || {},
+      regularOpeningSchedules: {
+        ...(submittedSettings.regularOpeningSchedules || {}),
+        ...(currentSettings.regularOpeningSchedules || {}),
+      },
     }];
   }));
   const currentBarcelonaHours = currentLocationSettings.barcelona?.monthlyOpeningHours
@@ -1033,6 +1037,12 @@ export function mergeAdminState(current, submitted) {
       monthlyOpeningHours: currentBarcelonaHours
         || submitted.settings?.monthlyOpeningHours
         || {},
+      regularOpeningSchedules: {
+        ...(submitted.settings?.regularOpeningSchedules || {}),
+        ...(currentLocationSettings.barcelona?.regularOpeningSchedules
+          || current.settings?.regularOpeningSchedules
+          || {}),
+      },
     },
     sales: mergePersistedBistroSales(current.sales || [], submitted.sales || [], salesDeletionTombstones),
     salesDeletionTombstones,

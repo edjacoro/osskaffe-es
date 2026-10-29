@@ -16,7 +16,16 @@ const current = {
   madridScheduleSeedVersion: 2,
   settings: { storeLat: "actual", monthlyOpeningHours: {} },
   locationSettings: {
-    barcelona: { monthlyOpeningHours: { "2026-08-03": { open: "09:00", close: "20:00", closed: true } } },
+    barcelona: {
+      monthlyOpeningHours: { "2026-08-03": { open: "09:00", close: "20:00", closed: true } },
+      regularOpeningSchedules: {
+        "2026-11-01": {
+          weekdays: { open: "08:30", close: "18:00" },
+          saturday: { open: "09:00", close: "18:00" },
+          sunday: { open: "10:00", close: "18:00" },
+        },
+      },
+    },
     madrid: { monthlyOpeningHours: { "2026-08-04": { open: "08:30", close: "14:00", closed: false } } },
   },
 };
@@ -39,6 +48,8 @@ assert.equal(mergedAdmin.changes[0].status, "approved");
 assert.equal(mergedAdmin.settings.storeLat, "nuevo", "Los ajustes normales deben seguir siendo editables.");
 assert.equal(mergedAdmin.locationSettings.barcelona.monthlyOpeningHours["2026-08-03"].closed, true);
 assert.equal(mergedAdmin.locationSettings.madrid.monthlyOpeningHours["2026-08-04"].close, "14:00");
+assert.equal(mergedAdmin.locationSettings.barcelona.regularOpeningSchedules["2026-11-01"].weekdays.close, "18:00",
+  "Una copia completa anterior no debe deshacer el cierre general guardado en Netlify.");
 assert.equal(mergedAdmin.madridScheduleSeedVersion, 2);
 assert.equal(mergedAdmin.schedulePlans.madrid[0].weeks[0].shifts.length, 0,
   "Una copia completa antigua no debe deshacer la grilla puntual ya confirmada.");

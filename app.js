@@ -198,6 +198,13 @@ const MADRID_SCHEDULE_PLAN_ID = "madrid-2026-08-31-8-semanas";
 const MADRID_OCTOBER_SCHEDULE_MIGRATION_VERSION = 1;
 const MADRID_OCTOBER_SCHEDULE_PLAN_ID = "madrid-2026-10-12-4-semanas";
 const MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM = "2026-08-31";
+const BARCELONA_REGULAR_OPENING_SCHEDULES = {
+  "2026-11-01": {
+    weekdays: { open: "08:30", close: "18:00" },
+    saturday: { open: "09:00", close: "19:00" },
+    sunday: { open: "10:00", close: "19:00" },
+  },
+};
 
 function buildMadridScheduleWeek({ tuesdayEmployee = "perla", saturday = [], sunday = [] } = {}) {
   const shifts = [];
@@ -432,10 +439,15 @@ const DEFAULT_SETTINGS = {
   holidaySeedVersion: HOLIDAY_SEED_VERSION,
   holidays: DEFAULT_HOLIDAYS_2026,
   monthlyOpeningHours: {},
+  regularOpeningSchedules: {},
 };
 
 const DEFAULT_LOCATION_SETTINGS = {
-  barcelona: { ...DEFAULT_SETTINGS, holidays: DEFAULT_HOLIDAYS_2026 },
+  barcelona: {
+    ...DEFAULT_SETTINGS,
+    holidays: DEFAULT_HOLIDAYS_2026,
+    regularOpeningSchedules: BARCELONA_REGULAR_OPENING_SCHEDULES,
+  },
   madrid: {
     ...DEFAULT_SETTINGS,
     storeAddress: LOCATIONS.madrid.address,
@@ -741,6 +753,10 @@ let state = loadState();
 let activeMonth = firstDayOfMonth(new Date());
 let selectedPdfWeekStart = "";
 let storeHoursActiveMonth = firstDayOfMonth(new Date());
+const storeHoursDrafts = new Map();
+const storeHoursSaveFeedback = new Map();
+const storeHoursGeneralDrafts = new Map();
+let storeHoursGeneralFormLocationId = null;
 const hiddenGridEmployees = new Map();
 let trafficActiveMonth = firstDayOfMonth(new Date());
 let appRole = null;
@@ -804,6 +820,10 @@ const els = {
   storeHoursPrevMonth: document.querySelector("#storeHoursPrevMonth"),
   storeHoursNextMonth: document.querySelector("#storeHoursNextMonth"),
   storeHoursDays: document.querySelector("#storeHoursDays"),
+  storeHoursGeneralForm: document.querySelector("#storeHoursGeneralForm"),
+  storeHoursGeneralFrom: document.querySelector("#storeHoursGeneralFrom"),
+  storeHoursGeneralHistory: document.querySelector("#storeHoursGeneralHistory"),
+  storeHoursGeneralFeedback: document.querySelector("#storeHoursGeneralFeedback"),
   scheduleTable: document.querySelector("#scheduleTable"),
   schedulePanel: document.querySelector("#schedulePanel"),
   mobileScheduleList: document.querySelector("#mobileScheduleList"),
@@ -1124,6 +1144,53 @@ function bindEvents() {
     const [year, month] = event.target.value.split("-").map(Number);
     storeHoursActiveMonth = new Date(year, month - 1, 1);
     renderStoreHoursEditor();
+  });
+  const markRegularOpeningPending = () => {
+    storeHoursGeneralDrafts.set(activeLocationId, {
+      effectiveFrom: els.storeHoursGeneralFrom.value,
+      periods: readRegularOpeningForm(),
+    });
+    setRegularOpeningFeedback("Cambios sin guardar", "pending");
+  };
+  els.storeHoursGeneralForm.querySelectorAll("input").forEach((input) => {
+    input.addEventListener("input", markRegularOpeningPending);
+    input.addEventListener("change", markRegularOpeningPending);
+  });
+  els.storeHoursGeneralHistory.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-general-rule-date]");
+    if (!button) return;
+    const locationId = activeLocationId;
+    if (storeHoursGeneralDrafts.has(locationId)
+      && !confirm("Hay cambios de horario general sin guardar. ¿Querés descartarlos?")) return;
+    storeHoursGeneralDrafts.delete(locationId);
+    const dateKey = button.dataset.generalRuleDate;
+    fillRegularOpeningForm(dateKey, regularOpeningPeriodsForForm(dateKey, locationId));
+    setRegularOpeningFeedback("", "");
+  });
+  els.storeHoursGeneralForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const locationId = activeLocationId;
+    const effectiveFrom = els.storeHoursGeneralFrom.value;
+    const periods = readRegularOpeningForm();
+    if (!effectiveFrom || Object.values(periods).some((hours) => !hours.open || !hours.close || hours.open >= hours.close)) {
+      setRegularOpeningFeedback("Revisá la fecha y que cada cierre sea posterior a la apertura.", "error");
+      return;
+    }
+    const controls = [...els.storeHoursGeneralForm.querySelectorAll("input, button")];
+    controls.forEach((control) => { control.disabled = true; });
+    setRegularOpeningFeedback("Guardando en Netlify...", "saving");
+    const result = await saveRegularOpeningSchedule(effectiveFrom, periods, locationId);
+    controls.forEach((control) => { control.disabled = false; });
+    if (result.ok) storeHoursGeneralDrafts.delete(locationId);
+    if (activeLocationId !== locationId) return;
+    if (!result.ok) {
+      setRegularOpeningFeedback(`${result.error || "No se pudo confirmar en Netlify."} Reintentá guardar.`, "error");
+      return;
+    }
+    renderStoreHoursEditor();
+    setRegularOpeningFeedback(result.local
+      ? "Guardado sólo en este navegador; Netlify no está conectado."
+      : "Horario general confirmado en Netlify.", result.local ? "pending" : "success");
   });
 
   els.exportCsv.addEventListener("click", exportCsv);
@@ -1518,10 +1585,12 @@ function renderLegend() {
   const hidden = getHiddenGridEmployees();
   const monthDays = getMonthDays(activeMonth).map(toDateInput);
   els.employeeLegend.innerHTML = getEmployeesForMonth(activeMonth).map((employee) => {
-    const monthlyHours = monthDays.reduce((total, dateKey) =>
-      total + getShiftsForDate(dateKey)
-        .filter((shift) => shift.employeeId === employee.id)
-        .reduce((dayTotal, shift) => dayTotal + shift.end - shift.start, 0), 0);
+    const totals = monthDays.reduce((result, dateKey) => {
+      const dayShifts = getShiftsForDate(dateKey).filter((shift) => shift.employeeId === employee.id);
+      result.hours += dayShifts.reduce((sum, shift) => sum + shift.end - shift.start, 0);
+      if (dayShifts.length) result.days += 1;
+      return result;
+    }, { hours: 0, days: 0 });
     const isHidden = hidden.has(employee.id);
     return `
       <button class="legend-item legend-toggle${isHidden ? " is-off" : ""}" type="button"
@@ -1530,7 +1599,9 @@ function renderLegend() {
         <span class="legend-swatch" style="background:${employee.color}"></span>
         <span class="legend-copy">
           <strong>${escapeHtml(employee.label)}</strong>
-          <small>${formatHours(monthlyHours)} este mes</small>
+          ${appRole === "admin"
+            ? `<small title="Días con turnos programados o aprobados">${formatHours(totals.hours)}/mes (${totals.days} d)</small>`
+            : `<small>${formatHours(totals.hours)} este mes</small>`}
         </span>
       </button>
     `;
@@ -2610,7 +2681,7 @@ function renderHolidays() {
             <span>${formatHumanDate(holiday.date)}</span>
             <button class="mini-button danger" type="button" data-remove-holiday="${holiday.date}">Quitar</button>
           </div>
-          <div class="event-meta">${escapeHtml(holiday.name || "Feriado")} · ${holiday.open}-${holiday.close}</div>
+          <div class="event-meta">Atención efectiva: ${escapeHtml(getOpenLabelForDate(holiday.date).replace(" local", ""))}</div>
         </article>
       `;
     })
@@ -3451,25 +3522,49 @@ function getShiftsForDate(dateKey, locationId = activeLocationId) {
   });
 }
 
-function getOpenLabel(day) {
-  return getRegularOpeningPeriods(day)
-    .map((hours) => `${formatHour(hours.open)}-${formatHour(hours.close)}`)
-    .join(" / ") + " local";
-}
-
 function getOpeningOverride(dateKey, locationId = activeLocationId) {
   return getLocationSettings(locationId).monthlyOpeningHours?.[dateKey] || null;
+}
+
+function getRegularOpeningSchedules(locationId = activeLocationId) {
+  const resolvedLocationId = normalizeLocationId(locationId);
+  const rules = {
+    ...(resolvedLocationId === "barcelona" ? BARCELONA_REGULAR_OPENING_SCHEDULES : {}),
+    ...(getLocationSettings(resolvedLocationId).regularOpeningSchedules || {}),
+  };
+  const priorRule = rules["2026-11-01"];
+  // Una copia anterior del valor predeterminado no debe ocultar el horario
+  // corregido. Las reglas guardadas expresamente con el editor siguen vigentes.
+  if (resolvedLocationId === "barcelona" && priorRule && !priorRule._userConfigured
+    && priorRule.weekdays?.open === "08:30" && priorRule.weekdays?.close === "18:00"
+    && priorRule.saturday?.open === "09:00" && priorRule.saturday?.close === "18:00"
+    && priorRule.sunday?.open === "10:00" && priorRule.sunday?.close === "18:00") {
+    rules["2026-11-01"] = BARCELONA_REGULAR_OPENING_SCHEDULES["2026-11-01"];
+  }
+  return rules;
+}
+
+function getRegularOpeningRuleForDate(dateKey, locationId = activeLocationId) {
+  const rules = getRegularOpeningSchedules(locationId);
+  const effectiveFrom = Object.keys(rules).filter((date) => date <= dateKey).sort().at(-1);
+  return effectiveFrom ? { effectiveFrom, periods: rules[effectiveFrom] } : null;
 }
 
 function getDefaultOpeningPeriodsForDate(dateKey, locationId = activeLocationId) {
   const resolvedLocationId = normalizeLocationId(locationId);
   const day = new Date(`${dateKey}T12:00:00`).getDay();
+  const holiday = getHoliday(dateKey, resolvedLocationId);
+  const rule = getRegularOpeningRuleForDate(dateKey, resolvedLocationId);
+  if (rule) {
+    const period = day === 0 ? rule.periods.sunday : day === 6 ? rule.periods.saturday : rule.periods.weekdays;
+    // Los festivos mantienen su apertura especial; el cierre general sigue vigente.
+    return [{ open: holiday?.open || period.open, close: period.close }];
+  }
   if (resolvedLocationId === "madrid" && dateKey >= MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM) {
     return day >= 1 && day <= 5
       ? [{ open: "08:00", close: "19:00" }]
       : [{ open: "10:00", close: "20:00" }];
   }
-  const holiday = getHoliday(dateKey, resolvedLocationId);
   if (holiday) return [{ open: holiday.open || "10:00", close: holiday.close || "19:00" }];
   return getRegularOpeningPeriods(day, resolvedLocationId).map((period) => ({
     open: formatHour(period.open),
@@ -3585,7 +3680,7 @@ async function saveOpeningOverride(dateKey, values, locationId = activeLocationI
   updateLocationSettings({
     monthlyOpeningHours: {
       ...(settings.monthlyOpeningHours || {}),
-      [dateKey]: values,
+      [dateKey]: result.value || values,
     },
   }, locationId);
   saveState({ shared: false });
@@ -3618,12 +3713,95 @@ async function persistStoreHoursChange(action, date, values, locationId) {
   const result = await sendSharedMutation("/api/store-hours", {
     action,
     locationId,
-    date,
-    ...(values || {}),
+    ...(action === "save-rule" ? { effectiveFrom: date, periods: values } : { date, ...(values || {}) }),
   }, "No se pudo guardar el horario en Netlify.");
   return result.ok
-    ? { ok: true, local: result.local, persistedAt: result.payload?.persistedAt || null }
+    ? {
+        ok: true,
+        local: result.local,
+        value: result.payload?.value || null,
+        persistedAt: result.payload?.persistedAt || null,
+      }
     : result;
+}
+
+async function saveRegularOpeningSchedule(effectiveFrom, periods, locationId = activeLocationId) {
+  const result = await persistStoreHoursChange("save-rule", effectiveFrom, periods, locationId);
+  if (!result.ok) return result;
+  updateLocationSettings({
+    regularOpeningSchedules: {
+      ...(getLocationSettings(locationId).regularOpeningSchedules || {}),
+      [effectiveFrom]: result.value || { ...periods, _userConfigured: true },
+    },
+  }, locationId);
+  saveState({ shared: false });
+  if (locationId === activeLocationId) {
+    renderLegend();
+    renderSchedule();
+    renderMetrics();
+    renderContratosPanel();
+  }
+  return result;
+}
+
+function regularOpeningPeriodsForForm(dateKey, locationId) {
+  const rule = getRegularOpeningRuleForDate(dateKey, locationId);
+  if (rule) return structuredClone(rule.periods);
+  const hours = (day) => {
+    if (locationId === "madrid" && dateKey >= MADRID_CONTINUOUS_HOURS_EFFECTIVE_FROM) {
+      return day === 1
+        ? { open: "08:00", close: "19:00" }
+        : { open: "10:00", close: "20:00" };
+    }
+    const periods = getRegularOpeningPeriods(day, locationId);
+    return { open: formatHour(periods[0].open), close: formatHour(periods.at(-1).close) };
+  };
+  return { weekdays: hours(1), saturday: hours(6), sunday: hours(0) };
+}
+
+function fillRegularOpeningForm(dateKey, periods) {
+  els.storeHoursGeneralFrom.value = dateKey;
+  els.storeHoursGeneralForm.querySelectorAll("[data-general-period]").forEach((row) => {
+    const hours = periods[row.dataset.generalPeriod];
+    row.querySelector("[data-general-open]").value = hours.open;
+    row.querySelector("[data-general-close]").value = hours.close;
+  });
+}
+
+function readRegularOpeningForm() {
+  return Object.fromEntries([...els.storeHoursGeneralForm.querySelectorAll("[data-general-period]")].map((row) => [
+    row.dataset.generalPeriod,
+    {
+      open: row.querySelector("[data-general-open]").value,
+      close: row.querySelector("[data-general-close]").value,
+    },
+  ]));
+}
+
+function setRegularOpeningFeedback(message = "", status = "") {
+  els.storeHoursGeneralFeedback.textContent = message;
+  els.storeHoursGeneralFeedback.dataset.status = status;
+}
+
+function renderStoreHoursGeneralEditor() {
+  if (!els.storeHoursGeneralForm) return;
+  const locationId = activeLocationId;
+  const rules = getRegularOpeningSchedules(locationId);
+  const dates = Object.keys(rules).sort();
+  els.storeHoursGeneralHistory.innerHTML = dates.map((date) => `
+    <button class="mini-button" type="button" data-general-rule-date="${date}">Desde ${escapeHtml(formatHumanDate(date))}</button>
+  `).join("");
+
+  const draft = storeHoursGeneralDrafts.get(locationId);
+  if (storeHoursGeneralFormLocationId !== locationId) {
+    const initialDate = draft?.effectiveFrom || dates.at(-1) || toDateInput(new Date());
+    fillRegularOpeningForm(initialDate, draft?.periods || regularOpeningPeriodsForForm(initialDate, locationId));
+    storeHoursGeneralFormLocationId = locationId;
+    setRegularOpeningFeedback(draft ? "Cambios sin guardar" : "", draft ? "pending" : "");
+  } else if (!draft) {
+    const selectedDate = els.storeHoursGeneralFrom.value || dates.at(-1) || toDateInput(new Date());
+    fillRegularOpeningForm(selectedDate, regularOpeningPeriodsForForm(selectedDate, locationId));
+  }
 }
 
 function renderStoreHoursEditor() {
@@ -3634,23 +3812,28 @@ function renderStoreHoursEditor() {
   const editorLocationId = activeLocationId;
   const monthKey = monthInputValue(storeHoursActiveMonth);
   els.storeHoursMonth.value = monthKey;
+  renderStoreHoursGeneralEditor();
   const rows = getMonthDays(storeHoursActiveMonth).map((date) => {
     const dateKey = toDateInput(date);
-    const override = getOpeningOverride(dateKey);
-    const defaults = getDefaultOpeningForDate(dateKey);
-    const holiday = getHoliday(dateKey);
-    const closed = override?.closed === true;
+    const draftKey = `${editorLocationId}:${dateKey}`;
+    const override = getOpeningOverride(dateKey, editorLocationId);
+    const defaults = getDefaultOpeningForDate(dateKey, editorLocationId);
+    const holiday = getHoliday(dateKey, editorLocationId);
+    const draft = storeHoursDrafts.get(draftKey);
+    const feedback = storeHoursSaveFeedback.get(draftKey);
+    const display = draft || override || defaults;
+    const closed = display.closed === true;
     return `
-      <div class="store-hours-row${override ? " is-custom" : ""}${closed ? " is-closed" : ""}" data-store-date="${dateKey}">
+      <div class="store-hours-row${override ? " is-custom" : ""}${draft ? " is-dirty" : ""}${closed ? " is-closed" : ""}" data-store-date="${dateKey}">
         <div class="store-hours-date">
           <strong>${DAY_NAMES[date.getDay()]} ${date.getDate()}</strong>
-          <small>${holiday ? escapeHtml(holiday.name || "Feriado") : override ? "Horario personalizado" : "Horario predeterminado"}</small>
+          <small>${draft ? "Cambios sin guardar" : holiday ? escapeHtml(holiday.name || "Feriado") : override ? "Horario personalizado" : "Horario predeterminado"}</small>
         </div>
         <label>Apertura
-          <input type="time" data-store-open value="${escapeHtml(override?.open || defaults.open)}"${closed ? " disabled" : ""} />
+          <input type="time" data-store-open value="${escapeHtml(display.open ?? defaults.open)}"${closed ? " disabled" : ""} />
         </label>
         <label>Cierre
-          <input type="time" data-store-close value="${escapeHtml(override?.close || defaults.close)}"${closed ? " disabled" : ""} />
+          <input type="time" data-store-close value="${escapeHtml(display.close ?? defaults.close)}"${closed ? " disabled" : ""} />
         </label>
         <label class="store-closed-toggle">
           <input type="checkbox" data-store-closed${closed ? " checked" : ""} />
@@ -3658,8 +3841,8 @@ function renderStoreHoursEditor() {
         </label>
         <div class="store-hours-actions">
           <button class="mini-button store-hours-save" type="button" data-store-save>Guardar</button>
-          <button class="mini-button" type="button" data-store-reset${override ? "" : " disabled"}>Predeterminado</button>
-          <small class="store-hours-feedback" data-store-feedback aria-live="polite"></small>
+          <button class="mini-button" type="button" data-store-reset${override || draft ? "" : " disabled"}>Predeterminado</button>
+          <small class="store-hours-feedback" data-store-feedback data-status="${draft?.error ? "error" : draft ? "pending" : feedback?.status || ""}" aria-live="polite">${escapeHtml(draft?.error || (draft ? "Cambios sin guardar" : feedback?.message || ""))}</small>
         </div>
       </div>`;
   }).join("");
@@ -3667,13 +3850,13 @@ function renderStoreHoursEditor() {
 
   els.storeHoursDays.querySelectorAll("[data-store-date]").forEach((row) => {
     const dateKey = row.dataset.storeDate;
+    const draftKey = `${editorLocationId}:${dateKey}`;
     const openInput = row.querySelector("[data-store-open]");
     const closeInput = row.querySelector("[data-store-close]");
     const closedInput = row.querySelector("[data-store-closed]");
     const saveButton = row.querySelector("[data-store-save]");
     const resetButton = row.querySelector("[data-store-reset]");
     const feedback = row.querySelector("[data-store-feedback]");
-    const dateStatus = row.querySelector(".store-hours-date small");
     const defaultSaveLabel = saveButton.textContent;
 
     const setFeedback = (message = "", status = "") => {
@@ -3686,6 +3869,12 @@ function renderStoreHoursEditor() {
       row.classList.toggle("is-closed", closedInput.checked);
     };
     const markPending = () => {
+      storeHoursDrafts.set(draftKey, {
+        open: openInput.value,
+        close: closeInput.value,
+        closed: closedInput.checked,
+      });
+      storeHoursSaveFeedback.delete(draftKey);
       row.classList.add("is-dirty");
       setFeedback("Cambios sin guardar", "pending");
     };
@@ -3697,24 +3886,38 @@ function renderStoreHoursEditor() {
       }
       saveButton.disabled = true;
       resetButton.disabled = true;
+      openInput.disabled = true;
+      closeInput.disabled = true;
+      closedInput.disabled = true;
       saveButton.textContent = "Guardando...";
       setFeedback("Guardando en Netlify...", "saving");
       const result = await saveOpeningOverride(dateKey, {
-        open: openInput.value || getDefaultOpeningForDate(dateKey).open,
-        close: closeInput.value || getDefaultOpeningForDate(dateKey).close,
+        open: openInput.value || getDefaultOpeningForDate(dateKey, editorLocationId).open,
+        close: closeInput.value || getDefaultOpeningForDate(dateKey, editorLocationId).close,
         closed,
       }, editorLocationId);
       saveButton.textContent = defaultSaveLabel;
       saveButton.disabled = false;
       resetButton.disabled = false;
+      closedInput.disabled = false;
+      syncClosedInputs();
       if (!result.ok) {
-        setFeedback(`${result.error || "No se pudo confirmar en Netlify."} Reintentá guardar.`, "error");
+        const error = `${result.error || "No se pudo confirmar en Netlify."} Reintentá guardar.`;
+        storeHoursDrafts.set(draftKey, {
+          open: openInput.value,
+          close: closeInput.value,
+          closed: closedInput.checked,
+          error,
+        });
+        setFeedback(error, "error");
+        if (activeLocationId === editorLocationId && monthInputValue(storeHoursActiveMonth) === monthKey) renderStoreHoursEditor();
         return;
       }
-      row.classList.remove("is-dirty");
-      row.classList.add("is-custom");
-      dateStatus.textContent = "Horario personalizado";
-      setFeedback("Guardado en Netlify", "success");
+      storeHoursDrafts.delete(draftKey);
+      storeHoursSaveFeedback.set(draftKey, result.local
+        ? { message: "Guardado sólo en este navegador; Netlify no está conectado.", status: "pending" }
+        : { message: "Confirmado en Netlify", status: "success" });
+      if (activeLocationId === editorLocationId && monthInputValue(storeHoursActiveMonth) === monthKey) renderStoreHoursEditor();
     };
 
     openInput.addEventListener("input", markPending);
@@ -3725,16 +3928,34 @@ function renderStoreHoursEditor() {
     });
     saveButton.addEventListener("click", persist);
     resetButton.addEventListener("click", async () => {
+      if (!getOpeningOverride(dateKey, editorLocationId)) {
+        storeHoursDrafts.delete(draftKey);
+        storeHoursSaveFeedback.delete(draftKey);
+        renderStoreHoursEditor();
+        return;
+      }
       resetButton.disabled = true;
       saveButton.disabled = true;
+      openInput.disabled = true;
+      closeInput.disabled = true;
+      closedInput.disabled = true;
       setFeedback("Restaurando...", "saving");
       const result = await resetOpeningOverride(dateKey, editorLocationId);
       if (!result.ok) {
         resetButton.disabled = false;
         saveButton.disabled = false;
-        setFeedback(`${result.error || "No se pudo confirmar en Netlify."} Reintentá.`, "error");
+        closedInput.disabled = false;
+        syncClosedInputs();
+        const error = `${result.error || "No se pudo confirmar en Netlify."} Reintentá.`;
+        storeHoursSaveFeedback.set(draftKey, { message: error, status: "error" });
+        setFeedback(error, "error");
+        if (activeLocationId === editorLocationId && monthInputValue(storeHoursActiveMonth) === monthKey) renderStoreHoursEditor();
         return;
       }
+      storeHoursDrafts.delete(draftKey);
+      storeHoursSaveFeedback.set(draftKey, result.local
+        ? { message: "Restaurado sólo en este navegador; Netlify no está conectado.", status: "pending" }
+        : { message: "Predeterminado confirmado en Netlify", status: "success" });
       renderStoreHoursEditor();
     });
   });
@@ -5744,7 +5965,6 @@ function renderEmpToday() {
   const today = toDateInput(new Date());
   const day = new Date().getDay();
   const shifts = getShiftsForDate(today).filter((s) => s.employeeId === activeEmployeeId);
-  const holiday = getHoliday(today);
   const container = document.querySelector("#empTodayCard");
 
   if (!shifts.length) {
@@ -5753,7 +5973,7 @@ function renderEmpToday() {
         <span class="emp-today-date">${DAY_NAMES[day]} ${new Date().getDate()}</span>
         <div class="emp-today-time">Franco</div>
         <div class="emp-today-duration">Sin turno hoy</div>
-        <div class="emp-today-info">${holiday ? escapeHtml(holiday.name) : getOpenLabel(day)}</div>
+        <div class="emp-today-info">${escapeHtml(getOpenLabelForDate(today))}</div>
       </div>`;
   } else {
     const shift = shifts[0];
@@ -5762,7 +5982,7 @@ function renderEmpToday() {
         <span class="emp-today-date">${DAY_NAMES[day]} ${new Date().getDate()}</span>
         <div class="emp-today-time">${formatHour(shift.start)} – ${formatHour(shift.end)}</div>
         <div class="emp-today-duration">${formatHours(shift.end - shift.start)}</div>
-        <div class="emp-today-info">${holiday ? escapeHtml(holiday.name) + " · " + holiday.open + "-" + holiday.close : getOpenLabel(day)}</div>
+        <div class="emp-today-info">${escapeHtml(getOpenLabelForDate(today))}</div>
       </div>`;
   }
 
@@ -11078,7 +11298,7 @@ function renderFinAnalysis() {
       <span>${DAY_NAMES[dayIndex]}</span>
     </label>`).join('');
 
-  el.innerHTML = `
+  const markup = `
     <section class="analysis-report" id="analysisPrintable">
       <div class="fin-table-header analysis-heading">
         <div><h3>Análisis de ventas · ${getLocation().label}</h3><p class="form-note">Filtrá la información de Bistrosoft y la grilla para auditar ventas, pedidos, productos y cobertura.</p></div>
@@ -11131,7 +11351,39 @@ function renderFinAnalysis() {
       <p class="analysis-source-note">Barista: se usa el dato de Bistrosoft cuando está disponible; si falta, se atribuye según quién figuraba trabajando en la grilla durante esa hora.</p>
     </section>`;
 
-  document.querySelector('#analysisFilters')?.addEventListener('change', (event) => {
+  // Mantener el formulario conectado al DOM preserva el foco y la fecha
+  // parcialmente escrita tanto al cambiar filtros como al sincronizar datos.
+  const template = document.createElement('template');
+  template.innerHTML = markup.trim();
+  const nextReport = template.content.firstElementChild;
+  const currentReport = el.querySelector('#analysisPrintable');
+  const currentForm = currentReport?.querySelector('#analysisFilters');
+  const oldChildren = currentReport ? [...currentReport.children] : [];
+  const newChildren = [...nextReport.children];
+  const reuseForm = currentForm && oldChildren.length === newChildren.length
+    && oldChildren.some((child, index) => child === currentForm && newChildren[index].id === 'analysisFilters');
+  if (reuseForm) {
+    oldChildren.forEach((child, index) => {
+      if (child !== currentForm) child.replaceWith(newChildren[index]);
+    });
+    currentForm.querySelectorAll('input[name="weekdays"]').forEach((input) => {
+      input.checked = input.value === 'all' ? !selectedWeekdays.length : selectedWeekdays.includes(input.value);
+    });
+    const existingBarista = currentForm.querySelector('select[name="barista"]');
+    const updatedBarista = nextReport.querySelector('select[name="barista"]');
+    if (existingBarista && updatedBarista && existingBarista.innerHTML !== updatedBarista.innerHTML) {
+      existingBarista.innerHTML = updatedBarista.innerHTML;
+      existingBarista.value = filters.barista;
+    }
+  } else {
+    el.replaceChildren(nextReport);
+  }
+
+  const analysisForm = el.querySelector('#analysisFilters');
+  if (analysisForm && !reuseForm) analysisForm.addEventListener('change', (event) => {
+    const target = event.target;
+    if ((target?.name === 'dateFrom' || target?.name === 'dateTo')
+      && (!/^\d{4}-\d{2}-\d{2}$/.test(target.value) || !target.validity.valid)) return;
     const form = new FormData(event.currentTarget);
     const checkedWeekdays = form.getAll('weekdays').map(String);
     const individualWeekdays = checkedWeekdays.filter((value) => value !== 'all');
@@ -11140,12 +11392,23 @@ function renderFinAnalysis() {
       : (checkedWeekdays.includes('all') ? [] : individualWeekdays);
     finAnalysisFilters = {
       ...Object.fromEntries(form.entries()),
+      dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(String(form.get('dateFrom') || ''))
+        ? String(form.get('dateFrom')) : finAnalysisFilters.dateFrom,
+      dateTo: /^\d{4}-\d{2}-\d{2}$/.test(String(form.get('dateTo') || ''))
+        ? String(form.get('dateTo')) : finAnalysisFilters.dateTo,
       weekdays,
     };
     renderFinAnalysis();
   });
-  document.querySelector('#analysisExportCsv')?.addEventListener('click', () => exportFinAnalysisCsv(filters, groups));
-  document.querySelector('#analysisPrint')?.addEventListener('click', printFinAnalysis);
+  if (analysisForm && !reuseForm) analysisForm.addEventListener('focusout', (event) => {
+    const target = event.target;
+    if ((target?.name === 'dateFrom' || target?.name === 'dateTo')
+      && (!/^\d{4}-\d{2}-\d{2}$/.test(target.value) || !target.validity.valid)) {
+      target.value = finAnalysisFilters[target.name];
+    }
+  });
+  el.querySelector('#analysisExportCsv')?.addEventListener('click', () => exportFinAnalysisCsv(filters, groups));
+  el.querySelector('#analysisPrint')?.addEventListener('click', printFinAnalysis);
 }
 
 // -------- IA DE DATOS --------
