@@ -21,6 +21,7 @@
     "test:expenses": "node scripts/test-expense-persistence.mjs",
     "test:manual-sales": "node scripts/test-manual-sales.mjs",
     "test:contracts": "node scripts/test-contract-history.mjs",
+    "test:payroll": "node scripts/test-payroll-calculation.mjs",
     "test:rrhh-expenses-home": "node scripts/test-rrhh-expenses-home.mjs",
     "test:core": "node scripts/test-app-core.mjs",
     "test:insights": "node scripts/test-executive-insights.mjs",

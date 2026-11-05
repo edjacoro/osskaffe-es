@@ -4125,6 +4125,60 @@ textarea {
   font-size: .79rem;
   font-weight: 750;
 }
+.payroll-table { padding: 0 12px; }
+.payroll-header, .payroll-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1.1fr) repeat(6, minmax(0, 1fr)) minmax(80px, .8fr);
+  gap: 5px;
+  align-items: start;
+}
+.payroll-header { background: #f4f7f8; padding: 9px 6px; color: #536776; font-size: .72rem; font-weight: 800; text-transform: uppercase; }
+.payroll-row { padding: 12px 6px; border-bottom: 1px solid #dce5eb; font-size: .78rem; }
+.payroll-row > * { min-width: 0; overflow-wrap: anywhere; }
+.payroll-name { line-height: 1.35; }
+.payroll-name .mini-button { margin-top: 4px; padding: 4px 5px; font-size: .66rem; white-space: normal; }
+.payroll-group { display: grid; gap: 3px; }
+.payroll-group small, .payroll-total small { color: #5b6d78; font-size: .68rem; }
+.payroll-input-label { display: grid; gap: 2px; color: #5b6d78; font-size: .67rem; font-weight: 700; }
+.payroll-input-label .contratos-input { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px; font-size: .8rem; }
+.payroll-total { color: #244d5c; }
+.payroll-note { padding: 0 18px; color: #5b6d78; font-size: .75rem; }
+.payroll-payments { padding: 0 12px; }
+.payroll-payments .fin-table { width: 100%; min-width: 0; table-layout: fixed; }
+.payroll-payments .fin-table th, .payroll-payments .fin-table td { padding: 7px 5px; overflow-wrap: anywhere; }
+.payroll-payments .settlement-input { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100px; }
+@media (max-width: 900px) {
+  .payroll-header { display: none; }
+  .payroll-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px 6px; }
+  .payroll-name { grid-column: 1 / -1; }
+  .payroll-group, .payroll-total { background: #f8fafb; border: 1px solid #e0e8ec; border-radius: 7px; padding: 8px; }
+  .payroll-group::before, .payroll-total::before { content: attr(data-label); display: block; color: #244d5c; font-weight: 800; margin-bottom: 2px; }
+  .payroll-payments .fin-table { font-size: .72rem; }
+}
+@media (max-width: 600px) {
+  .contratos-month-controls { flex-wrap: wrap; }
+  .contratos-month-controls input { width: 145px; min-width: 125px; }
+  .payroll-payments .fin-table, .payroll-payments tbody, .payroll-payments tfoot { display: block; width: 100%; }
+  .payroll-payments thead { display: none; }
+  .payroll-payments tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px 0; border-bottom: 1px solid #dce5eb; }
+  .payroll-payments tr > :first-child { grid-column: 1 / -1; }
+  .payroll-payments td { display: grid; gap: 3px; min-width: 0; }
+  .payroll-payments td::before { content: attr(data-label); color: #5b6d78; font-size: .68rem; font-weight: 700; }
+}
+@media print {
+  .payroll-print { color: #17252b; font-family: Arial, sans-serif; font-size: 8pt; }
+  .payroll-print header { display: flex; justify-content: space-between; gap: 12px; font-size: 13pt; }
+  .payroll-print p { font-size: 8pt; }
+  .payroll-print table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .payroll-print th, .payroll-print td { border: 1px solid #c8d6de; padding: 5px; text-align: left; overflow-wrap: anywhere; vertical-align: top; }
+  .payroll-print th { background: #e8f0f2; }
+  .payroll-print tr { break-inside: avoid; }
+  .payroll-print thead { display: table-header-group; }
+  .payroll-print-historical table { min-width: 0 !important; font-size: 6pt; }
+  .payroll-print-historical th, .payroll-print-historical td { min-width: 0; padding: 3px; white-space: normal; font-size: 6pt; }
+  .payroll-print-historical .contract-extra-cell { min-width: 0; }
+  .payroll-print-historical .contract-extra-inputs label { display: block; font-size: 6pt; }
+}
 .contract-provisional {
   display: block;
   margin-top: 3px;
@@ -4203,6 +4257,71 @@ textarea {
   font-weight: 600;
 }
 .contratos-input:focus { outline: 2px solid #22c55e; outline-offset: 1px; }
+@media screen {
+  .legacy-contracts-view .fin-table-wrap,
+  .legacy-contracts-view .settlement-panel > div:last-child {
+    overflow-x: visible !important;
+  }
+  .legacy-contracts-view .contratos-table,
+  .legacy-contracts-view .settlement-table,
+  .legacy-contracts-view .contratos-table tbody,
+  .legacy-contracts-view .settlement-table tbody,
+  .legacy-contracts-view .settlement-table tfoot {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .legacy-contracts-view .contratos-table thead,
+  .legacy-contracts-view .settlement-table thead { display: none; }
+  .legacy-contracts-view .contratos-table tr,
+  .legacy-contracts-view .settlement-table tr {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 6px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border, #dce5eb);
+  }
+  .legacy-contracts-view .contratos-table td,
+  .legacy-contracts-view .settlement-table td {
+    display: block;
+    min-width: 0;
+    padding: 7px 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+    border: 1px solid var(--border, #e1e8eb);
+    border-radius: 6px;
+  }
+  .legacy-contracts-view .contratos-table td::before,
+  .legacy-contracts-view .settlement-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: var(--muted, #667481);
+    font-size: .66rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .legacy-contracts-view .contratos-table td:first-child,
+  .legacy-contracts-view .settlement-table td:first-child {
+    grid-column: 1 / -1;
+    background: #f4f8f9;
+  }
+  .legacy-contracts-view .contratos-table td:first-child::before,
+  .legacy-contracts-view .settlement-table td:first-child::before { display: none; }
+  .legacy-contracts-view .contratos-table td[colspan] { grid-column: 1 / -1; }
+  .legacy-contracts-view .contract-extra-cell { min-width: 0; }
+  .legacy-contracts-view .settlement-input { box-sizing: border-box; max-width: 100%; }
+}
+@media screen and (max-width: 600px) {
+  .legacy-contracts-view .contratos-table tr,
+  .legacy-contracts-view .settlement-table tr {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .legacy-contracts-view .contratos-table td,
+  .legacy-contracts-view .settlement-table td { padding: 6px; }
+  .legacy-contracts-view .contratos-input { box-sizing: border-box; max-width: 100%; }
+}
 .horas-over  { color: #dc2626; font-weight: 700; }
 .horas-under { color: #9ca3af; }
 .horas-fichadas {

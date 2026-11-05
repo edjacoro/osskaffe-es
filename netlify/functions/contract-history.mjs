@@ -24,6 +24,10 @@ function cleanMonth(value) {
 function cleanContract(input = {}) {
   const hourlyRate = Number(input.hourlyRate ?? 0);
   const overtimeMultiplier = Number(input.overtimeMultiplier ?? 1.25);
+  const rawPayrollHours = input.payrollMonthlyHours;
+  const payrollMonthlyHours = rawPayrollHours == null || rawPayrollHours === ""
+    ? null
+    : Number(rawPayrollHours);
   const result = {
     hoursPerWeek: Number(input.hoursPerWeek ?? 40),
     hourlyRate,
@@ -32,11 +36,20 @@ function cleanContract(input = {}) {
     overtimeMultiplier,
     extraHours: Number(input.extraHours ?? 0),
     extraHourlyRate: Number(input.extraHourlyRate ?? 0),
+    payrollMonthlyHours,
+    payrollMonthlyHoursProvisional: payrollMonthlyHours !== null && input.payrollMonthlyHoursProvisional === true,
   };
-  if (Object.values(result).some((value) => !Number.isFinite(value) || value < 0)) {
+  const numericValues = Object.entries(result)
+    .filter(([field]) => field !== "payrollMonthlyHoursProvisional")
+    .map(([, value]) => value)
+    .filter((value) => value !== null);
+  if ((rawPayrollHours != null && rawPayrollHours !== ""
+      && !["number", "string"].includes(typeof rawPayrollHours))
+    || numericValues.some((value) => !Number.isFinite(value) || value < 0)) {
     invalid("Las horas y tarifas deben ser números no negativos.");
   }
-  if (result.hoursPerWeek > 168 || result.extraHours > 744 || Object.values(result).some((value) => value > 100000)) {
+  if (result.hoursPerWeek > 168 || result.extraHours > 744 || payrollMonthlyHours > 744
+    || numericValues.some((value) => value > 100000)) {
     invalid("Las horas o tarifas superan un límite válido.");
   }
   return result;
@@ -86,7 +99,22 @@ export function applyContractHistoryMutation(current, body = {}) {
   const existing = history.months?.[month]?.[employeeId] || {};
   let contract;
   if (body.action === "upsert") {
-    const cleaned = cleanContract(body.contract);
+    const submitted = { ...(body.contract || {}) };
+    // Un cliente anterior no conoce estos campos y no debe borrarlos al
+    // actualizar una tarifa u otra parte del contrato del mismo mes.
+    if (!Object.hasOwn(submitted, "payrollMonthlyHours")) {
+      const sameMonth = history.months?.[month]?.[employeeId]
+        || (month === history.baselineMonth ? history.baseline?.[employeeId] : null);
+      if (sameMonth && Object.hasOwn(sameMonth, "payrollMonthlyHours")) {
+        submitted.payrollMonthlyHours = sameMonth.payrollMonthlyHours;
+        submitted.payrollMonthlyHoursProvisional = sameMonth.payrollMonthlyHoursProvisional === true;
+      }
+    } else if (!Object.hasOwn(submitted, "payrollMonthlyHoursProvisional")
+      && existing.payrollMonthlyHours != null && submitted.payrollMonthlyHours != null
+      && Number(existing.payrollMonthlyHours) === Number(submitted.payrollMonthlyHours)) {
+      submitted.payrollMonthlyHoursProvisional = existing.payrollMonthlyHoursProvisional === true;
+    }
+    const cleaned = cleanContract(submitted);
     const previous = cleanContract(monthlyContract(history, employeeId, month));
     const ratesChanged = RATE_FIELDS.some((field) => cleaned[field] !== previous[field]);
     contract = {
@@ -95,8 +123,17 @@ export function applyContractHistoryMutation(current, body = {}) {
       updatedAt: new Date().toISOString(),
     };
   } else if (body.action === "verify") {
+    const cleaned = cleanContract(monthlyContract(history, employeeId, month));
+    if (!history.months?.[month]?.[employeeId]) {
+      if (month < history.baselineMonth) {
+        cleaned.payrollMonthlyHours = null;
+        cleaned.payrollMonthlyHoursProvisional = false;
+      } else if (month > history.baselineMonth && cleaned.payrollMonthlyHours !== null) {
+        cleaned.payrollMonthlyHoursProvisional = true;
+      }
+    }
     contract = {
-      ...cleanContract(monthlyContract(history, employeeId, month)),
+      ...cleaned,
       verified: true,
       updatedAt: new Date().toISOString(),
     };
@@ -138,7 +175,15 @@ export function contractHistoryMutationIsPersisted(state, body = {}) {
   if (body.action === "verify") return record.verified === true;
   if (body.action !== "upsert") return false;
   const expected = cleanContract(body.contract);
-  return Object.entries(expected).every(([field, value]) => Number(record[field]) === value);
+  const checksPayroll = Object.hasOwn(body.contract || {}, "payrollMonthlyHours");
+  const checksPayrollStatus = Object.hasOwn(body.contract || {}, "payrollMonthlyHoursProvisional");
+  return Object.entries(expected).every(([field, value]) => {
+    if (!checksPayroll && (field === "payrollMonthlyHours" || field === "payrollMonthlyHoursProvisional")) return true;
+    if (field === "payrollMonthlyHoursProvisional" && !checksPayrollStatus) return true;
+    if (field === "payrollMonthlyHours") return value === null ? record[field] === null : Number(record[field]) === value && record[field] != null;
+    if (field === "payrollMonthlyHoursProvisional") return record[field] === value;
+    return Number(record[field]) === value;
+  });
 }
 
 export default async (request) => {

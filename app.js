@@ -1501,7 +1501,8 @@ function renderActiveAdminPanel(tab = activeAdminTab) {
   } else if (tab === "pastry") renderPasteleria();
   else if (tab === "fichas") {
     renderAdminFichas();
-    renderContratosPanel();
+    // Una sincronización en segundo plano no debe borrar un importe que se está escribiendo.
+    if (!document.activeElement?.matches('#contratosPanel .contratos-input, #contratosPanel .settlement-input')) renderContratosPanel();
     renderPersonnelPanel();
     if (activeFichasTab === 'punch') renderPunches();
     if (activeFichasTab === 'changes') renderChanges();
@@ -2153,6 +2154,8 @@ function getEstimatedLaborExtras(monthDate, locationId) {
   let overtimeCost = 0;
   let holidayCost = 0;
   let configuredEmployees = 0;
+  let incompleteEmployees = 0;
+  let provisionalEmployees = 0;
 
   // Recorremos la grilla mensual una sola vez. Antes se volvía a calcular
   // el mes completo por cada empleado (y otra vez por los feriados), algo muy
@@ -2182,18 +2185,28 @@ function getEstimatedLaborExtras(monthDate, locationId) {
     .filter((employee) => normalizeLocationId(employee.locationId) === normalizeLocationId(locationId))
     .filter((employee) => (!employee.activeFrom || employee.activeFrom <= monthEnd) && (!employee.inactiveFrom || employee.inactiveFrom > monthStart))
     .forEach((employee) => {
-      const contract = getContractForMonth(employee.id, monthDate).contract;
+      const contractView = getContractForMonth(employee.id, monthDate);
+      const contract = contractView.contract;
       const regularRate = Number(contract.hourlyRate || 0);
       const overtimeRate = Number(contract.overtimeRate || (regularRate * Number(contract.overtimeMultiplier || 1.25)));
       const holidayRate = Number(contract.holidayRate || 0);
-      if (regularRate > 0 || overtimeRate > 0 || holidayRate > 0) configuredEmployees += 1;
+      if (regularRate > 0 || overtimeRate > 0 || holidayRate > 0 || Number(contract.extraHourlyRate ?? 0) > 0) configuredEmployees += 1;
       const plannedHours = plannedHoursByEmployee.get(employee.id) || 0;
-      const contractedHours = Number(contract.hoursPerWeek ?? 40) * monthFactor;
-      overtimeCost += Math.max(0, plannedHours - contractedHours) * overtimeRate;
-      holidayCost += (holidayHoursByEmployee.get(employee.id) || 0) * holidayRate;
+      const holidayHours = holidayHoursByEmployee.get(employee.id) || 0;
+      if (monthKey >= PAYROLL_NEW_FORMULA_FROM) {
+        const cost = calculateMonthlyPayroll(contract, plannedHours, holidayHours);
+        if (!cost.complete) incompleteEmployees += 1;
+        else overtimeCost += cost.costB + cost.costExtra;
+        holidayCost += cost.costHoliday;
+        if (contractView.payrollProvisional || contractView.provisional) provisionalEmployees += 1;
+      } else {
+        const contractedHours = Number(contract.hoursPerWeek ?? 40) * monthFactor;
+        overtimeCost += Math.max(0, plannedHours - contractedHours) * overtimeRate;
+        holidayCost += holidayHours * holidayRate;
+      }
     });
 
-  return { overtimeCost, holidayCost, configuredEmployees };
+  return { overtimeCost, holidayCost, configuredEmployees, incompleteEmployees, provisionalEmployees };
 }
 
 function getLaborProductivityForLocation(monthDate, locationId, monthMetrics = null) {
@@ -7096,7 +7109,42 @@ function normalizedContractValues(contract = {}) {
     overtimeMultiplier,
     extraHours: Number(contract.extraHours ?? 0),
     extraHourlyRate: Number(contract.extraHourlyRate ?? 0),
+    payrollMonthlyHours: contract.payrollMonthlyHours == null || contract.payrollMonthlyHours === ''
+      ? null : Number(contract.payrollMonthlyHours),
+    payrollMonthlyHoursProvisional: contract.payrollMonthlyHoursProvisional === true,
   };
+}
+
+const PAYROLL_NEW_FORMULA_FROM = '2026-10';
+
+function resolvePayrollMonthlyHours(history, employeeId, monthKey) {
+  const months = history?.months || {};
+  const exact = months[monthKey]?.[employeeId];
+  if (exact?.payrollMonthlyHours != null && exact.payrollMonthlyHours !== '') {
+    return { hours: Number(exact.payrollMonthlyHours), provisional: exact.payrollMonthlyHoursProvisional === true, sourceMonth: monthKey };
+  }
+  const priorMonth = Object.keys(months)
+    .filter((key) => key >= PAYROLL_NEW_FORMULA_FROM && key < monthKey
+      && months[key]?.[employeeId]?.payrollMonthlyHours != null
+      && months[key][employeeId].payrollMonthlyHours !== '')
+    .sort().at(-1);
+  return priorMonth
+    ? { hours: Number(months[priorMonth][employeeId].payrollMonthlyHours), provisional: true, sourceMonth: priorMonth }
+    : { hours: null, provisional: false, sourceMonth: null };
+}
+
+function calculateMonthlyPayroll(contract, plannedHours, holidayHours) {
+  const cents = (value) => Math.round((value + Math.abs(value) * Number.EPSILON) * 100) / 100;
+  const payrollHours = contract.payrollMonthlyHours;
+  const complete = payrollHours != null && Number.isFinite(Number(payrollHours));
+  const difference = complete ? plannedHours - Number(payrollHours) : null;
+  const hoursB = complete ? Math.max(0, difference) : null;
+  const costA = complete ? cents(Number(payrollHours) * Number(contract.hourlyRate ?? 0)) : null;
+  const costB = complete ? cents(hoursB * Number(contract.overtimeRate ?? 0)) : null;
+  const costExtra = cents(Number(contract.extraHours ?? 0) * Number(contract.extraHourlyRate ?? 0));
+  const costHoliday = cents(holidayHours * Number(contract.holidayRate ?? 0));
+  return { complete, difference, hoursB, costA, costB, costExtra, costHoliday,
+    total: complete ? cents(costA + costB + costExtra + costHoliday) : null };
 }
 
 function localContractHistory(monthKey = monthInputValue(new Date())) {
@@ -7123,30 +7171,36 @@ function getContractForMonth(employeeId, monthDate) {
   const monthKey = monthInputValue(monthDate);
   const history = state.contractHistory;
   const fallback = normalizedContractValues(state.contracts?.[employeeId] || {});
+  const attachPayrollHours = (view) => {
+    if (monthKey < PAYROLL_NEW_FORMULA_FROM) return view;
+    const payroll = resolvePayrollMonthlyHours(history, employeeId, monthKey);
+    return { ...view, payrollProvisional: payroll.provisional, payrollSourceMonth: payroll.sourceMonth,
+      contract: { ...view.contract, payrollMonthlyHours: payroll.hours, payrollMonthlyHoursProvisional: payroll.provisional } };
+  };
   if (!history?.baselineMonth) {
-    return { contract: fallback, provisional: monthKey < monthInputValue(new Date()), verified: false };
+    return attachPayrollHours({ contract: fallback, provisional: monthKey < monthInputValue(new Date()), verified: false });
   }
   const exact = history.months?.[monthKey]?.[employeeId];
   // Nunca tomar la tarifa actual como reemplazo de una referencia histórica
   // ausente: hacerlo movería silenciosamente meses anteriores.
   const baseline = normalizedContractValues(history.baseline?.[employeeId] || {});
   if (monthKey < history.baselineMonth) {
-    return {
+    return attachPayrollHours({
       contract: normalizedContractValues(exact || baseline),
       provisional: exact?.verified !== true,
       verified: exact?.verified === true,
-    };
+    });
   }
-  if (exact) return { contract: normalizedContractValues(exact), provisional: false, verified: true };
+  if (exact) return attachPayrollHours({ contract: normalizedContractValues(exact), provisional: false, verified: true });
   const latestMonth = Object.keys(history.months || {})
     .filter((key) => key >= history.baselineMonth && key <= monthKey && history.months[key]?.[employeeId])
     .sort().at(-1);
   const inherited = latestMonth ? history.months[latestMonth][employeeId] : baseline;
-  return {
+  return attachPayrollHours({
     contract: { ...normalizedContractValues(inherited), extraHours: 0 },
     provisional: false,
     verified: true,
-  };
+  });
 }
 
 function applyLocalContractHistoryMutation(body) {
@@ -7196,8 +7250,8 @@ async function saveContractInput(input) {
   const employeeId = input.dataset.contract;
   const field = input.dataset.field;
   const month = input.dataset.contractMonth || monthInputValue(contratosActiveMonth);
-  const amount = Number(input.value);
-  if (!Number.isFinite(amount) || amount < 0) {
+  const amount = field === 'payrollMonthlyHours' && input.value.trim() === '' ? null : Number(input.value);
+  if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
     alert('Ingresá un número válido, igual o mayor que cero.');
     renderContratosPanel();
     return;
@@ -7206,11 +7260,12 @@ async function saveContractInput(input) {
   const previous = getContractForMonth(employeeId, monthDate).contract;
   // Cada escritura envía la fila completa. Evitamos que una segunda edición
   // parta de una versión vieja y pise la primera mientras Netlify responde.
-  document.querySelectorAll('#contratosPanel .contratos-input, #contratosPanel .contratos-month-controls button, #contratosPanel [data-contratos-month], #contratosPanel [data-verify-contract]')
+  document.querySelectorAll('#contratosPanel .contratos-input, #contratosPanel .contratos-month-controls button, #contratosPanel [data-contratos-month], #contratosPanel [data-verify-contract], #contratosPanel [data-confirm-payroll]')
     .forEach((control) => { control.disabled = true; });
   const result = await saveContractMonthMutation({
     action: 'upsert', month, employeeId, locationId: activeLocationId,
-    contract: { ...previous, [field]: amount },
+    contract: { ...previous, [field]: amount,
+      ...(field === 'payrollMonthlyHours' ? { payrollMonthlyHoursProvisional: false } : {}) },
   });
   if (!result.ok) alert(`${result.error || 'Netlify no confirmó el contrato.'} Volvé a intentarlo.`);
   renderContratosPanel();
@@ -7224,6 +7279,192 @@ async function verifyHistoricalContract(employeeId, month) {
   renderContratosPanel();
 }
 
+function getModernPayrollRows(monthDate, locationId = activeLocationId) {
+  const monthKey = monthInputValue(monthDate);
+  const start = `${monthKey}-01`;
+  const end = toDateInput(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0));
+  const holidays = new Set((getLocationSettings(locationId).holidays || [])
+    .filter((holiday) => holiday.date.startsWith(monthKey)).map((holiday) => holiday.date));
+  return getAllEmployees(true)
+    .filter((employee) => normalizeLocationId(employee.locationId) === normalizeLocationId(locationId))
+    .filter((employee) => !employee.system && employee.testEmployee !== true
+      && (!employee.activeFrom || employee.activeFrom <= end)
+      && (!employee.inactiveFrom || employee.inactiveFrom > start))
+    .map((employee) => {
+      const view = getContractForMonth(employee.id, monthDate);
+      let planned = 0;
+      let holidayHours = 0;
+      getMonthDays(monthDate).forEach((date) => {
+        const dateKey = toDateInput(date);
+        const hours = getShiftsForDate(dateKey, locationId)
+          .filter((shift) => shift.employeeId === employee.id)
+          .reduce((sum, shift) => sum + Math.max(0, shift.end - shift.start), 0);
+        planned += hours;
+        if (holidays.has(dateKey)) holidayHours += hours;
+      });
+      const punches = getLocationPunches(locationId).filter((p) => p.employeeId === employee.id && p.date.startsWith(monthKey))
+        .slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const openPunches = new Map();
+      let punched = 0;
+      let pairedPunches = 0;
+      let incompletePunches = false;
+      punches.forEach((punch) => {
+        if (punch.type === 'in') {
+          if (openPunches.has(punch.date)) incompletePunches = true;
+          openPunches.set(punch.date, punch);
+        } else if (punch.type === 'out') {
+          const startPunch = openPunches.get(punch.date);
+          if (!startPunch) { incompletePunches = true; return; }
+          const elapsed = new Date(punch.timestamp) - new Date(startPunch.timestamp);
+          if (elapsed > 0) { punched += elapsed / 36e5; pairedPunches += 1; }
+          else incompletePunches = true;
+          openPunches.delete(punch.date);
+        }
+      });
+      if (openPunches.size) incompletePunches = true;
+      return { employee, view, contract: view.contract, planned, punched, pairedPunches, incompletePunches, holidayHours,
+        costs: calculateMonthlyPayroll(view.contract, planned, holidayHours) };
+    });
+}
+
+function renderPayrollPrint(monthDate, rows, locationId = activeLocationId) {
+  const amount = (value) => value == null ? 'Pendiente' : formatEur(value);
+  const hour = (value) => value == null ? 'Pendiente' : formatHours(value);
+  return `<article class="payroll-print">
+    <header><strong>ÖSS Kaffe · Horas y contratos</strong><span>${escapeHtml(getLocation(locationId).label)} · ${MONTH_NAMES[monthDate.getMonth()]} ${monthDate.getFullYear()}</span></header>
+    <p>Horas de grilla y fichajes informativos. Extra y feriado son adicionales. Importes provisionales deben revisarse.</p>
+    <table><thead><tr><th>Empleado</th><th>Contrato</th><th>Nómina A</th><th>Horas B</th><th>Extra</th><th>Feriado</th><th>Horas</th><th>Total</th></tr></thead><tbody>
+    ${rows.map(({ employee, view, contract, planned, punched, pairedPunches, incompletePunches, holidayHours, costs }) => `<tr>
+      <td><strong>${escapeHtml(employee.label)}</strong>${view.provisional || view.payrollProvisional ? '<br>Provisional' : ''}</td>
+      <td>${hour(contract.hoursPerWeek)}/sem<br>Nómina: ${hour(contract.payrollMonthlyHours)}</td>
+      <td>${amount(contract.hourlyRate)}/h<br>Subtotal: ${amount(costs.costA)}</td>
+      <td>${amount(contract.overtimeRate)}/h · ${hour(costs.hoursB)}<br>Subtotal: ${amount(costs.costB)}<br>Dif.: ${hour(costs.difference)}</td>
+      <td>${amount(contract.extraHourlyRate)}/h · ${hour(contract.extraHours)}<br>Subtotal: ${amount(costs.costExtra)}</td>
+      <td>${amount(contract.holidayRate)}/h · ${hour(holidayHours)}<br>Subtotal: ${amount(costs.costHoliday)}</td>
+      <td>Grilla: ${hour(planned)}<br>Fichadas: ${pairedPunches ? hour(punched) : '—'}${incompletePunches ? '<br>Fichajes incompletos' : ''}</td>
+      <td><strong>${amount(costs.total)}</strong></td></tr>`).join('') || '<tr><td colspan="8">Sin empleados en este mes.</td></tr>'}
+    </tbody></table>
+  </article>`;
+}
+
+function printPayrollMarkup(monthDate, markup, locationId = activeLocationId) {
+  const originalTitle = document.title;
+  const pageStyle = document.createElement('style');
+  pageStyle.textContent = '@page { size: A4 landscape; margin: 8mm; }';
+  document.head.appendChild(pageStyle);
+  els.printGridRoot.innerHTML = markup;
+  els.printGridRoot.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('print-grid-export');
+  document.title = `OSS-contratos-${getLocation(locationId).label}-${monthInputValue(monthDate)}`;
+  try { window.print(); } finally {
+    document.title = originalTitle;
+    document.body.classList.remove('print-grid-export');
+    els.printGridRoot.setAttribute('aria-hidden', 'true');
+    els.printGridRoot.innerHTML = '';
+    pageStyle.remove();
+  }
+}
+
+function printPayrollReport(monthDate, rows, locationId = activeLocationId) {
+  printPayrollMarkup(monthDate, renderPayrollPrint(monthDate, rows, locationId), locationId);
+}
+
+function printHistoricalPayrollReport(container, monthDate, locationId = activeLocationId) {
+  const table = container.querySelector('.contratos-table')?.cloneNode(true);
+  if (!table) return;
+  table.querySelectorAll('input').forEach((field) => field.replaceWith(document.createTextNode(field.value || '0')));
+  table.querySelectorAll('button').forEach((button) => button.remove());
+  const markup = `<article class="payroll-print payroll-print-historical"><header><strong>ÖSS Kaffe · Horas y contratos</strong>
+    <span>${escapeHtml(getLocation(locationId).label)} · ${MONTH_NAMES[monthDate.getMonth()]} ${monthDate.getFullYear()}</span></header>
+    <p>Liquidación histórica con la fórmula anterior a octubre de 2026. Revisar los datos provisionales.</p>${table.outerHTML}</article>`;
+  printPayrollMarkup(monthDate, markup, locationId);
+}
+
+function renderModernContratosPanel(container, monthDate) {
+  const monthKey = monthInputValue(monthDate);
+  const locationId = activeLocationId;
+  const rows = getModernPayrollRows(monthDate, locationId);
+  const settlements = state.payrollSettlements?.[locationId]?.[monthKey] || {};
+  const amount = (value) => value == null ? 'Pendiente' : formatEur(value);
+  const hour = (value) => value == null ? 'Pendiente' : formatHours(value);
+  const input = (employee, field, value, label, options = '') => `<label class="payroll-input-label"><span>${label}</span><input class="contratos-input" type="number" min="0" ${options} value="${value == null ? '' : value}" data-contract="${employee.id}" data-contract-month="${monthKey}" data-field="${field}" aria-label="${label} de ${escapeHtml(employee.label)}" /></label>`;
+  const rowHtml = rows.map(({ employee, view, contract, planned, punched, pairedPunches, incompletePunches, holidayHours, costs }) => {
+    const status = view.provisional || view.payrollProvisional;
+    return `<article class="payroll-row">
+      <div class="payroll-name"><span class="contratos-dot" style="background:${employee.color}"></span><strong>${escapeHtml(employee.label)}</strong>
+        ${view.provisional ? `<small class="contract-provisional">Tarifas provisionales</small><button class="mini-button" type="button" data-verify-contract="${employee.id}" data-verify-month="${monthKey}">Confirmar tarifas</button>` : ''}
+        ${view.payrollProvisional ? `<small class="contract-provisional">Hs nómina provisionales</small><button class="mini-button" type="button" data-confirm-payroll="${employee.id}">Confirmar horas</button>` : ''}</div>
+      <div class="payroll-group" data-label="Contrato">${input(employee, 'hoursPerWeek', contract.hoursPerWeek, 'Hs/semana', 'max="168" step="0.5"')}${input(employee, 'payrollMonthlyHours', contract.payrollMonthlyHours, 'Hs/mes nómina', 'max="744" step="0.01"')}</div>
+      <div class="payroll-group" data-label="Nómina A">${input(employee, 'hourlyRate', contract.hourlyRate, '€/hora A', 'step="0.01"')}<small>Subtotal</small><strong>${amount(costs.costA)}</strong></div>
+      <div class="payroll-group" data-label="Horas B">${input(employee, 'overtimeRate', contract.overtimeRate, '€/hora B', 'step="0.01"')}<small>Hs B: ${hour(costs.hoursB)}</small><small>Dif.: ${hour(costs.difference)}</small><strong>${amount(costs.costB)}</strong></div>
+      <div class="payroll-group" data-label="Hora extra">${input(employee, 'extraHourlyRate', contract.extraHourlyRate, '€/h extra', 'step="0.01"')}${input(employee, 'extraHours', contract.extraHours, 'Hs extra', 'max="744" step="0.01"')}<strong>${amount(costs.costExtra)}</strong></div>
+      <div class="payroll-group" data-label="Feriado">${input(employee, 'holidayRate', contract.holidayRate, '€/h feriado', 'step="0.01"')}<small>Hs: ${hour(holidayHours)}</small><strong>${amount(costs.costHoliday)}</strong></div>
+      <div class="payroll-group" data-label="Horas"> <small>Grilla</small><strong>${hour(planned)}</strong><small>Fichadas</small><strong>${pairedPunches ? hour(punched) : '—'}</strong>${incompletePunches ? '<small class="contract-provisional">Fichajes incompletos</small>' : ''}</div>
+      <div class="payroll-total" data-label="Total"><strong>${amount(costs.total)}</strong>${status ? '<small class="contract-provisional">Provisional</small>' : ''}</div>
+    </article>`;
+  }).join('');
+  const missing = rows.filter((row) => !row.costs.complete).length;
+  const provisional = rows.filter((row) => row.view.provisional || row.view.payrollProvisional).length;
+  const estimated = rows.reduce((sum, row) => sum + (row.costs.total ?? 0), 0);
+  let totalPayroll = 0;
+  let totalAdvance = 0;
+  const paymentRows = rows.map(({ employee, view, costs }) => {
+    const settlement = settlements[employee.id] || {};
+    const payroll = Math.max(0, Number(settlement.payroll || 0));
+    const advance = Math.max(0, Number(settlement.advance || 0));
+    totalPayroll += payroll; totalAdvance += advance;
+    const payable = costs.total == null ? null : costs.total - payroll - advance;
+    return `<tr><td data-label="Empleado">${escapeHtml(employee.label)}</td><td data-label="Liquidación">${amount(costs.total)}${view.provisional || view.payrollProvisional ? ' · provisional' : ''}</td>
+      <td data-label="Nómina"><input class="settlement-input" type="number" min="0" step="0.01" value="${payroll}" data-settlement="${employee.id}" data-settlement-field="payroll" aria-label="Nómina de ${escapeHtml(employee.label)}"></td>
+      <td data-label="Adelanto"><input class="settlement-input" type="number" min="0" step="0.01" value="${advance}" data-settlement="${employee.id}" data-settlement-field="advance" aria-label="Adelanto de ${escapeHtml(employee.label)}"></td>
+      <td data-label="Abonar"><strong>${amount(payable)}</strong></td></tr>`;
+  }).join('');
+  container.innerHTML = `<div class="contratos-header"><div><h3>Horas &amp; Contratos · ${MONTH_NAMES[monthDate.getMonth()]} ${monthDate.getFullYear()}</h3>
+    <p class="form-note">Las horas de nómina se ingresan por mes. Las fichadas son informativas; extra y feriado son adicionales.</p>
+    ${missing ? `<p class="contract-history-note">${missing} empleado(s) sin horas de nómina: la liquidación queda pendiente.</p>` : ''}
+    ${provisional ? `<p class="contract-history-note">${provisional} empleado(s) con datos provisionales. Revisalos antes de liquidar.</p>` : ''}</div>
+    <div class="contratos-month-controls"><button class="icon-button" type="button" data-contratos-prev aria-label="Mes anterior">&#8249;</button>
+    <input type="month" data-contratos-month value="${monthKey}" aria-label="Mes de horas y contratos"><button class="icon-button" type="button" data-contratos-next aria-label="Mes siguiente">&#8250;</button>
+    <button class="mini-button" type="button" data-payroll-pdf>PDF mensual</button></div></div>
+    <div class="payroll-table"><div class="payroll-header" aria-hidden="true"><span>Empleado</span><span>Contrato</span><span>Nómina A</span><span>Horas B</span><span>Extra</span><span>Feriado</span><span>Horas</span><span>Total</span></div>
+    ${rowHtml || '<p class="empty-state">No hay empleados de esta tienda en el mes seleccionado.</p>'}</div>
+    <p class="payroll-note">HS B = máximo entre 0 y (horas de grilla − horas de nómina). Diferencia = grilla − nómina. Total = A + B + adicionales extra y feriado.</p>
+    <section class="settlement-panel"><div class="contratos-header"><h3>Pagos a realizar · ${MONTH_NAMES[monthDate.getMonth()]} ${monthDate.getFullYear()}</h3>
+    <p class="form-note">Abonar = liquidación estimada − nómina − adelanto.</p></div>
+    <div class="payroll-payments"><table class="fin-table settlement-table"><thead><tr><th>Empleado</th><th>Liquidación est.</th><th>Nómina</th><th>Adelanto</th><th>Abonar</th></tr></thead>
+    <tbody>${paymentRows}</tbody><tfoot><tr><th>Total</th><td data-label="Liquidación">${missing ? 'Pendiente' : `${amount(estimated)}${provisional ? ' · provisional' : ''}`}</td><td data-label="Nómina">${amount(totalPayroll)}</td><td data-label="Adelanto">${amount(totalAdvance)}</td><td data-label="Abonar">${missing ? 'Pendiente' : `${amount(estimated - totalPayroll - totalAdvance)}${provisional ? ' · provisional' : ''}`}</td></tr></tfoot></table></div></section>`;
+
+  container.querySelectorAll('.contratos-input').forEach((field) => field.addEventListener('change', () => saveContractInput(field)));
+  container.querySelectorAll('[data-verify-contract]').forEach((button) => button.addEventListener('click', () => verifyHistoricalContract(button.dataset.verifyContract, monthKey)));
+  container.querySelectorAll('[data-confirm-payroll]').forEach((button) => button.addEventListener('click', async () => {
+    const employeeId = button.dataset.confirmPayroll;
+    const contract = getContractForMonth(employeeId, monthDate).contract;
+    container.querySelectorAll('.contratos-input, .contratos-month-controls button, [data-contratos-month], [data-confirm-payroll], [data-verify-contract]')
+      .forEach((control) => { control.disabled = true; });
+    const result = await saveContractMonthMutation({ action: 'upsert', month: monthKey, employeeId, locationId,
+      contract: { ...contract, payrollMonthlyHoursProvisional: false } });
+    if (!result.ok) alert(`${result.error || 'Netlify no confirmó las horas.'} Volvé a intentarlo.`);
+    renderContratosPanel();
+  }));
+  container.querySelector('[data-contratos-prev]').addEventListener('click', () => { contratosActiveMonth = addMonths(monthDate, -1); renderContratosPanel(); });
+  container.querySelector('[data-contratos-next]').addEventListener('click', () => { contratosActiveMonth = addMonths(monthDate, 1); renderContratosPanel(); });
+  container.querySelector('[data-contratos-month]').addEventListener('change', (event) => {
+    if (!event.target.value) return;
+    const [year, month] = event.target.value.split('-').map(Number);
+    contratosActiveMonth = new Date(year, month - 1, 1); renderContratosPanel();
+  });
+  container.querySelector('[data-payroll-pdf]').addEventListener('click', () => printPayrollReport(monthDate, rows, locationId));
+  container.querySelectorAll('.settlement-input').forEach((field) => field.addEventListener('change', () => {
+    const employeeId = field.dataset.settlement;
+    state.payrollSettlements ||= {};
+    state.payrollSettlements[locationId] ||= {};
+    state.payrollSettlements[locationId][monthKey] ||= {};
+    state.payrollSettlements[locationId][monthKey][employeeId] ||= {};
+    state.payrollSettlements[locationId][monthKey][employeeId][field.dataset.settlementField] = Math.max(0, Number(field.value) || 0);
+    saveState(); renderContratosPanel();
+  }));
+}
+
 function renderContratosPanel() {
   const container = document.getElementById('contratosPanel');
   if (!container || appRole === 'visitor') return;
@@ -7231,6 +7472,8 @@ function renderContratosPanel() {
   const month = contratosActiveMonth.getMonth();
   const monthFactor = new Date(year, month + 1, 0).getDate() / 7;
   const monthKey = monthInputValue(contratosActiveMonth);
+  container.classList.toggle('legacy-contracts-view', monthKey < PAYROLL_NEW_FORMULA_FROM);
+  if (monthKey >= PAYROLL_NEW_FORMULA_FROM) return renderModernContratosPanel(container, contratosActiveMonth);
   const holidayDates = new Set(
     (state.settings.holidays || []).filter((holiday) => holiday.date.startsWith(monthKey)).map((holiday) => holiday.date)
   );
@@ -7326,6 +7569,7 @@ function renderContratosPanel() {
         <button class="icon-button" type="button" data-contratos-prev aria-label="Mes anterior">&#8249;</button>
         <input type="month" data-contratos-month value="${monthKey}" aria-label="Seleccionar mes de horas y contratos" />
         <button class="icon-button" type="button" data-contratos-next aria-label="Mes siguiente">&#8250;</button>
+        <button class="mini-button" type="button" data-historical-payroll-pdf>PDF mensual</button>
       </div>
     </div>
     <div class="fin-table-wrap" style="overflow-x:auto">
@@ -7369,6 +7613,16 @@ function renderContratosPanel() {
       </div>
     </section>`;
 
+  // El historial conserva sus cálculos, pero presenta cada dato con su rótulo sin barra horizontal.
+  container.querySelectorAll('.contratos-table, .settlement-table').forEach((table) => {
+    const labels = [...table.querySelectorAll('thead th')].map((heading) => heading.textContent.trim());
+    table.querySelectorAll('tbody tr, tfoot tr').forEach((row) => {
+      [...row.children].forEach((cell, index) => {
+        cell.dataset.label = labels[index] || '';
+      });
+    });
+  });
+
   container.querySelectorAll('.contratos-input').forEach((input) => {
     input.addEventListener('change', () => saveContractInput(input));
   });
@@ -7377,6 +7631,8 @@ function renderContratosPanel() {
       button.dataset.verifyContract, button.dataset.verifyMonth
     ));
   });
+  container.querySelector('[data-historical-payroll-pdf]').addEventListener('click', () =>
+    printHistoricalPayrollReport(container, new Date(year, month, 1), activeLocationId));
   container.querySelector('[data-contratos-prev]').addEventListener('click', () => {
     contratosActiveMonth = addMonths(contratosActiveMonth, -1);
     renderContratosPanel();
@@ -10900,7 +11156,8 @@ function renderFinExecutive() {
       <td class="fin-cell-num">${productivity.salesPerPunchedHour > 0 ? formatEur(productivity.salesPerPunchedHour) : "—"}</td>
       <td class="fin-cell-num">${productivity.laborCost > 0 ? formatEur(productivity.laborCost) : "—"}</td>
       <td class="fin-cell-num">${productivity.laborCostPercent > 0 ? `${productivity.laborCostPercent.toLocaleString("es-ES", { maximumFractionDigits: 1 })}%` : "—"}</td>
-      <td class="fin-cell-num">${productivity.configuredEmployees > 0 ? formatEur(estimatedExtras) : "—"}</td>
+      <td class="fin-cell-num">${productivity.incompleteEmployees ? `Pendiente <small>(${productivity.incompleteEmployees} sin hs nómina)</small>`
+        : productivity.configuredEmployees > 0 ? `${formatEur(estimatedExtras)}${productivity.provisionalEmployees ? ' <small>Provisional</small>' : ''}` : "—"}</td>
     </tr>`;
   }).join("");
 
@@ -10929,10 +11186,10 @@ function renderFinExecutive() {
     <section class="executive-report-section">
       <div class="section-heading-compact"><div><p class="eyebrow">Equipo</p><h3>Productividad laboral</h3></div></div>
       <div class="fin-table-wrap"><table class="fin-table executive-table">
-        <thead><tr><th>Tienda</th><th class="fin-cell-num">Hs grilla</th><th class="fin-cell-num">Hs fichadas</th><th class="fin-cell-num">Diferencia</th><th class="fin-cell-num">Venta / h grilla</th><th class="fin-cell-num">Venta / h fichada</th><th class="fin-cell-num">Coste laboral</th><th class="fin-cell-num">Coste / ventas</th><th class="fin-cell-num">Extras + festivos est.</th></tr></thead>
+        <thead><tr><th>Tienda</th><th class="fin-cell-num">Hs grilla</th><th class="fin-cell-num">Hs fichadas</th><th class="fin-cell-num">Diferencia</th><th class="fin-cell-num">Venta / h grilla</th><th class="fin-cell-num">Venta / h fichada</th><th class="fin-cell-num">Coste laboral</th><th class="fin-cell-num">Coste / ventas</th><th class="fin-cell-num">B + extras + festivos est.</th></tr></thead>
         <tbody>${productivityRows}</tbody>
       </table></div>
-      <p class="executive-source-note">El coste laboral registrado suma Nóminas, Mano de Obra y Seg. Social / TGSS. La estimación de extras y festivos sólo utiliza contratos con tarifas cargadas.</p>
+      <p class="executive-source-note">El coste laboral registrado suma Nóminas, Mano de Obra y Seg. Social / TGSS. La estimación de B, extras y festivos se muestra por separado y no se suma automáticamente al P&amp;L. Desde octubre de 2026 necesita horas de nómina para cada empleado.</p>
     </section>
     <section class="executive-report-section">
       <div class="section-heading-compact"><div><p class="eyebrow">Fiabilidad</p><h3>Estado de los datos</h3></div></div>
