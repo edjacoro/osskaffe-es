@@ -195,9 +195,10 @@ empezar a registrar desde ahora con datos importados y mantener historial.
   avisos del navegador cinco minutos antes del turno mientras la aplicacion permanece abierta.
 - La seccion **Pasteleria** esta disponible para administradores, encargados y empleados cuya
   area o rol sea Pasteleria/Pastelera. Incluye Banana Bread, Chipa, Datiles, Budin de limon y
-  amapola, Carrot Cake y Cookies de chocolate, con ingredientes y procedimiento. Al indicar
+  amapola, Budin de Cardamomo sin TACC, Carrot Cake, Cookies de chocolate y Barritas raw de
+  coco, naranja y datiles, con ingredientes y procedimiento. Al indicar
   cuantas recetas se prepararan, la columna **Necesario ahora** multiplica en el momento toda
-  la materia prima. Las cantidades base se incorporaron desde la planilla de recetas entregada;
+  la materia prima, incluidos los rangos. Las cantidades se guardan en el catalogo de la app;
   la operacion diaria no depende de una conexion con Google Sheets.
 - El administrador puede agregar, dar de baja y reactivar personal desde **Fichas > Personal**.
 - Las altas, ediciones, cambios de tienda, bajas programadas y reactivaciones de Personal se

@@ -590,6 +590,39 @@ const PASTRY_RECIPES = [
     ],
   },
   {
+    id: "cardamom-loaf",
+    name: "Budín de Cardamomo (sin TACC)",
+    yieldLabel: "1 budín",
+    ingredients: [
+      { name: "Naranjas hervidas", quantity: 150, unit: "g" },
+      { name: "Azúcar mascabo", quantity: 50, unit: "g" },
+      { name: "Azúcar", quantity: 100, unit: "g" },
+      { name: "Huevos", quantity: 180, quantityMax: 200, unit: "g" },
+      { name: "Harina de almendras", quantity: 75, unit: "g" },
+      { name: "Harina de arroz", quantity: 75, unit: "g" },
+      { name: "Aceite de oliva", quantity: 55, unit: "g" },
+      { name: "Polvo de hornear", quantity: 5, unit: "g" },
+      { name: "Cardamomo en polvo", quantity: 5, unit: "g" },
+      { name: "Semillas de cardamomo", quantity: 1, unit: "g" },
+      { name: "Jengibre en polvo", quantity: 2.5, unit: "g" },
+      { name: "Canela", quantity: 4, unit: "g" },
+    ],
+    procedures: [
+      {
+        title: "Procedimiento",
+        steps: [
+          "Blanquear los huevos con ambos azúcares.",
+          "Agregar el aceite de oliva en forma de hilo y luego incorporar las naranjas hervidas en pedacitos.",
+          "Integrar los ingredientes secos en tres partes.",
+          "Forrar una budinera con papel de horno y colocar rodajas de naranja en el fondo.",
+          "Poner entre 650 y 700 g de preparación en la budinera.",
+          "Hornear a 160 °C durante 55 minutos.",
+          "Desmoldar dando vuelta el molde.",
+        ],
+      },
+    ],
+  },
+  {
     id: "carrot-cake",
     name: "Carrot Cake",
     yieldLabel: "1 budín",
@@ -1331,13 +1364,16 @@ function updatePastryAccessVisibility() {
   if (employeeMobileButton) employeeMobileButton.hidden = !(appRole === "employee" && canAccessPastry());
 }
 
-function formatPastryQuantity(value, unit, asNeeded = false) {
+function formatPastryQuantity(value, unit, asNeeded = false, maxValue = null) {
   if (asNeeded) return "A gusto";
   const amount = Number.isFinite(value) ? value : 0;
-  const formatted = new Intl.NumberFormat("es-ES", {
+  const formatter = new Intl.NumberFormat("es-ES", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 3,
-  }).format(amount);
+  });
+  const formatted = Number.isFinite(maxValue) && maxValue !== amount
+    ? `${formatter.format(amount)}–${formatter.format(maxValue)}`
+    : formatter.format(amount);
   return `${formatted} ${unit}`;
 }
 
@@ -1352,9 +1388,9 @@ function renderPastryIngredientRows(recipe, multiplier) {
     return `${groupRow}
       <tr>
         <td>${escapeHtml(ingredient.name)}</td>
-        <td>${formatPastryQuantity(ingredient.quantity, ingredient.unit, ingredient.asNeeded)}</td>
-        <td class="pastry-required" data-pastry-total data-quantity="${ingredient.quantity}" data-unit="${escapeHtml(ingredient.unit)}" data-as-needed="${ingredient.asNeeded ? "true" : "false"}">
-          ${formatPastryQuantity(ingredient.quantity * multiplier, ingredient.unit, ingredient.asNeeded)}
+        <td>${formatPastryQuantity(ingredient.quantity, ingredient.unit, ingredient.asNeeded, ingredient.quantityMax)}</td>
+        <td class="pastry-required" data-pastry-total data-quantity="${ingredient.quantity}" data-quantity-max="${ingredient.quantityMax ?? ""}" data-unit="${escapeHtml(ingredient.unit)}" data-as-needed="${ingredient.asNeeded ? "true" : "false"}">
+          ${formatPastryQuantity(ingredient.quantity * multiplier, ingredient.unit, ingredient.asNeeded, ingredient.quantityMax == null ? null : ingredient.quantityMax * multiplier)}
         </td>
       </tr>`;
   }).join("");
@@ -1438,7 +1474,8 @@ function updatePastryCalculation(container, recipeId, value) {
   pastryRecipeQuantities[recipeId] = multiplier;
   container.querySelectorAll("[data-pastry-total]").forEach((cell) => {
     const baseQuantity = Number(cell.dataset.quantity || 0);
-    cell.textContent = formatPastryQuantity(baseQuantity * multiplier, cell.dataset.unit || "", cell.dataset.asNeeded === "true");
+    const maxQuantity = cell.dataset.quantityMax ? Number(cell.dataset.quantityMax) : null;
+    cell.textContent = formatPastryQuantity(baseQuantity * multiplier, cell.dataset.unit || "", cell.dataset.asNeeded === "true", maxQuantity == null ? null : maxQuantity * multiplier);
   });
 }
 

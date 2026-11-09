@@ -156,7 +156,7 @@ assert.match(appSource, /id="finAiDateTo" type="date"/);
 assert.match(appSource, /function answerFinAiQuestion\(question, salesOverride = null, expensesOverride = null, periodOverride = null\)/);
 assert.match(appSource, /const period = periodOverride \|\| getFinAiPeriod\(question, allSales\)/);
 assert.match(html, /styles\.css\?v=52/);
-assert.match(html, /app\.js\?v=89/);
+assert.match(html, /app\.js\?v=90/);
 assert.match(styles, /\.heatmap-day-total-cell \{[\s\S]*?position: sticky;[\s\S]*?right: 0;/);
 assert.match(styles, /@media \(min-width: 1100px\) \{[\s\S]*?\.traffic-visual-grid \{[\s\S]*?0\.34fr[\s\S]*?1\.66fr/);
 assert.match(styles, /\.traffic-visual-grid \.traffic-heatmap-scroll \{[\s\S]*?overflow-x: hidden/);

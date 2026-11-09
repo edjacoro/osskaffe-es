@@ -21,7 +21,7 @@ assert.match(appSource, /storeHoursDrafts\.set\(draftKey/, "Los cambios diarios 
 assert.match(appSource, /renderStoreHoursGeneralEditor\(\)/, "Debe mostrarse el editor de horarios generales.");
 assert.match(html, /id="storeHoursGeneralForm"/, "Debe existir el formulario para futuros cambios generales.");
 assert.match(html, /presioná GUARDAR en cada día modificado/);
-assert.match(html, /app\.js\?v=89/);
+assert.match(html, /app\.js\?v=90/);
 
 const baselineMatch = appSource.match(/const BARCELONA_REGULAR_OPENING_SCHEDULES = (\{[\s\S]*?\n\});/);
 assert.ok(baselineMatch, "Debe existir el cierre general de Barcelona desde el 1/11.");
